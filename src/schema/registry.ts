@@ -17,6 +17,10 @@ export const COMMON_FIELDS: readonly FieldDef[] = [
   { key: 'email', type: 'string', format: 'email', label: 'Email', required: true, maxLength: 254 },
   { key: 'issue_categories', type: 'multi_select', label: 'What went wrong?', required: true, minItems: 1, optionsFrom: 'issue_categories' },
   { key: 'feedback_text', type: 'text', label: 'Tell us more', required: false, maxLength: 500, multiline: true },
+  {
+    key: 'device_serial', type: 'string', label: 'Ring or band serial number', required: false, maxLength: 64,
+    help: 'Fill automatically from the connected ring or band, e.g. R2N08250600302. Not typed by the tester. Used to fetch device logs; email is the fallback.',
+  },
 ];
 
 export interface FeatureDefinition {

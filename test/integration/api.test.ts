@@ -76,6 +76,7 @@ describe('GET /v1/feedback/schema', () => {
     expect(sleep.fields.map((f: { key: string }) => f.key)).toEqual(['actual_start_time', 'actual_end_time', 'recorded_start_time', 'recorded_end_time']);
     expect(sleep.rules).toHaveLength(2);
     expect(body.common_fields.find((f: { key: string }) => f.key === 'feedback_text').maxLength).toBe(500);
+    expect(body.common_fields.find((f: { key: string }) => f.key === 'device_serial')).toMatchObject({ type: 'string', required: false, maxLength: 64 });
     expect(body.client_context_keys).toContain('platform');
     expect(body.client_context_fields.find((f: { key: string }) => f.key === 'platform').options).toEqual(['ios', 'android']);
   });
@@ -100,11 +101,12 @@ describe('POST /v1/feedback/:feature', () => {
   it('stores a home submission and returns IST timestamp', async () => {
     const r = await app.inject({
       method: 'POST', url: '/v1/feedback/home', headers: appHeaders,
-      payload: validBody({ details: { peak_score_value: 87 }, client: { platform: 'iOS', app_version: '2.4.0', build_channel: 'stage', firmware_version: '1.9.2' } }),
+      payload: validBody({ device_serial: 'R2N08250600302', details: { peak_score_value: 87 }, client: { platform: 'iOS', app_version: '2.4.0', build_channel: 'stage', firmware_version: '1.9.2' } }),
     });
     expect(r.statusCode).toBe(201);
     const b = r.json();
     expect(b.platform).toBe('ios');
+    expect(b.device_serial).toBe('R2N08250600302');
     expect(b.is_test).toBe(true);
     expect(b.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(b.feature_key).toBe('home');

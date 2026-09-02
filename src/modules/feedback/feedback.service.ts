@@ -54,6 +54,7 @@ export class FeedbackService {
       email: v.email as string,
       issue_categories: v.issue_categories as string[],
       feedback_text: (v.feedback_text as string | null | undefined) ?? null,
+      device_serial: (v.device_serial as string | null | undefined) || null,
       details,
       client,
       idempotency_key: idempotencyKey,

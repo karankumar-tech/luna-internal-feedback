@@ -44,6 +44,14 @@ describe('common fields', () => {
     expect(issuesOf('home', { ...base, rating: 5 })[0]?.message).toMatch(/unrecognized/i);
   });
 
+  it('accepts an optional device serial and trims it', () => {
+    const r = buildSubmissionValidator('home', ctx(['cat_a'])).safeParse({ ...base, device_serial: ' R2N08250600302 ' });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.device_serial).toBe('R2N08250600302');
+    expect(issuesOf('home', { ...base, device_serial: 'x'.repeat(65) })[0]?.path).toBe('device_serial');
+    expect(issuesOf('home', { ...base, device_serial: null })).toEqual([]);
+  });
+
   it('rejects feedback_text over 500 chars', () => {
     expect(issuesOf('home', { ...base, feedback_text: 'x'.repeat(501) })).toEqual([
       { path: 'feedback_text', message: 'must be at most 500 characters' },

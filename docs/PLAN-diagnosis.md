@@ -136,7 +136,7 @@ Free-text tags would defeat querying; the list can grow by migration.
 ```
 submission ──(auto or "Diagnose now")──▶ job ──▶ worker
                                                │
-   1. lookup   list-botfetch?email=…  (and ?serial_no=… once the app sends ring_serial)
+   1. lookup   list-botfetch?serial_no=<device_serial> when the submission has one, else ?email=…
    2. match    entry by platform, then most recent updated_at ≥ occurred_on
    3. select   per source: file(s) whose path date is the first ≥ occurred_on, plus the previous one
    4. fetch    ≤ 25 MB each, zip members filtered by date, redact secrets
@@ -159,18 +159,30 @@ internal tester of the Luna smart ring app; the stack is ring firmware → ring 
 evidence only, prefer `insufficient_logs` over guessing, cite lines verbatim in
 `evidence`, choose tags only from the taxonomy, write for an engineer.
 
-### Where it runs
+### Where it runs (Vercel Hobby plan, verified against the docs 2026-09-02)
 
-Vercel functions have a per-request time limit (default 300 s with Fluid compute on
-current plans; set explicitly in `vercel.json`). A diagnosis is ~5–20 s (downloads
-dominate), so:
+- Functions on Hobby run up to **300 s** per invocation (default and maximum), 2 GB
+  memory. A diagnosis takes ~5–20 s, so a single invocation is ample.
+- `waitUntil()` from `@vercel/functions` **extends the invocation after the response
+  is sent**, up to that same 300 s. That is the background mechanism; no cron and
+  no separate worker.
+- Hobby cron jobs run at most once a day, so they are not used for the main path.
 
-- **Manual "Diagnose now"** runs synchronously inside the request and returns the result.
-- **Auto on submit** enqueues a job; a **Vercel Cron** hits `GET /internal/diagnosis/run`
-  every 5 minutes (secured with `CRON_SECRET`), draining up to N jobs per tick. No
-  background work is left inside the submit request, which serverless would freeze.
-- Retries: 3 attempts with backoff; `no_logs` is final, not retried (a nightly
-  "retry no_logs from the last 3 days" job catches late uploads).
+Flow for a negative submission:
+
+1. `POST /v1/feedback/{feature}` validates and inserts the row, writes a
+   `diagnosis_jobs` row (`queued`), and **responds 201 immediately**.
+2. In the same invocation, `waitUntil(runDiagnosis(submissionId))` performs lookup →
+   fetch → extract → model → persist. Locally (no Vercel runtime) the same call falls
+   back to `setImmediate`, so `npm run dev` behaves identically.
+3. If the invocation dies (timeout, crash), the job stays `queued`/`running` with a
+   stale `started_at`. A **"Run pending" button** on the dashboard and an
+   opportunistic sweep when the dashboard loads pick those up, plus "Diagnose now"
+   on any detail page. Retries are capped at 3 with the last error stored.
+4. Manual "Diagnose now" runs synchronously in its own request and returns the result.
+
+`attachDatabasePool(pool)` from the same package is added so the pg pool releases
+idle clients before Fluid compute suspends the instance.
 
 ---
 
@@ -185,10 +197,10 @@ dominate), so:
 | `GET` | `/v1/admin/logs/lookup?email=…|serial_no=…` | admin | proxies list-botfetch so the detail page can list every available file, not just the ones used |
 | `GET` | `/v1/feedback/stats` | | gains `diagnosis` block (§7) |
 | `GET` | `/v1/feedback` | | gains filters `ai_status`, `ai_side`, `ai_severity`, `tag` |
-| `GET` | `/internal/diagnosis/run` | `CRON_SECRET` | worker tick |
+| `POST` | `/v1/admin/diagnoses/run-pending` | admin / dashboard | sweep queued or stale jobs (also triggered opportunistically on dashboard load) |
 
-Schema/client change: add optional `client.ring_serial` so lookups can use
-`serial_no` (exact) instead of `email` (may list several devices). Back-compatible.
+Schema change (done 2026-09-02): optional common field `device_serial` (ring/band
+serial from the SDK). Lookups use `serial_no` when present, `email` otherwise.
 
 ---
 
@@ -279,7 +291,7 @@ Answers "how is the product doing" rather than "what happened to this bug":
 - The stored excerpt is capped at 100 lines / 16 KB; full files are never stored, only
   their URLs.
 - OpenRouter call uses `X-Title: luna-feedback` and no data-retention opt-in.
-- Cron route requires `CRON_SECRET`; diagnosis routes require admin or dashboard session.
+- Diagnosis routes require admin key or dashboard session; nothing runs unauthenticated.
 
 ---
 
@@ -293,7 +305,6 @@ Answers "how is the product doing" rather than "what happened to this bug":
 | `OPENROUTER_MODEL` | new, default `google/gemini-3.1-flash-lite` | swappable |
 | `DIAGNOSIS_AUTO` | new, default `true` | enqueue on submit |
 | `DIAGNOSIS_DAILY_BUDGET_USD` | new, default `2` | pauses auto runs when exceeded |
-| `CRON_SECRET` | new | worker route |
 
 ---
 
@@ -301,14 +312,14 @@ Answers "how is the product doing" rather than "what happened to this bug":
 
 | # | deliverable | verified by |
 |---|---|---|
-| 1 | Migrations: `diagnoses`, `diagnosis_runs`, `diagnosis_jobs`, denormalised columns, `client.ring_serial` | `npm run db:verify` |
+| 1 | Migrations: `diagnoses`, `diagnosis_runs`, `diagnosis_jobs`, denormalised columns (`device_serial` already added) | `npm run db:verify` |
 | 2 | `logs/` module: list-botfetch client, file picker by date, downloader with caps, zip member filter, per-source parsers, redaction | unit tests on the real sample files captured today (checked into `test/fixtures`, redacted) |
 | 3 | `extract/` module: window + scoring → ≤ 100 merged lines | unit tests: window narrowing per feature, caps, ordering, separator tags |
 | 4 | `ai/` module: OpenRouter client, prompt, JSON schema, cost accounting | unit test with a recorded response; one live call in CI-less smoke |
-| 5 | Diagnosis service + routes + job queue + cron worker | integration tests with the logging API stubbed; one live run against a real tester submission |
+| 5 | Diagnosis service + routes + job queue + `waitUntil` background run + run-pending sweep | integration tests with the logging API stubbed; one live run against a real tester submission |
 | 6 | Dashboard: detail page, review controls, main-page filters/KPIs/chart, diagnosis card | browser check desktop + mobile |
 | 7 | Diagnosis overview page | browser check |
-| 8 | Docs: `/docs` gains `ring_serial` and the diagnosis read endpoint; README env | |
+| 8 | Docs: `/docs` gains the diagnosis read endpoint; README env | |
 
 Steps 1–4 need no UI and can be verified headlessly. Step 5 is where the first real
 diagnosis lands in the database.
@@ -326,11 +337,12 @@ Decided (2026-09-02):
    Positive submissions are not diagnosed (no cost, nothing to find); they can be
    run manually from the detail page if ever needed.
 
+2. **Device serial**: added as optional common field `device_serial`; the app fills it
+   from the SDK when a ring/band is connected. Serial lookup first, email fallback.
+3. **Vercel**: Hobby plan. 300 s per invocation and `waitUntil` cover the background
+   run without cron or paid features.
+
 Still open:
 
-2. **Can the app send `ring_serial`** in the client block? It makes lookups exact
-   instead of email-based. Back-compatible either way.
-3. **Vercel plan**: confirm the max function duration we can set (the worker needs
-   ≥ 60 s per tick to finish a few downloads and a model call).
 4. **Who reviews**: the review verdict is open to anyone with the dashboard key; if
    you want names on verdicts, we add a reviewer name at sign-in.

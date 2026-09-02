@@ -10,6 +10,7 @@ export interface SubmissionRow {
   issue_categories: string[];
   created_at: Date;
   feedback_text: string | null;
+  device_serial: string | null;
   details: Record<string, unknown>;
   platform: string | null;
   app_version: string | null;
@@ -32,6 +33,7 @@ export interface NewSubmission {
   email: string;
   issue_categories: string[];
   feedback_text: string | null;
+  device_serial: string | null;
   details: Record<string, unknown>;
   client: Partial<Record<'platform' | 'app_version' | 'build_number' | 'build_channel' | 'firmware_version' | 'os_version' | 'device_id' | 'session_id', string | null>>;
   idempotency_key: string | null;
@@ -88,7 +90,7 @@ function buildWhere(f: Partial<StatsFilters>, alias = 's'): { where: string; val
 }
 
 const COLUMNS = `id, feature_key, is_positive, occurred_on::text as occurred_on, user_id, email, issue_categories,
-  created_at, feedback_text, details, platform, app_version, build_number, build_channel, firmware_version, os_version,
+  created_at, feedback_text, device_serial, details, platform, app_version, build_number, build_channel, firmware_version, os_version,
   device_id, session_id, idempotency_key, schema_version, is_test`;
 
 export class FeedbackRepo {
@@ -99,7 +101,7 @@ export class FeedbackRepo {
    */
   async insert(s: NewSubmission): Promise<{ row: SubmissionRow; created: boolean }> {
     const params = [
-      s.feature_key, s.is_positive, s.occurred_on, s.user_id, s.email, s.issue_categories, s.feedback_text,
+      s.feature_key, s.is_positive, s.occurred_on, s.user_id, s.email, s.issue_categories, s.feedback_text, s.device_serial,
       JSON.stringify(s.details),
       s.client.platform ?? null, s.client.app_version ?? null, s.client.build_number ?? null, s.client.build_channel ?? null,
       s.client.firmware_version ?? null, s.client.os_version ?? null, s.client.device_id ?? null,
@@ -107,10 +109,10 @@ export class FeedbackRepo {
     ];
     const inserted = await this.db.query<SubmissionRow>(
       `insert into luna_feedback.submissions
-         (feature_key, is_positive, occurred_on, user_id, email, issue_categories, feedback_text, details,
+         (feature_key, is_positive, occurred_on, user_id, email, issue_categories, feedback_text, device_serial, details,
           platform, app_version, build_number, build_channel, firmware_version, os_version, device_id, session_id,
           idempotency_key, schema_version, is_test)
-       values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
        on conflict (idempotency_key) where idempotency_key is not null do nothing
        returning ${COLUMNS}`,
       params,

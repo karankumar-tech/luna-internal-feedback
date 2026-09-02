@@ -617,7 +617,7 @@
   });
   $('btnCsv').addEventListener('click', () => {
     if (!state.rows.length) { toast('Nothing to export'); return; }
-    const cols = ['id', 'created_at_ist', 'feature_key', 'is_positive', 'occurred_on', 'user_id', 'email', 'issue_categories', 'feedback_text', 'details', 'is_test', 'platform', 'app_version', 'build_number', 'build_channel', 'firmware_version', 'os_version', 'device_id', 'session_id'];
+    const cols = ['id', 'created_at_ist', 'feature_key', 'is_positive', 'occurred_on', 'user_id', 'email', 'issue_categories', 'feedback_text', 'device_serial', 'details', 'is_test', 'platform', 'app_version', 'build_number', 'build_channel', 'firmware_version', 'os_version', 'device_id', 'session_id'];
     const esc = (v) => { const s = v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const csv = [cols.join(','), ...state.rows.map((r) => cols.map((c) => esc(c === 'issue_categories' ? r[c].join('|') : r[c])).join(','))].join('\n');
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = `luna-feedback-${state.filters.from}-to-${state.filters.to}.csv`; a.click(); URL.revokeObjectURL(a.href);
@@ -637,7 +637,7 @@
     const order = fields.map((f) => f.key);
     const details = Object.entries(r.details || {}).sort(([a], [b]) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999));
     if (details.length) dl('Feature details', details.map(([k, v]) => [fieldLabel(k), v, true]));
-    dl('Reporter', [['User ID', r.user_id, true], ['Email', r.email], ['Occurred on', r.occurred_on, true], ['Submitted (IST)', r.created_at_ist, true], ['Submitted (UTC)', r.created_at, true]]);
+    dl('Reporter', [['User ID', r.user_id, true], ['Email', r.email], ['Device serial', r.device_serial, true], ['Occurred on', r.occurred_on, true], ['Submitted (IST)', r.created_at_ist, true], ['Submitted (UTC)', r.created_at, true]]);
     dl('Client', [['Platform', r.platform === 'ios' ? 'iOS' : r.platform === 'android' ? 'Android' : null], ['App version', r.app_version, true], ['Build', r.build_number, true], ['Channel', r.build_channel, true], ['Firmware', r.firmware_version, true], ['OS', r.os_version], ['Device ID', r.device_id, true], ['Session', r.session_id, true]]);
     dl('Record', [['ID', r.id, true], ['Schema version', r.schema_version, true], ['Test data', r.is_test ? 'yes' : 'no']]);
     d.classList.add('open'); $('scrim').classList.add('open'); close.focus();

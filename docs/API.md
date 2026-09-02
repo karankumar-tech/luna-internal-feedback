@@ -64,6 +64,7 @@ curl -X POST https://luna-feedback.buildsage.tech/v1/feedback/sleep \
     "email": "tester@luna.app",
     "issue_categories": ["incorrect_sleep", "vitals_not_recorded"],
     "feedback_text": "Ring said 4h, I slept 7h.",
+    "device_serial": "R2N08250600302",
     "details": { "actual_start_time": "11:30 PM", "actual_end_time": "06:45 AM" },
     "client": { "platform": "ios", "app_version": "2.4.0", "build_number": "512", "build_channel": "stage",
                 "firmware_version": "1.9.2", "os_version": "iOS 19.1" }
@@ -244,7 +245,9 @@ Everything needed to build the form for every active feature.
     { "key": "user_id",          "type": "number",       "label": "User ID", "required": true, "integer": true, "min": 1 },
     { "key": "email",            "type": "string",       "format": "email", "label": "Email", "required": true, "maxLength": 254 },
     { "key": "issue_categories", "type": "multi_select", "label": "What went wrong?", "required": true, "minItems": 1, "optionsFrom": "issue_categories" },
-    { "key": "feedback_text",    "type": "text",         "label": "Tell us more", "required": false, "maxLength": 500, "multiline": true }
+    { "key": "feedback_text",    "type": "text",         "label": "Tell us more", "required": false, "maxLength": 500, "multiline": true },
+    { "key": "device_serial",    "type": "string",       "label": "Ring or band serial number", "required": false, "maxLength": 64,
+      "help": "Fill automatically from the connected ring or band, e.g. R2N08250600302. Not typed by the tester. Used to fetch device logs; email is the fallback." }
   ],
   "client_context_keys": ["platform", "app_version", "build_number", "build_channel", "firmware_version", "os_version", "device_id", "session_id"],
   "client_context_fields": [
@@ -373,6 +376,7 @@ Create a submission. `{feature}` is one of `home`, `sleep`, `activity`, `workout
 | `email` | email string | yes | |
 | `issue_categories` | string[] | yes | category keys for this feature, ≥ 1, unique |
 | `feedback_text` | string ≤ 500 | no | free text |
+| `device_serial` | string ≤ 64 | no | **send whenever a ring or band is connected**, e.g. `"R2N08250600302"`. Read from the SDK; never typed by the tester. Used to fetch that device's logs for AI diagnosis; `email` is the fallback |
 | `details` | object | no | feature fields, see §6. Unknown keys are rejected. Defaults to `{}` |
 | `client` | object | no | any subset of the client context keys, see §7. Unknown keys are rejected |
 | `is_test` | boolean | no | default `false`. Send `true` from integration runs and test builds; see §3b |
@@ -396,6 +400,7 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
   "email": "tester@luna.app",
   "issue_categories": ["hr_not_showing", "incorrect_zones"],
   "feedback_text": "HR stayed at -- for the whole run.",
+  "device_serial": "R2N08250600302",
   "details": {
     "workout_type": "Outdoor Run",
     "start_time": "6:00 AM",
@@ -428,6 +433,7 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
   "issue_categories": ["hr_not_showing", "incorrect_zones"],
   "created_at": "2026-09-02T08:20:23.521Z",
   "feedback_text": "HR stayed at -- for the whole run.",
+  "device_serial": "R2N08250600302",
   "details": {
     "workout_type": "Outdoor Run",
     "start_time": "06:00 AM",
@@ -735,6 +741,7 @@ struct FeedbackAPI {
         let email: String
         let issueCategories: [String]
         let feedbackText: String?
+        let deviceSerial: String?         // ring/band serial from the SDK when connected
         let details: [String: JSONValue]  // feature fields
         let client: [String: String]          // include "platform": "ios"
         enum CodingKeys: String, CodingKey {
@@ -745,6 +752,7 @@ struct FeedbackAPI {
             case userId = "user_id"
             case issueCategories = "issue_categories"
             case feedbackText = "feedback_text"
+            case deviceSerial = "device_serial"
         }
     }
 
