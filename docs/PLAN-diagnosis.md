@@ -312,17 +312,17 @@ Answers "how is the product doing" rather than "what happened to this bug":
 
 | # | deliverable | verified by |
 |---|---|---|
-| 1 | Migrations: `diagnoses`, `diagnosis_runs`, `diagnosis_jobs`, denormalised columns (`device_serial` already added) | `npm run db:verify` |
-| 2 | `logs/` module: list-botfetch client, file picker by date, downloader with caps, zip member filter, per-source parsers, redaction | unit tests on the real sample files captured today (checked into `test/fixtures`, redacted) |
-| 3 | `extract/` module: window + scoring → ≤ 100 merged lines | unit tests: window narrowing per feature, caps, ordering, separator tags |
-| 4 | `ai/` module: OpenRouter client, prompt, JSON schema, cost accounting | unit test with a recorded response; one live call in CI-less smoke |
-| 5 | Diagnosis service + routes + job queue + `waitUntil` background run + run-pending sweep | integration tests with the logging API stubbed; one live run against a real tester submission |
-| 6 | Dashboard: detail page, review controls, main-page filters/KPIs/chart, diagnosis card | browser check desktop + mobile |
-| 7 | Diagnosis overview page | browser check |
-| 8 | Docs: `/docs` gains the diagnosis read endpoint; README env | |
+| 1 | Migrations: `diagnoses`, `diagnosis_runs`, `diagnosis_jobs`, denormalised columns | DONE (+ `waiting_logs` status) |
+| 2 | `logs/` module: client, file picker, capped downloader, zip member filter, per-source parsers (incl. X-LOG app lines), redaction, repeat collapsing | DONE, unit tests on synthetic samples modelled on the real files |
+| 3 | `extract.ts`: window + scoring → ≤ 100 merged lines | DONE, unit tests |
+| 4 | `ai/` module: OpenRouter client, prompt, strict JSON schema + zod, cost from usage | DONE; live runs on the sample tester: ~7 s, ~$0.002, firmware verdict with firmware evidence |
+| 5 | Service + routes + queue + `waitUntil` background run + run-pending sweep with backfill + budget guard | DONE, e2e integration tests with fake logs API / S3 / model |
+| 6 | Dashboard: `/dashboard/submissions/{id}` detail page with review, main-page AI filters/KPI/chart/badges/ops card | DONE, browser-checked |
+| 7 | `/dashboard/diagnosis` overview page + `/v1/admin/diagnoses/overview` | DONE, browser-checked |
+| 8 | Docs: `/docs` + API.md diagnosis endpoint, README, env examples | DONE |
 
-Steps 1–4 need no UI and can be verified headlessly. Step 5 is where the first real
-diagnosis lands in the database.
+Shipped 2026-09-02 (commits 71087d9 → e969986). Production has the keys set and reports
+`enabled: true`; the first real submissions are queued and waiting for the evening log sync.
 
 ---
 
