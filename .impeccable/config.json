@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "geist",
+        "createdAt": "2026-09-02T09:21:17.526Z",
+        "reason": "Geist + Geist Mono are mandated by the user's Luna Design System v0.3 (docs/design/luna-design-system.html)"
+      }
+    ]
+  }
+}
