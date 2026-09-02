@@ -12,6 +12,15 @@ const EnvSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   APP_TIMEZONE: z.string().default('Asia/Kolkata'),
   DB_POOL_MAX: z.coerce.number().int().positive().default(5),
+  // --- AI diagnosis (optional: when either key is missing, diagnosis is disabled and submissions still work) ---
+  LUNA_LOGS_APIKEY: z.string().min(8).optional(),
+  LUNA_LOGS_BASE_URL: z.string().url().default('https://stage-app.gonoise.com'),
+  OPEN_ROUTER_KEY: z.string().min(8).optional(),
+  OPENROUTER_MODEL: z.string().default('google/gemini-3.1-flash-lite'),
+  DIAGNOSIS_AUTO: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  DIAGNOSIS_DAILY_BUDGET_USD: z.coerce.number().nonnegative().default(2),
+  DIAGNOSIS_SYNC_HOUR_IST: z.coerce.number().int().min(0).max(23).default(20),
+  CRON_SECRET: z.string().min(16).optional(),
   CATEGORY_CACHE_TTL_MS: z.coerce.number().int().nonnegative().default(30_000),
 });
 

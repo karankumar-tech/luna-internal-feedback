@@ -23,6 +23,10 @@ export interface SubmissionRow {
   idempotency_key: string | null;
   schema_version: number;
   is_test: boolean;
+  ai_status: string | null;
+  ai_side: string | null;
+  ai_severity: string | null;
+  ai_checked_at: Date | null;
 }
 
 export interface NewSubmission {
@@ -45,6 +49,9 @@ export interface ListFilters {
   feature?: string;
   platform?: string;
   is_test?: boolean;
+  ai_status?: string;
+  ai_side?: string;
+  ai_severity?: string;
   user_id?: number;
   from?: string;
   to?: string;
@@ -59,6 +66,9 @@ export interface StatsFilters {
   feature?: string;
   platform?: string;
   is_test?: boolean;
+  ai_status?: string;
+  ai_side?: string;
+  ai_severity?: string;
   user_id?: number;
   from: string;
   to: string;
@@ -72,15 +82,28 @@ export interface StatsResult {
   by_day: { date: string; positive: number; negative: number }[];
   by_feature: { feature_key: string; label: string; positive: number; negative: number }[];
   by_category: { feature_key: string; key: string; label: string; count: number }[];
+  diagnosis: {
+    checked: number;          // done or no_logs
+    with_verdict: number;     // done
+    waiting: number;          // pending/running/waiting_logs
+    failed: number;
+    logs_found: number;       // done (logs existed)
+    by_side: { feature_key: string; side: string; count: number }[];
+    by_severity: { severity: string; count: number }[];
+    top_tags: { tag: string; count: number }[];
+  };
 }
 
 function buildWhere(f: Partial<StatsFilters>, alias = 's'): { where: string; vals: unknown[] } {
   const where: string[] = [];
   const vals: unknown[] = [];
-  const add = (sql: string, v: unknown) => { vals.push(v); where.push(sql.replace('?', `$${vals.length}`)); };
+  const add = (sql: string, v: unknown) => { if (v === undefined) { where.push(sql); return; } vals.push(v); where.push(sql.replace('?', `$${vals.length}`)); };
   if (f.feature) add(`${alias}.feature_key = ?`, f.feature);
   if (f.platform) add(`${alias}.platform = ?`, f.platform);
   if (f.is_test !== undefined) add(`${alias}.is_test = ?`, f.is_test);
+  if (f.ai_status) add(f.ai_status === 'none' ? `${alias}.ai_status is null` : `${alias}.ai_status = ?`, f.ai_status === 'none' ? undefined : f.ai_status);
+  if (f.ai_side) add(`${alias}.ai_side = ?`, f.ai_side);
+  if (f.ai_severity) add(`${alias}.ai_severity = ?`, f.ai_severity);
   if (f.user_id !== undefined) add(`${alias}.user_id = ?`, f.user_id);
   if (f.from) add(`${alias}.occurred_on >= ?`, f.from);
   if (f.to) add(`${alias}.occurred_on <= ?`, f.to);
@@ -91,7 +114,7 @@ function buildWhere(f: Partial<StatsFilters>, alias = 's'): { where: string; val
 
 const COLUMNS = `id, feature_key, is_positive, occurred_on::text as occurred_on, user_id, email, issue_categories,
   created_at, feedback_text, device_serial, details, platform, app_version, build_number, build_channel, firmware_version, os_version,
-  device_id, session_id, idempotency_key, schema_version, is_test`;
+  device_id, session_id, idempotency_key, schema_version, is_test, ai_status, ai_side, ai_severity, ai_checked_at`;
 
 export class FeedbackRepo {
   constructor(private readonly db: Db) {}
@@ -171,7 +194,7 @@ export class FeedbackRepo {
     const { where, vals } = buildWhere(f);
     const base = `from luna_feedback.submissions s ${where}`;
 
-    const [totals, byDay, byFeature, byCategory] = await Promise.all([
+    const [totals, byDay, byFeature, byCategory, diagTotals, bySide, bySeverity, topTags] = await Promise.all([
       this.db.query<{ submissions: number; positive: number; negative: number; users: number }>(
         `select count(*)::int as submissions,
                 count(*) filter (where s.is_positive)::int as positive,
@@ -199,6 +222,24 @@ export class FeedbackRepo {
          ${where}
          group by s.feature_key, c.key, ic.label
          order by count desc, s.feature_key, c.key`, vals),
+      this.db.query<{ checked: number; with_verdict: number; waiting: number; failed: number }>(
+        `select count(*) filter (where s.ai_status in ('done','no_logs'))::int as checked,
+                count(*) filter (where s.ai_status = 'done')::int as with_verdict,
+                count(*) filter (where s.ai_status in ('pending','running','waiting_logs'))::int as waiting,
+                count(*) filter (where s.ai_status = 'failed')::int as failed
+         ${base}`, vals),
+      this.db.query<{ feature_key: string; side: string; count: number }>(
+        `select s.feature_key, s.ai_side as side, count(*)::int as count ${base} ${where ? 'and' : 'where'} s.ai_side is not null
+         group by s.feature_key, s.ai_side order by count desc`, vals),
+      this.db.query<{ severity: string; count: number }>(
+        `select s.ai_severity as severity, count(*)::int as count ${base} ${where ? 'and' : 'where'} s.ai_severity is not null
+         group by s.ai_severity order by count desc`, vals),
+      this.db.query<{ tag: string; count: number }>(
+        `select t.tag, count(*)::int as count
+         from luna_feedback.submissions s
+         join luna_feedback.diagnoses d on d.submission_id = s.id
+         cross join lateral unnest(d.tags) as t(tag)
+         ${where} group by t.tag order by count desc limit 12`, vals),
     ]);
 
     return {
@@ -207,6 +248,16 @@ export class FeedbackRepo {
       by_day: byDay.rows,
       by_feature: byFeature.rows,
       by_category: byCategory.rows,
+      diagnosis: {
+        checked: diagTotals.rows[0]?.checked ?? 0,
+        with_verdict: diagTotals.rows[0]?.with_verdict ?? 0,
+        waiting: diagTotals.rows[0]?.waiting ?? 0,
+        failed: diagTotals.rows[0]?.failed ?? 0,
+        logs_found: diagTotals.rows[0]?.with_verdict ?? 0,
+        by_side: bySide.rows,
+        by_severity: bySeverity.rows,
+        top_tags: topTags.rows,
+      },
     };
   }
 }

@@ -10,10 +10,15 @@ import type { FeedbackService } from './feedback.service.js';
 
 const IsTest = z.enum(['true', 'false']).transform((v) => v === 'true').optional();
 
+const AiStatus = z.enum(['none', 'pending', 'running', 'waiting_logs', 'done', 'no_logs', 'failed']).optional();
+const AiSide = z.enum(['firmware', 'sdk', 'app', 'backend', 'user_expectation', 'not_a_bug', 'insufficient_logs']).optional();
+const AiSeverity = z.enum(['low', 'medium', 'high', 'critical']).optional();
+
 const ListQuery = z.object({
   feature: z.string().optional(),
   platform: z.enum(PLATFORMS).optional(),
   is_test: IsTest,
+  ai_status: AiStatus, ai_side: AiSide, ai_severity: AiSeverity,
   user_id: z.coerce.number().int().positive().optional(),
   from: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
   to: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
@@ -27,6 +32,7 @@ const StatsQuery = z.object({
   feature: z.string().optional(),
   platform: z.enum(PLATFORMS).optional(),
   is_test: IsTest,
+  ai_status: AiStatus, ai_side: AiSide, ai_severity: AiSeverity,
   user_id: z.coerce.number().int().positive().optional(),
   from: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
   to: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
@@ -80,7 +86,7 @@ export function registerFeedbackRoutes(
   app.post<{ Params: { feature: string } }>('/v1/feedback/:feature', async (req, reply) => {
     const rawKey = req.headers['idempotency-key'];
     const idempotencyKey = typeof rawKey === 'string' && rawKey.trim().length > 0 ? rawKey.trim().slice(0, 200) : null;
-    const { dto, created } = await service.submit(req.params.feature, req.body, idempotencyKey);
+    const { dto, created } = await service.submit(req.params.feature, req.body, idempotencyKey, req.log);
     return reply.code(created ? 201 : 200).send(dto);
   });
 

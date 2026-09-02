@@ -5,31 +5,41 @@ import { buildSubmissionValidator, zodIssues } from '../../schema/buildValidator
 import { SCHEMA_VERSION, isFeatureKey } from '../../schema/registry.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
 import type { FeedbackRepo, SubmissionRow, ListFilters, StatsFilters } from './feedback.repo.js';
+import type { FastifyBaseLogger } from 'fastify';
 
-export interface SubmissionDto extends Omit<SubmissionRow, 'created_at' | 'user_id' | 'idempotency_key'> {
+/** Minimal hook so the feedback module does not depend on the diagnosis module directly. */
+export interface DiagnosisHook { onNegativeSubmission(submissionId: string, log: FastifyBaseLogger): Promise<void> }
+
+export interface SubmissionDto extends Omit<SubmissionRow, 'created_at' | 'user_id' | 'idempotency_key' | 'ai_checked_at'> {
   user_id: number;
   created_at: string;      // ISO 8601 UTC
   created_at_ist: string;  // "YYYY-MM-DD HH:mm:ss +05:30"
+  ai_checked_at: string | null;
 }
 
 export class FeedbackService {
+  private diagnosis: DiagnosisHook | null = null;
+
   constructor(
     private readonly feedback: FeedbackRepo,
     private readonly categories: CategoriesRepo,
     private readonly timeZone: string,
   ) {}
 
+  setDiagnosisHook(hook: DiagnosisHook | null) { this.diagnosis = hook; }
+
   toDto(row: SubmissionRow): SubmissionDto {
     const { idempotency_key: _omit, ...rest } = row;
     return {
       ...rest,
       user_id: Number(row.user_id),
+      ai_checked_at: row.ai_checked_at ? new Date(row.ai_checked_at).toISOString() : null,
       created_at: row.created_at.toISOString(),
       created_at_ist: formatInZone(row.created_at, this.timeZone),
     };
   }
 
-  async submit(featureKey: string, body: unknown, idempotencyKey: string | null) {
+  async submit(featureKey: string, body: unknown, idempotencyKey: string | null, log?: FastifyBaseLogger) {
     if (!isFeatureKey(featureKey)) throw AppError.notFound(`Unknown feature "${featureKey}"`);
     const feature = await this.categories.feature(featureKey);
     if (!feature || !feature.is_active) throw AppError.notFound(`Feature "${featureKey}" is not accepting feedback`);
@@ -61,6 +71,10 @@ export class FeedbackService {
       schema_version: SCHEMA_VERSION,
       is_test: v.is_test === true,
     });
+    if (created && !row.is_positive && this.diagnosis && log) {
+      // Queue + start after the response; never let diagnosis problems break the submit.
+      try { await this.diagnosis.onNegativeSubmission(row.id, log); } catch (err) { log.error({ err }, 'could not queue diagnosis'); }
+    }
     return { dto: this.toDto(row), created };
   }
 

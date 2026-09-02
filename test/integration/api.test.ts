@@ -28,7 +28,7 @@ async function cleanup() {
 }
 
 beforeAll(async () => {
-  app = buildApp({ config: cfg, logger: false });
+  app = buildApp({ config: cfg, logger: false, diagnosis: { logs: null, ai: null } });
   await app.ready();
   await cleanup();
 });

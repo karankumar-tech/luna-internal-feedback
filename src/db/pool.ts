@@ -17,6 +17,10 @@ export function createPool(config: Config): Db {
     connectionTimeoutMillis: 10_000,
     application_name: 'luna-feedback-api',
   });
+  if (process.env.VERCEL) {
+    // Release idle clients before Fluid compute suspends the instance.
+    import('@vercel/functions').then((m) => m.attachDatabasePool(pool)).catch(() => undefined);
+  }
   pool.on('error', (err) => {
     // Idle client errors (e.g. pooler dropped the connection). Pool replaces the client.
     console.error('[pg] idle client error', err.message);

@@ -26,7 +26,7 @@ export const DASHBOARD_HEADER = 'x-requested-with';
  * /v1/admin/**          → x-admin-key
  * everything else /v1   → x-api-key (admin key also accepted)
  */
-export function registerAuth(app: FastifyInstance, keys: { app: string; admin: string; sessionSecret: string }) {
+export function registerAuth(app: FastifyInstance, keys: { app: string; admin: string; sessionSecret: string; cronSecret?: string }) {
   app.addHook('onRequest', async (req) => {
     const url = req.url.split('?')[0] ?? '';
     if (PUBLIC_PATHS.has(url)) return;
@@ -34,6 +34,12 @@ export function registerAuth(app: FastifyInstance, keys: { app: string; admin: s
     const apiKey = header(req, 'x-api-key');
     const adminKey = header(req, 'x-admin-key');
     let isAdmin = adminKey !== undefined && safeEqual(adminKey, keys.admin);
+
+    // Vercel cron calls GET /v1/admin/diagnoses/run-pending with "Authorization: Bearer <CRON_SECRET>".
+    if (!isAdmin && keys.cronSecret && url === '/v1/admin/diagnoses/run-pending') {
+      const auth = header(req, 'authorization');
+      if (auth && auth.startsWith('Bearer ') && safeEqual(auth.slice(7), keys.cronSecret)) isAdmin = true;
+    }
 
     if (!isAdmin && header(req, DASHBOARD_HEADER) === 'dashboard') {
       const token = readCookie(header(req, 'cookie'), SESSION_COOKIE);

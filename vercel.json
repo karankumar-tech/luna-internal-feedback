@@ -1,0 +1,6 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    { "path": "/v1/admin/diagnoses/run-pending?limit=10", "schedule": "0 16 * * *" }
+  ]
+}
