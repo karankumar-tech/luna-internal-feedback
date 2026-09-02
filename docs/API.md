@@ -51,12 +51,13 @@ curl https://luna-feedback.buildsage.tech/v1/feedback/schema \
 
 # 2. Render the form for the feature the user is on (client side)
 
-# 3. Submit
+# 3. Submit  (while integrating, keep "is_test": true — see §3b)
 curl -X POST https://luna-feedback.buildsage.tech/v1/feedback/sleep \
   -H "x-api-key: $APP_API_KEY" \
   -H "content-type: application/json" \
   -H "Idempotency-Key: 2E5C1D1C-6D6B-4B3E-9C6A-3F1E8B7A5D42" \
   -d '{
+    "is_test": true,
     "is_positive": false,
     "occurred_on": "2026-09-01",
     "user_id": 10482,
@@ -151,6 +152,34 @@ Schema responses carry a weak `ETag` and `Cache-Control: no-cache`. Recommended:
 | `feedback_text` | 500 characters |
 | `issue_categories` | ≥ 1 item |
 | list page size | 1–200, default 50 |
+
+---
+
+## 3b. Test submissions
+
+Real tester feedback and integration traffic share one database. The `is_test` flag keeps them apart, so you can hit production freely while building the feature.
+
+**How to set it.** Add one boolean at the **top level** of the POST body (not inside `details` or `client`):
+
+```json
+{
+  "is_test": true,
+  "is_positive": false,
+  "occurred_on": "2026-09-01",
+  …
+}
+```
+
+Omit it, or send `false`, in the build that real testers use. It defaults to `false`.
+
+**What it does**
+
+- The row is stored exactly like real feedback and comes back with `"is_test": true`.
+- The dashboard tags it TEST and can show real only, test only, or both.
+- Test rows can be bulk-deleted later from the dashboard (or `DELETE /v1/admin/test-data?confirm=delete`). Real feedback is never touched by that action.
+- Listing and stats accept `?is_test=true|false`: `GET /v1/feedback?is_test=true&user_id=<your id>` shows your own test rows.
+
+**Suggested wiring.** Bind it to the build channel (`is_test = buildChannel != "stage"` for local and CI builds) or expose a hidden developer toggle. A submission that arrives without the flag is treated as real.
 
 ---
 
@@ -328,7 +357,7 @@ Create a submission. `{feature}` is one of `home`, `sleep`, `activity`, `workout
 | `feedback_text` | string ≤ 500 | no | free text |
 | `details` | object | no | feature fields, see §6. Unknown keys are rejected. Defaults to `{}` |
 | `client` | object | no | any subset of the client context keys, see §7. Unknown keys are rejected |
-| `is_test` | boolean | no | default `false`. Send `true` from integration runs and test builds: the row is tagged TEST in the dashboard, can be filtered out, and can be bulk-deleted later without touching real feedback |
+| `is_test` | boolean | no | default `false`. Send `true` from integration runs and test builds; see §3b |
 
 Optional or nullable fields may be omitted or sent as `null`. Whitespace is trimmed from strings.
 
@@ -342,6 +371,7 @@ content-type: application/json
 Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
 
 {
+  "is_test": true,
   "is_positive": false,
   "occurred_on": "2026-09-01",
   "user_id": 10482,
@@ -395,7 +425,7 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
   "device_id": "3F2B0C7A-1D2E-4F5A-9B8C-7D6E5F4A3B2C",
   "session_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
   "schema_version": 1,
-  "is_test": false,
+  "is_test": true,
   "created_at_ist": "2026-09-02 13:50:23 +05:30"
 }
 ```
@@ -660,6 +690,7 @@ struct FeedbackAPI {
     // MARK: Submit
 
     struct Submission: Encodable {
+        let isTest: Bool                  // true from dev/CI builds, false in the tester build
         let isPositive: Bool
         let occurredOn: String            // "YYYY-MM-DD"
         let userId: Int
@@ -670,6 +701,7 @@ struct FeedbackAPI {
         let client: [String: String]          // include "platform": "ios"
         enum CodingKeys: String, CodingKey {
             case email, details, client
+            case isTest = "is_test"
             case isPositive = "is_positive"
             case occurredOn = "occurred_on"
             case userId = "user_id"
