@@ -15,7 +15,7 @@ function header(req: { headers: Record<string, unknown> }, name: string): string
 }
 
 /** Routes that serve HTML pages or handle the dashboard sign-in. Data behind them still needs auth. */
-export const PUBLIC_PATHS = new Set(['/', '/healthz', '/docs', '/dashboard', '/dashboard/login', '/dashboard/logout', '/dashboard/session']);
+export const PUBLIC_PATHS = new Set(['/', '/healthz', '/docs', '/dashboard', '/dashboard/diagnosis', '/dashboard/login', '/dashboard/logout', '/dashboard/session']);
 
 /** Header the dashboard sends on every fetch. Cross-site forms cannot set it, which blocks CSRF on the cookie session. */
 export const DASHBOARD_HEADER = 'x-requested-with';

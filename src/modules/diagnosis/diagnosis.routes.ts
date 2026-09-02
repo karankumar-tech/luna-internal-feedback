@@ -52,6 +52,15 @@ export function registerDiagnosisRoutes(app: FastifyInstance, deps: { service: D
 
   app.get('/v1/admin/diagnoses/summary', async () => ({ enabled: service.enabled, ...(await repo.summary()) }));
 
+  app.get('/v1/admin/diagnoses/overview', async (req) => {
+    const q = req.query as { from?: string; to?: string; include_test?: string };
+    const isDate = (v: string | undefined) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
+    const to = isDate(q.to) ? q.to! : new Date().toISOString().slice(0, 10);
+    const from = isDate(q.from) ? q.from! : new Date(Date.parse(to) - 29 * 86_400_000).toISOString().slice(0, 10);
+    if (from > to) throw AppError.validation([{ path: 'from', message: 'must not be after to' }], 'Invalid query');
+    return repo.overview(from, to, q.include_test === 'true');
+  });
+
   app.get('/v1/admin/logs/lookup', async (req) => {
     const q = req.query as { serial_no?: string; email?: string };
     return { items: await service.lookup({ serial_no: q.serial_no?.trim() || undefined, email: q.email?.trim() || undefined }) };

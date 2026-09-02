@@ -206,4 +206,84 @@ export class DiagnosisRepo {
       spend_today: Number(spend.rows[0]?.today ?? 0), spend_month: Number(spend.rows[0]?.month ?? 0), runs_today: spend.rows[0]?.runs_today ?? 0,
     };
   }
+
+  /** Aggregates for the diagnosis overview page, over submissions with occurred_on in [from, to]. Excludes test data unless asked. */
+  async overview(from: string, to: string, includeTest: boolean): Promise<Record<string, unknown>> {
+    const where = `where s.occurred_on >= $1 and s.occurred_on <= $2 and not s.is_positive ${includeTest ? '' : 'and not s.is_test'}`;
+    const vals = [from, to];
+    const q = <T extends Record<string, any>>(sql: string) => this.db.query<T>(sql, vals);
+    const [totals, sideByFeature, fwVersions, appVersions, tags, confidence, review, costByDay, attention, devices] = await Promise.all([
+      q<{ issues: number; diagnosed: number; no_logs: number; waiting: number; failed: number; unchecked: number; reviewed: number; agree: number; disagree: number; avg_conf: string | null; cost: string; avg_ms: string | null }>(
+        `select count(*)::int as issues,
+                count(*) filter (where d.status = 'done')::int as diagnosed,
+                count(*) filter (where d.status = 'no_logs')::int as no_logs,
+                count(*) filter (where d.status in ('pending','running','waiting_logs'))::int as waiting,
+                count(*) filter (where d.status = 'failed')::int as failed,
+                count(*) filter (where d.submission_id is null)::int as unchecked,
+                count(*) filter (where d.review_verdict is not null)::int as reviewed,
+                count(*) filter (where d.review_verdict = 'agree')::int as agree,
+                count(*) filter (where d.review_verdict = 'disagree')::int as disagree,
+                avg(d.confidence) filter (where d.status = 'done')::text as avg_conf,
+                coalesce(sum(d.cost_usd), 0)::text as cost,
+                avg(d.duration_ms) filter (where d.status = 'done')::text as avg_ms
+           from luna_feedback.submissions s left join luna_feedback.diagnoses d on d.submission_id = s.id ${where}`),
+      q<{ feature_key: string; label: string; side: string; count: number }>(
+        `select s.feature_key, f.label, d.root_cause_side as side, count(*)::int as count
+           from luna_feedback.submissions s join luna_feedback.diagnoses d on d.submission_id = s.id join luna_feedback.features f on f.key = s.feature_key
+          ${where} and d.root_cause_side is not null group by s.feature_key, f.label, f.sort_order, d.root_cause_side order by f.sort_order, count desc`),
+      q<{ version: string; issues: number; firmware_side: number; high: number }>(
+        `select coalesce(d.fw_version_seen, s.firmware_version) as version, count(*)::int as issues,
+                count(*) filter (where d.root_cause_side = 'firmware')::int as firmware_side,
+                count(*) filter (where d.severity in ('high','critical'))::int as high
+           from luna_feedback.submissions s left join luna_feedback.diagnoses d on d.submission_id = s.id
+          ${where} and coalesce(d.fw_version_seen, s.firmware_version) is not null group by 1 order by issues desc limit 10`),
+      q<{ version: string; platform: string | null; issues: number; app_side: number }>(
+        `select coalesce(d.app_version_seen, s.app_version) as version, s.platform, count(*)::int as issues,
+                count(*) filter (where d.root_cause_side in ('app','sdk'))::int as app_side
+           from luna_feedback.submissions s left join luna_feedback.diagnoses d on d.submission_id = s.id
+          ${where} and coalesce(d.app_version_seen, s.app_version) is not null group by 1, 2 order by issues desc limit 10`),
+      q<{ tag: string; count: number; features: string[] }>(
+        `select t.tag, count(*)::int as count, array_agg(distinct s.feature_key) as features
+           from luna_feedback.submissions s join luna_feedback.diagnoses d on d.submission_id = s.id cross join lateral unnest(d.tags) as t(tag)
+          ${where} group by t.tag order by count desc limit 15`),
+      q<{ bucket: number; count: number }>(
+        `select least(floor(d.confidence * 5), 4)::int as bucket, count(*)::int as count
+           from luna_feedback.submissions s join luna_feedback.diagnoses d on d.submission_id = s.id
+          ${where} and d.status = 'done' group by 1 order by 1`),
+      q<{ side: string; agree: number; disagree: number; unsure: number }>(
+        `select d.root_cause_side as side,
+                count(*) filter (where d.review_verdict = 'agree')::int as agree,
+                count(*) filter (where d.review_verdict = 'disagree')::int as disagree,
+                count(*) filter (where d.review_verdict = 'unsure')::int as unsure
+           from luna_feedback.submissions s join luna_feedback.diagnoses d on d.submission_id = s.id
+          ${where} and d.review_verdict is not null group by 1 order by 1`),
+      q<{ day: string; runs: number; cost: string }>(
+        `select (r.created_at at time zone 'Asia/Kolkata')::date::text as day, count(*)::int as runs, coalesce(sum(r.cost_usd), 0)::text as cost
+           from luna_feedback.diagnosis_runs r join luna_feedback.submissions s on s.id = r.submission_id
+          ${where} group by 1 order by 1 desc limit 30`),
+      q<{ id: string; feature_key: string; occurred_on: string; user_id: string; status: string; side: string | null; severity: string | null; confidence: string | null; summary: string | null; review_verdict: string | null; is_test: boolean }>(
+        `select s.id, s.feature_key, s.occurred_on::text as occurred_on, s.user_id, d.status, d.root_cause_side as side, d.severity, d.confidence::text as confidence, d.summary, d.review_verdict, s.is_test
+           from luna_feedback.submissions s join luna_feedback.diagnoses d on d.submission_id = s.id
+          ${where} and (d.root_cause_side = 'insufficient_logs' or d.review_verdict = 'disagree' or d.severity = 'critical' or d.status = 'failed')
+          order by case when d.severity = 'critical' then 0 when d.review_verdict = 'disagree' then 1 else 2 end, s.created_at desc limit 20`),
+      q<{ model: string; platform: string | null; issues: number }>(
+        `select coalesce(d.log_device->>'device_model', 'unknown') as model, coalesce(d.log_device->>'platform', s.platform) as platform, count(*)::int as issues
+           from luna_feedback.submissions s join luna_feedback.diagnoses d on d.submission_id = s.id
+          ${where} and d.status = 'done' group by 1, 2 order by issues desc limit 10`),
+    ]);
+    const t = totals.rows[0]!;
+    return {
+      range: { from, to, include_test: includeTest },
+      totals: { ...t, avg_conf: t.avg_conf === null ? null : Number(t.avg_conf), cost: Number(t.cost), avg_ms: t.avg_ms === null ? null : Number(t.avg_ms) },
+      side_by_feature: sideByFeature.rows,
+      firmware_versions: fwVersions.rows,
+      app_versions: appVersions.rows,
+      tags: tags.rows,
+      confidence_hist: confidence.rows,
+      review_by_side: review.rows,
+      cost_by_day: costByDay.rows.map((r) => ({ ...r, cost: Number(r.cost) })),
+      attention: attention.rows.map((r) => ({ ...r, confidence: r.confidence === null ? null : Number(r.confidence), user_id: Number(r.user_id) })),
+      devices: devices.rows,
+    };
+  }
 }

@@ -214,6 +214,7 @@
     <div class="status">
       <span id="conn" class="pill">not connected</span>
       <span id="rangeLabel" class="tertiary"></span>
+      <a class="btn small" href="/dashboard/diagnosis" style="text-decoration:none">Diagnosis overview →</a>
       <button class="btn small ghost" id="btnKey" type="button">Sign out</button>
     </div>
   </div>
@@ -474,7 +475,7 @@
     loadDiagOps(true);
     // deep link after sign-in (detail pages redirect here when the session is missing)
     const next = new URLSearchParams(location.search).get('next');
-    if (next && /^\/dashboard\/submissions\/[0-9a-f-]{36}$/.test(next)) location.replace(next);
+    if (next && /^\/dashboard\/(submissions\/[0-9a-f-]{36}|diagnosis)$/.test(next)) location.replace(next);
   }
 
   function fillFeatureSelect() {

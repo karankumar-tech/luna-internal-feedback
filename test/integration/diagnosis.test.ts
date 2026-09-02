@@ -218,6 +218,20 @@ describe('auto diagnosis on negative submission', () => {
     expect(['no_logs', 'waiting_logs', 'done']).toContain(d!.status);
   });
 
+  it('overview aggregates cover the diagnosed rows', async () => {
+    const o = (await app.inject({ method: 'GET', url: '/v1/admin/diagnoses/overview?from=2026-08-01&to=2026-09-02&include_test=true', headers: adminHeaders })).json();
+    expect(o.totals.diagnosed).toBeGreaterThanOrEqual(1);
+    expect(o.side_by_feature.find((r: { side: string }) => r.side === 'backend')).toBeTruthy();
+    expect(o.firmware_versions.find((r: { version: string }) => r.version === '1.2.6')).toBeTruthy();
+    expect(o.tags.map((t: { tag: string }) => t.tag)).toContain('sync_timeout');
+    expect(o.review_by_side.find((r: { side: string }) => r.side === 'backend').agree).toBeGreaterThanOrEqual(1);
+    expect(Array.isArray(o.cost_by_day)).toBe(true);
+    const real = (await app.inject({ method: 'GET', url: '/v1/admin/diagnoses/overview?from=2026-08-01&to=2026-09-02', headers: adminHeaders })).json();
+    expect(real.range.include_test).toBe(false);
+    expect((await app.inject({ method: 'GET', url: '/v1/admin/diagnoses/overview?from=2026-09-02&to=2026-09-01', headers: adminHeaders })).statusCode).toBe(422);
+    expect((await app.inject({ method: 'GET', url: '/dashboard/diagnosis' })).statusCode).toBe(200);
+  });
+
   it('cron bearer can call the sweep when CRON_SECRET is set', async () => {
     const cfg2 = loadConfig({ NODE_ENV: 'test', LOG_LEVEL: 'silent', CRON_SECRET: 'cron-secret-for-tests-123' });
     const app2 = buildApp({ config: cfg2, logger: false, db: app.db, diagnosis: { logs: null, ai: null } });
