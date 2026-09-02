@@ -15,7 +15,7 @@
 
 The API does three things for the client:
 
-1. **Describes the form.** `GET /v1/feedback/schema` returns every feature (Home, Sleep, Activity, Workout), its issue categories, and the extra fields to render. The client builds the form from this response rather than hard-coding it, so categories can be added or renamed on the server without an app release.
+1. **Describes the form.** `GET /v1/feedback/schema` returns every feature (Home, Sleep, Activity, Workout, Other), its issue categories, and the extra fields to render. The client builds the form from this response rather than hard-coding it, so categories can be added or renamed on the server without an app release.
 2. **Accepts submissions.** `POST /v1/feedback/{feature}` validates the payload against the same schema and stores it.
 3. **Reads submissions back.** `GET /v1/feedback`, `GET /v1/feedback/{id}`, and `GET /v1/feedback/stats` power the dashboard at `/dashboard`; the app does not need them.
 
@@ -326,6 +326,24 @@ Everything needed to build the form for every active feature.
       "rules": [
         { "kind": "time_pair_distinct", "start": "start_time", "end": "end_time" }
       ]
+    },
+    {
+      "key": "other", "label": "Other",
+      "issue_categories": [
+        { "key": "app_crash",         "label": "App crashed" },
+        { "key": "app_slow_or_froze", "label": "App slow or froze" },
+        { "key": "login_or_signup",   "label": "Login or sign-up problem" },
+        { "key": "ring_pairing_sync", "label": "Ring pairing or sync" },
+        { "key": "battery_drain",     "label": "Battery drain" },
+        { "key": "notifications",     "label": "Notifications" },
+        { "key": "display_glitch",    "label": "Display or UI glitch" },
+        { "key": "data_missing",      "label": "Data missing" },
+        { "key": "something_else",    "label": "Something else" }
+      ],
+      "fields": [
+        { "key": "screen", "type": "string", "label": "Where in the app did it happen?", "required": false, "maxLength": 100 }
+      ],
+      "rules": []
     }
   ]
 }
@@ -343,7 +361,7 @@ One feature only. Response is a single element of `features[]` above (`key`, `la
 
 ### `POST /v1/feedback/{feature}`
 
-Create a submission. `{feature}` is one of `home`, `sleep`, `activity`, `workout`.
+Create a submission. `{feature}` is one of `home`, `sleep`, `activity`, `workout`, `other`. Use `other` for anything that does not belong to one screen (crashes, login, pairing, battery, and so on).
 
 **Request body**
 
@@ -461,7 +479,7 @@ List submissions, newest first. Intended for dashboards; the app does not need i
 
 | param | type | notes |
 |---|---|---|
-| `feature` | string | `home` / `sleep` / `activity` / `workout` |
+| `feature` | string | `home` / `sleep` / `activity` / `workout` / `other` |
 | `platform` | string | `ios` / `android` |
 | `is_test` | `true` / `false` | omit for both |
 | `user_id` | integer | |
@@ -581,6 +599,26 @@ Everything below is also in the schema response. Duplicated here for quick readi
 | `start_time` | time_12h | |
 | `end_time` | time_12h | must differ from `start_time` |
 | `intensity` | string | ≤ 50 chars, free text |
+
+### Other
+
+Generic issues that do not belong to one screen. Categories are the starting set and are edited from the dashboard.
+
+| category key | label |
+|---|---|
+| `app_crash` | App crashed |
+| `app_slow_or_froze` | App slow or froze |
+| `login_or_signup` | Login or sign-up problem |
+| `ring_pairing_sync` | Ring pairing or sync |
+| `battery_drain` | Battery drain |
+| `notifications` | Notifications |
+| `display_glitch` | Display or UI glitch |
+| `data_missing` | Data missing |
+| `something_else` | Something else |
+
+| `details` field | type | constraints |
+|---|---|---|
+| `screen` | string | ≤ 100 chars, free text, e.g. "Settings > Profile" |
 
 ---
 

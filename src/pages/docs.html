@@ -138,7 +138,7 @@
   <h2>Overview</h2>
   <p>The API does three things for the client.</p>
   <ol>
-    <li><strong>Describes the form.</strong> <code>GET /v1/feedback/schema</code> returns every feature (Home, Sleep, Activity, Workout), its issue categories, and the extra fields to render. Build the form from this response rather than hard-coding it, so categories can be added or renamed on the server without an app release.</li>
+    <li><strong>Describes the form.</strong> <code>GET /v1/feedback/schema</code> returns every feature (Home, Sleep, Activity, Workout, Other), its issue categories, and the extra fields to render. Build the form from this response rather than hard-coding it, so categories can be added or renamed on the server without an app release.</li>
     <li><strong>Accepts submissions.</strong> <code>POST /v1/feedback/{feature}</code> validates the payload against the same schema and stores it.</li>
     <li><strong>Reads submissions back.</strong> <code>GET /v1/feedback</code> and <code>/stats</code> power the <a href="/dashboard">dashboard</a>; the app does not need them.</li>
   </ol>
@@ -405,6 +405,24 @@ curl -X POST https://luna-feedback.buildsage.tech/v1/feedback/sleep \
       "rules": [
         { "kind": "time_pair_distinct", "start": "start_time", "end": "end_time" }
       ]
+    },
+    {
+      "key": "other", "label": "Other",
+      "issue_categories": [
+        { "key": "app_crash",         "label": "App crashed" },
+        { "key": "app_slow_or_froze", "label": "App slow or froze" },
+        { "key": "login_or_signup",   "label": "Login or sign-up problem" },
+        { "key": "ring_pairing_sync", "label": "Ring pairing or sync" },
+        { "key": "battery_drain",     "label": "Battery drain" },
+        { "key": "notifications",     "label": "Notifications" },
+        { "key": "display_glitch",    "label": "Display or UI glitch" },
+        { "key": "data_missing",      "label": "Data missing" },
+        { "key": "something_else",    "label": "Something else" }
+      ],
+      "fields": [
+        { "key": "screen", "type": "string", "label": "Where in the app did it happen?", "required": false, "maxLength": 100 }
+      ],
+      "rules": []
     }
   ]
 }</code></pre>
@@ -416,7 +434,7 @@ curl -X POST https://luna-feedback.buildsage.tech/v1/feedback/sleep \
 
   <hr class="ep">
   <div id="ep-submit" class="endpoint"><span class="method post">POST</span><code class="path">/v1/feedback/{feature}</code><span class="auth">x-api-key</span></div>
-  <p>Create a submission. <code>{feature}</code> is one of <code>home</code>, <code>sleep</code>, <code>activity</code>, <code>workout</code>.</p>
+  <p>Create a submission. <code>{feature}</code> is one of <code>home</code>, <code>sleep</code>, <code>activity</code>, <code>workout</code>, <code>other</code>. Use <code>other</code> for anything that does not belong to one screen (crashes, login, pairing, battery, and so on).</p>
   <h4>Request body</h4>
   <div class="tbl"><table>
     <tr><th>field</th><th>type</th><th>required</th><th>notes</th></tr>
@@ -512,7 +530,7 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
   <p>List submissions, newest first. Used by the dashboard; the app does not need it.</p>
   <div class="tbl"><table>
     <tr><th>param</th><th>type</th><th>notes</th></tr>
-    <tr><td><code>feature</code></td><td>string</td><td><code>home</code> / <code>sleep</code> / <code>activity</code> / <code>workout</code></td></tr>
+    <tr><td><code>feature</code></td><td>string</td><td><code>home</code> / <code>sleep</code> / <code>activity</code> / <code>workout</code> / <code>other</code></td></tr>
     <tr><td><code>platform</code></td><td>string</td><td><code>ios</code> / <code>android</code></td></tr>
     <tr><td><code>is_test</code></td><td><code>true</code> / <code>false</code></td><td>omit for both</td></tr>
     <tr><td><code>user_id</code></td><td>integer</td><td></td></tr>
@@ -614,6 +632,22 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
         <tr><td><code>start_time</code></td><td>time_12h</td><td></td></tr>
         <tr><td><code>end_time</code></td><td>time_12h</td><td>must differ from <code>start_time</code></td></tr>
         <tr><td><code>intensity</code></td><td>string</td><td>≤ 50 chars, free text</td></tr></table></div>
+    </div>
+    <div>
+      <h3>Other</h3>
+      <p>Generic issues that do not belong to one screen. Categories are the starting set and are edited from the dashboard.</p>
+      <div class="tbl"><table><tr><th>category key</th><th>label</th></tr>
+        <tr><td><code>app_crash</code></td><td>App crashed</td></tr>
+        <tr><td><code>app_slow_or_froze</code></td><td>App slow or froze</td></tr>
+        <tr><td><code>login_or_signup</code></td><td>Login or sign-up problem</td></tr>
+        <tr><td><code>ring_pairing_sync</code></td><td>Ring pairing or sync</td></tr>
+        <tr><td><code>battery_drain</code></td><td>Battery drain</td></tr>
+        <tr><td><code>notifications</code></td><td>Notifications</td></tr>
+        <tr><td><code>display_glitch</code></td><td>Display or UI glitch</td></tr>
+        <tr><td><code>data_missing</code></td><td>Data missing</td></tr>
+        <tr><td><code>something_else</code></td><td>Something else</td></tr></table></div>
+      <div class="tbl"><table><tr><th>details field</th><th>type</th><th>constraints</th></tr>
+        <tr><td><code>screen</code></td><td>string</td><td>≤ 100 chars, free text, e.g. "Settings > Profile"</td></tr></table></div>
     </div>
   </div>
 </section>

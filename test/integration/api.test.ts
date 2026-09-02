@@ -69,9 +69,9 @@ describe('GET /v1/feedback/schema', () => {
     expect(r.statusCode).toBe(200);
     const body = r.json();
     expect(body.schema_version).toBe(1);
-    expect(body.features.map((f: { key: string }) => f.key)).toEqual(['home', 'sleep', 'activity', 'workout']);
+    expect(body.features.map((f: { key: string }) => f.key)).toEqual(['home', 'sleep', 'activity', 'workout', 'other']);
     const counts = Object.fromEntries(body.features.map((f: { key: string; issue_categories: unknown[] }) => [f.key, f.issue_categories.length]));
-    expect(counts).toEqual({ home: 3, sleep: 4, activity: 5, workout: 8 });
+    expect(counts).toEqual({ home: 3, sleep: 4, activity: 5, workout: 8, other: 9 });
     const sleep = body.features.find((f: { key: string }) => f.key === 'sleep');
     expect(sleep.fields.map((f: { key: string }) => f.key)).toEqual(['actual_start_time', 'actual_end_time', 'recorded_start_time', 'recorded_end_time']);
     expect(sleep.rules).toHaveLength(2);
@@ -125,6 +125,14 @@ describe('POST /v1/feedback/:feature', () => {
     });
     expect(r.statusCode).toBe(201);
     expect(r.json().details).toEqual({ actual_start_time: '11:30 PM', recorded_end_time: '05:00 AM' });
+  });
+
+  it('stores an "other" submission with the screen field', async () => {
+    const r = await app.inject({ method: 'POST', url: '/v1/feedback/other', headers: appHeaders,
+      payload: validBody({ issue_categories: ['app_crash', 'something_else'], details: { screen: 'Settings > Profile' } }) });
+    expect(r.statusCode).toBe(201);
+    expect(r.json().details).toEqual({ screen: 'Settings > Profile' });
+    expect((await app.inject({ method: 'POST', url: '/v1/feedback/other', headers: appHeaders, payload: validBody({ issue_categories: ['wrong_peak_score'] }) })).statusCode).toBe(422);
   });
 
   it('stores activity and workout', async () => {
@@ -208,11 +216,11 @@ describe('GET /v1/feedback/stats', () => {
     expect(r.statusCode).toBe(200);
     const b = r.json();
     expect(b.range).toEqual({ from: '2026-09-01', to: '2026-09-01' });
-    expect(b.totals.submissions).toBeGreaterThanOrEqual(4);
+    expect(b.totals.submissions).toBeGreaterThanOrEqual(5);
     expect(b.totals.negative).toBe(b.totals.submissions);
     expect(b.totals.users).toBe(1);
     expect(b.by_day).toEqual([{ date: '2026-09-01', positive: 0, negative: b.totals.submissions }]);
-    expect(b.by_feature.map((f: { feature_key: string }) => f.feature_key)).toEqual(['home', 'sleep', 'activity', 'workout']);
+    expect(b.by_feature.map((f: { feature_key: string }) => f.feature_key)).toEqual(['home', 'sleep', 'activity', 'workout', 'other']);
     expect(b.by_feature.find((f: { feature_key: string }) => f.feature_key === 'sleep').negative).toBe(1);
     const cat = b.by_category.find((c: { key: string }) => c.key === 'end_workout_fail');
     expect(cat).toMatchObject({ feature_key: 'workout', label: 'End workout fail', count: 1 });

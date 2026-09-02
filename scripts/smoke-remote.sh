@@ -23,7 +23,7 @@ check "schema with app key"     200 "$(code -H "$APP" $BASE/v1/feedback/schema)"
 check "admin with app key"      401 "$(code -H "$APP" $BASE/v1/admin/features)"
 check "admin with admin key"    200 "$(code -H "$ADM" $BASE/v1/admin/features)"
 FEATS=$(curl -s -H "$APP" $BASE/v1/feedback/schema | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).features.map(f=>f.key+':'+f.issue_categories.length).join(',')")
-check "schema features"         "home:3,sleep:4,activity:5,workout:8" "$FEATS"
+check "schema features"         "home:3,sleep:4,activity:5,workout:8,other:9" "$FEATS"
 
 BODY='{"is_positive":false,"occurred_on":"2026-09-01","user_id":900002,"email":"'"$RUN"'@luna-test.invalid","issue_categories":["incorrect_sleep"],"feedback_text":"remote smoke","details":{"actual_start_time":"11:30 pm","actual_end_time":"6:45 AM"},"client":{"app_version":"2.4.0","build_channel":"stage"}}'
 RESP=$(curl -s -m 20 -X POST -H "$APP" -H "$J" -H "Idempotency-Key: $RUN" $BASE/v1/feedback/sleep -d "$BODY")

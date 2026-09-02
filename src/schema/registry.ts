@@ -2,7 +2,7 @@ import type { FieldDef, FeatureRule } from './fieldTypes.js';
 
 export const SCHEMA_VERSION = 1;
 
-export const FEATURE_KEYS = ['home', 'sleep', 'activity', 'workout'] as const;
+export const FEATURE_KEYS = ['home', 'sleep', 'activity', 'workout', 'other'] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
 export function isFeatureKey(value: string): value is FeatureKey {
@@ -67,6 +67,13 @@ export const FEATURE_DEFINITIONS: Record<FeatureKey, FeatureDefinition> = {
     rules: [
       { kind: 'time_pair_distinct', start: 'start_time', end: 'end_time' },
     ],
+  },
+  other: {
+    key: 'other',
+    fields: [
+      { key: 'screen', type: 'string', label: 'Where in the app did it happen?', required: false, maxLength: 100 },
+    ],
+    rules: [],
   },
 };
 

@@ -10,7 +10,7 @@ if (process.argv.includes('--clean')) {
   console.log('removed', r.rowCount); await c.end(); process.exit(0);
 }
 const n = Number(process.argv[2] || 60);
-const cats = { home: ['wrong_peak_score','peak_score_not_loaded','guidance_incorrect'], sleep: ['incorrect_sleep','sleep_not_recorded','incorrect_sleep_stage','vitals_not_recorded'], activity: ['incorrect_steps','incorrect_total_calories','incorrect_active_calories','incorrect_training_load','workout_not_showing'], workout: ['incorrect_duration','incorrect_calories','hr_not_showing','map_not_loading','incorrect_zones','incorrect_intensity','start_workout_fail','end_workout_fail'] };
+const cats = { home: ['wrong_peak_score','peak_score_not_loaded','guidance_incorrect'], sleep: ['incorrect_sleep','sleep_not_recorded','incorrect_sleep_stage','vitals_not_recorded'], activity: ['incorrect_steps','incorrect_total_calories','incorrect_active_calories','incorrect_training_load','workout_not_showing'], workout: ['incorrect_duration','incorrect_calories','hr_not_showing','map_not_loading','incorrect_zones','incorrect_intensity','start_workout_fail','end_workout_fail'], other: ['app_crash','app_slow_or_froze','login_or_signup','ring_pairing_sync','battery_drain','notifications','display_glitch','data_missing','something_else'] };
 const texts = ['Sleep showed 3h but I slept a full night.', 'Peak score stuck on yesterday.', 'Steps were double what my phone counted.', 'HR flatlined 10 min into the run.', 'All good today.', 'Worked as expected.', 'Map never loaded after the workout ended.', 'Training load jumped with no workout.', '', 'Vitals missing for the whole night.'];
 const users = [10482, 10491, 10502, 10510, 10533, 10547, 10561, 10578, 10590];
 const fw = ['1.9.1', '1.9.2', '1.9.2', '1.9.3'];
@@ -25,7 +25,8 @@ for (let i = 0; i < n; i++) {
   const details = feature === 'home' ? { peak_score_value: 40 + Math.floor(Math.random() * 60) }
     : feature === 'sleep' ? { actual_start_time: '11:30 PM', actual_end_time: '06:45 AM', recorded_start_time: '01:10 AM', recorded_end_time: '05:00 AM' }
     : feature === 'activity' ? { steps: 4000 + Math.floor(Math.random() * 9000), active_calories: 300 + Math.floor(Math.random() * 400), total_calories: 1900 + Math.floor(Math.random() * 600) }
-    : { workout_type: rnd(['Outdoor Run', 'Cycling', 'Strength', 'Yoga']), start_time: '06:00 AM', end_time: '06:45 AM', intensity: rnd(['Low', 'Moderate', 'High']) };
+    : feature === 'workout' ? { workout_type: rnd(['Outdoor Run', 'Cycling', 'Strength', 'Yoga']), start_time: '06:00 AM', end_time: '06:45 AM', intensity: rnd(['Low', 'Moderate', 'High']) }
+    : { screen: rnd(['Settings', 'Onboarding', 'Ring pairing', 'Insights tab', 'Profile']) };
   const user = rnd(users);
   const platform = Math.random() < 0.7 ? 'ios' : 'android';
   rows.push([feature, positive, occurred, user, `tester${user}@luna-demo.invalid`, picks, positive ? rnd(['All good today.', 'Worked as expected.', '']) : rnd(texts), JSON.stringify(details), platform, '2.4.0', String(500 + Math.floor(Math.random() * 15)), 'stage', rnd(fw), platform === 'ios' ? 'iOS 19.1' : 'Android 16', crypto.randomUUID().toUpperCase(), crypto.randomUUID(), new Date(d.getTime() + Math.floor(Math.random() * 86400000)).toISOString()]);
