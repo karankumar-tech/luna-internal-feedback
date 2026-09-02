@@ -4,7 +4,7 @@ import { formatInZone } from '../../lib/time.js';
 import { buildSubmissionValidator, zodIssues } from '../../schema/buildValidator.js';
 import { SCHEMA_VERSION, isFeatureKey } from '../../schema/registry.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
-import type { FeedbackRepo, SubmissionRow, ListFilters } from './feedback.repo.js';
+import type { FeedbackRepo, SubmissionRow, ListFilters, StatsFilters } from './feedback.repo.js';
 
 export interface SubmissionDto extends Omit<SubmissionRow, 'created_at' | 'user_id' | 'idempotency_key'> {
   user_id: number;
@@ -72,5 +72,9 @@ export class FeedbackService {
   async list(filters: ListFilters) {
     const { rows, nextCursor } = await this.feedback.list(filters);
     return { items: rows.map((r) => this.toDto(r)), next_cursor: nextCursor };
+  }
+
+  async stats(filters: StatsFilters) {
+    return this.feedback.stats(filters);
   }
 }

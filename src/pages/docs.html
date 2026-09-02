@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Luna Feedback API</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --black: #000; --white: #fff; --gray-dark: #737373; --gray-mid: #9E9E9E; --gray-light: #D9D9D9;
+    --bg: #F0EFEA; --brief: #E8E6E0; --border-warm: #E2E0D9; --border-ghost: #F0F0F0; --hero: #1A1A18; --hero-muted: #8A887F;
+    --yellow: #F5F85D; --blue: #2E64E4; --orange: #FF985D; --ok: #00C37A; --crit: #FF3B3B;
+    --sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: light; scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body { margin: 0; background: var(--bg); color: var(--black); font-family: var(--sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased; }
+  a { color: var(--blue); text-decoration: none; } a:hover { text-decoration: underline; }
+  code { font-family: var(--mono); font-size: 12.5px; background: var(--brief); padding: 1px 5px; border-radius: 2px; }
+  pre { background: var(--brief); border-radius: 8px; padding: 14px 16px; overflow-x: auto; margin: 12px 0; font-size: 12.5px; line-height: 19px; }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  .overline { font-family: var(--mono); font-size: 11px; line-height: 16px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); }
+  h1 { font-size: 32px; line-height: 36px; font-weight: 700; margin: 4px 0 8px; letter-spacing: -0.02em; text-wrap: balance; }
+  h2 { font-size: 24px; line-height: 28px; font-weight: 700; margin: 0 0 12px; letter-spacing: -0.01em; }
+  h3 { font-size: 16px; line-height: 20px; font-weight: 600; margin: 24px 0 8px; }
+  h4 { font-size: 14px; line-height: 18px; font-weight: 600; margin: 18px 0 6px; }
+  p { margin: 0 0 12px; max-width: 70ch; color: #262626; }
+  ul, ol { margin: 0 0 12px; padding-left: 20px; max-width: 70ch; } li { margin: 4px 0; }
+  .lede { font-size: 16px; line-height: 26px; color: var(--gray-dark); max-width: 62ch; }
+
+  .top { background: var(--hero); color: var(--white); }
+  .top-inner { max-width: 1180px; margin: 0 auto; padding: 32px 20px 28px; display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap; }
+  .top .overline { color: var(--hero-muted); }
+  .top h1 { color: var(--white); margin-bottom: 0; }
+  .top .lede { color: #C9C7BE; margin: 8px 0 0; }
+  .facts { display: grid; grid-template-columns: auto auto; gap: 4px 16px; font-size: 12px; line-height: 18px; }
+  .facts dt { color: var(--hero-muted); font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; padding-top: 2px; }
+  .facts dd { margin: 0; font-family: var(--mono); color: var(--white); }
+  .facts dd .y { color: var(--yellow); }
+
+  .layout { max-width: 1180px; margin: 0 auto; padding: 24px 20px 80px; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 32px; }
+  nav.side { position: sticky; top: 16px; align-self: start; font-size: 13px; line-height: 20px; }
+  nav.side .overline { margin-bottom: 8px; }
+  nav.side a { display: block; color: var(--gray-dark); padding: 3px 0 3px 10px; border-left: 1px solid var(--gray-light); }
+  nav.side a:hover { color: var(--black); text-decoration: none; border-left-color: var(--black); }
+  nav.side a.sub { padding-left: 22px; font-size: 12px; }
+  nav.side a .m { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; margin-right: 6px; }
+  nav.side .grp { margin-top: 14px; }
+
+  section.block { background: var(--white); border: 1px solid var(--gray-light); border-radius: 12px; padding: 24px 28px; margin-bottom: 16px; }
+  section.block > .overline { margin-bottom: 4px; }
+  .callout { border: 1px solid var(--border-warm); background: var(--bg); border-radius: 8px; padding: 12px 14px; margin: 12px 0; max-width: 72ch; }
+  .callout.warn { border-color: #545500; background: #FEFFD6; }
+  .callout .overline { margin-bottom: 4px; }
+  .callout p:last-child { margin: 0; }
+
+  .tbl { overflow-x: auto; margin: 10px 0 16px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; line-height: 18px; }
+  th { text-align: left; font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); font-weight: 400; padding: 6px 10px 8px; border-bottom: 1px solid var(--gray-light); white-space: nowrap; }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--border-ghost); vertical-align: top; }
+  td code { white-space: nowrap; }
+  td:first-child code { font-weight: 500; }
+  .req { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 1px 6px; border-radius: 2px; }
+  .req.yes { background: var(--black); color: var(--white); } .req.no { background: var(--brief); color: var(--gray-dark); }
+
+  .endpoint { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 6px; }
+  .endpoint code.path { font-size: 15px; background: none; padding: 0; font-weight: 500; }
+  .method { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; padding: 3px 8px; border-radius: 4px; color: var(--white); font-weight: 500; }
+  .method.get { background: var(--blue); } .method.post { background: var(--black); } .method.patch { background: var(--orange); }
+  .auth { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--gray-dark); border: 1px solid var(--gray-light); padding: 2px 7px; border-radius: 4px; }
+  .auth.open { border-color: var(--ok); color: #00583A; }
+  hr.ep { border: 0; border-top: 1px solid var(--border-warm); margin: 28px 0; }
+  .status { font-family: var(--mono); font-weight: 500; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } @media (max-width: 800px) { .two { grid-template-columns: 1fr; } }
+  details { border: 1px solid var(--border-warm); border-radius: 8px; padding: 0 14px; margin: 12px 0; }
+  details summary { cursor: pointer; padding: 10px 0; font-weight: 500; list-style: none; display: flex; justify-content: space-between; }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::after { content: 'expand'; font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--gray-mid); }
+  details[open] summary::after { content: 'collapse'; }
+  details pre { margin-top: 0; }
+  .foot { color: var(--gray-mid); font-size: 12px; margin-top: 8px; font-family: var(--mono); }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } nav.side { position: static; display: flex; flex-wrap: wrap; gap: 4px 10px; } nav.side .overline, nav.side .grp { width: 100%; margin-top: 8px; } nav.side a { border: 1px solid var(--gray-light); border-radius: 4px; padding: 3px 8px; } nav.side a.sub { padding-left: 8px; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-inner">
+    <div>
+      <div class="overline">Luna · Internal feedback · v1</div>
+      <h1>Luna Feedback API</h1>
+      <p class="lede">Fetch the form definition, render it, post the tester's answer. Everything the front end needs to integrate the Stage-only feedback prompt.</p>
+    </div>
+    <dl class="facts">
+      <dt>Base URL</dt><dd>https://luna-feedback.buildsage.tech</dd>
+      <dt>Auth</dt><dd>x-api-key <span class="y">·</span> shared out of band</dd>
+      <dt>Schema version</dt><dd>1</dd>
+      <dt>Format</dt><dd>JSON · UTF-8</dd>
+    </dl>
+  </div>
+</header>
+
+<div class="layout">
+<nav class="side" aria-label="Contents">
+  <div class="overline">Contents</div>
+  <a href="#overview">Overview</a>
+  <a href="#quickstart">Quick start</a>
+  <a href="#conventions">Conventions</a>
+  <a href="#forms">Rendering forms</a>
+  <div class="grp"><div class="overline">Endpoints</div></div>
+  <a href="#ep-health"><span class="m">GET</span>/healthz</a>
+  <a href="#ep-schema"><span class="m">GET</span>/v1/feedback/schema</a>
+  <a href="#ep-schema-one" class="sub"><span class="m">GET</span>…/schema/{feature}</a>
+  <a href="#ep-submit"><span class="m">POST</span>/v1/feedback/{feature}</a>
+  <a href="#ep-list"><span class="m">GET</span>/v1/feedback</a>
+  <a href="#ep-one" class="sub"><span class="m">GET</span>/v1/feedback/{id}</a>
+  <a href="#ep-stats"><span class="m">GET</span>/v1/feedback/stats</a>
+  <a href="#ep-admin">Admin routes</a>
+  <div class="grp"></div>
+  <a href="#features">Feature reference</a>
+  <a href="#client">Client context</a>
+  <a href="#errors">Error reference</a>
+  <a href="#swift">Swift example</a>
+  <a href="#versioning">Versioning</a>
+  <div class="grp"><a href="/dashboard">Dashboard →</a></div>
+</nav>
+
+<main>
+
+<section class="block" id="overview">
+  <div class="overline">01</div>
+  <h2>Overview</h2>
+  <p>The API does three things for the client.</p>
+  <ol>
+    <li><strong>Describes the form.</strong> <code>GET /v1/feedback/schema</code> returns every feature (Home, Sleep, Activity, Workout), its issue categories, and the extra fields to render. Build the form from this response rather than hard-coding it, so categories can be added or renamed on the server without an app release.</li>
+    <li><strong>Accepts submissions.</strong> <code>POST /v1/feedback/{feature}</code> validates the payload against the same schema and stores it.</li>
+    <li><strong>Reads submissions back.</strong> <code>GET /v1/feedback</code> and <code>/stats</code> power the <a href="/dashboard">dashboard</a>; the app does not need them.</li>
+  </ol>
+  <h3>Environments</h3>
+  <div class="tbl"><table>
+    <tr><th>environment</th><th>base URL</th><th>notes</th></tr>
+    <tr><td>Production</td><td><code>https://luna-feedback.buildsage.tech</code></td><td>same deployment as <code>luna-internal-feedback.vercel.app</code></td></tr>
+    <tr><td>Local</td><td><code>http://localhost:3000</code></td><td><code>npm run dev</code> in the backend repo</td></tr>
+  </table></div>
+  <h3>Authentication</h3>
+  <p>Send the shared app key on every request under <code>/v1</code>:</p>
+  <pre><code>x-api-key: &lt;APP_API_KEY&gt;</code></pre>
+  <div class="callout warn"><div class="overline">Stage only</div><p>The key is distributed out of band by the backend owner. Compile the feedback module out of Release builds; never ship the key in a public binary.</p></div>
+  <p><code>GET /healthz</code>, <code>/docs</code>, and <code>/dashboard</code> are the only unauthenticated routes. Admin routes under <code>/v1/admin</code> need a separate key (<code>x-admin-key</code>) and are not for the app.</p>
+</section>
+
+<section class="block" id="quickstart">
+  <div class="overline">02</div>
+  <h2>Quick start</h2>
+  <p>Three calls, in order.</p>
+<pre><code># 1. Fetch the form definition (cache it; see ETag)
+curl https://luna-feedback.buildsage.tech/v1/feedback/schema \
+  -H "x-api-key: $APP_API_KEY"
+
+# 2. Render the form for the feature the user is on (client side)
+
+# 3. Submit
+curl -X POST https://luna-feedback.buildsage.tech/v1/feedback/sleep \
+  -H "x-api-key: $APP_API_KEY" \
+  -H "content-type: application/json" \
+  -H "Idempotency-Key: 2E5C1D1C-6D6B-4B3E-9C6A-3F1E8B7A5D42" \
+  -d '{
+    "is_positive": false,
+    "occurred_on": "2026-09-01",
+    "user_id": 10482,
+    "email": "tester@luna.app",
+    "issue_categories": ["incorrect_sleep", "vitals_not_recorded"],
+    "feedback_text": "Ring said 4h, I slept 7h.",
+    "details": { "actual_start_time": "11:30 PM", "actual_end_time": "06:45 AM" },
+    "client": { "platform": "ios", "app_version": "2.4.0", "build_number": "512", "build_channel": "stage",
+                "firmware_version": "1.9.2", "os_version": "iOS 19.1" }
+  }'</code></pre>
+</section>
+
+<section class="block" id="conventions">
+  <div class="overline">03</div>
+  <h2>Conventions</h2>
+
+  <h3>Request headers</h3>
+  <div class="tbl"><table>
+    <tr><th>header</th><th>required</th><th>purpose</th></tr>
+    <tr><td><code>x-api-key</code></td><td><span class="req yes">yes</span></td><td>app key, all <code>/v1</code> routes</td></tr>
+    <tr><td><code>content-type: application/json</code></td><td><span class="req yes">on POST</span></td><td>body encoding</td></tr>
+    <tr><td><code>Idempotency-Key</code></td><td><span class="req no">recommended</span></td><td>any string ≤ 200 chars, unique per submission attempt. Reuse the same value when retrying.</td></tr>
+    <tr><td><code>If-None-Match</code></td><td><span class="req no">optional</span></td><td>send the <code>ETag</code> from a previous schema response to get <code>304 Not Modified</code></td></tr>
+  </table></div>
+
+  <h3>Data formats</h3>
+  <div class="tbl"><table>
+    <tr><th>kind</th><th>wire format</th><th>rules</th></tr>
+    <tr><td>date (<code>occurred_on</code>)</td><td><code>"2026-09-01"</code></td><td><code>YYYY-MM-DD</code>, a real calendar date, not after today in IST</td></tr>
+    <tr><td>12-hour time (<code>time_12h</code>)</td><td><code>"10:45 PM"</code> · <code>"7:05 am"</code></td><td><code>H:MM AM/PM</code> or <code>HH:MM AM/PM</code>, space before the meridiem, case-insensitive. Stored and returned as <code>"07:05 AM"</code></td></tr>
+    <tr><td>timestamps (responses)</td><td><code>created_at</code> <code>"2026-09-02T08:20:23.521Z"</code><br><code>created_at_ist</code> <code>"2026-09-02 13:50:23 +05:30"</code></td><td><code>created_at</code> is ISO 8601 UTC; <code>created_at_ist</code> is the same instant in Asia/Kolkata for display</td></tr>
+    <tr><td><code>user_id</code></td><td><code>10482</code></td><td>JSON number, positive integer</td></tr>
+    <tr><td><code>email</code></td><td><code>"tester@luna.app"</code></td><td>valid email, ≤ 254 chars, stored as given</td></tr>
+    <tr><td><code>issue_categories</code></td><td><code>["incorrect_sleep"]</code></td><td>array of category <strong>keys</strong> (not labels), at least one, no duplicates, only keys the schema lists for that feature</td></tr>
+    <tr><td>ids</td><td><code>"178239d2-…"</code></td><td>UUID</td></tr>
+  </table></div>
+
+  <h3>Error envelope</h3>
+  <p>Every non-2xx response has this shape:</p>
+<pre><code>{
+  "error": {
+    "code": "VALIDATION_FAILED",
+    "message": "Request failed validation",
+    "issues": [
+      { "path": "details.peak_score_value", "message": "must be &lt;= 100" },
+      { "path": "issue_categories.0", "message": "unknown category \"incorrect_sleep\"" }
+    ]
+  }
+}</code></pre>
+  <p><code>issues</code> is present only for <code>VALIDATION_FAILED</code>. <code>path</code> is dot-separated and matches the request body, so it maps straight back to a form field. Array elements are indexed (<code>issue_categories.0</code>). <code>(body)</code> means the whole body was unparseable.</p>
+
+  <h3>Status codes</h3>
+  <div class="tbl"><table>
+    <tr><th>status</th><th>code</th><th>when</th></tr>
+    <tr><td class="status">200</td><td></td><td>read succeeded, or a POST whose <code>Idempotency-Key</code> was already seen (returns the original row)</td></tr>
+    <tr><td class="status">201</td><td></td><td>POST created a new submission</td></tr>
+    <tr><td class="status">304</td><td></td><td>schema unchanged since the <code>If-None-Match</code> ETag</td></tr>
+    <tr><td class="status">400</td><td><code>VALIDATION_FAILED</code></td><td>body is not valid JSON</td></tr>
+    <tr><td class="status">401</td><td><code>UNAUTHORIZED</code></td><td>missing or wrong <code>x-api-key</code></td></tr>
+    <tr><td class="status">404</td><td><code>NOT_FOUND</code></td><td>unknown route, unknown or deactivated feature, unknown id</td></tr>
+    <tr><td class="status">409</td><td><code>CONFLICT</code></td><td>admin only: duplicate category key</td></tr>
+    <tr><td class="status">422</td><td><code>VALIDATION_FAILED</code></td><td>body parsed but failed field validation; see <code>issues</code></td></tr>
+    <tr><td class="status">500</td><td><code>INTERNAL</code></td><td>server fault; safe to retry with the same <code>Idempotency-Key</code></td></tr>
+  </table></div>
+
+  <h3 id="idempotency">Idempotency and retries</h3>
+  <p>Network on internal test devices is unreliable. To make retries safe:</p>
+  <ol>
+    <li>Generate a UUID <strong>when the user taps Submit</strong>, and keep it with the queued payload.</li>
+    <li>Send it as <code>Idempotency-Key</code> on every attempt of that submission.</li>
+    <li><code>201</code> means stored now. <code>200</code> means an earlier attempt already stored it; the body is the original row. Treat both as success.</li>
+    <li>Retry on <code>5xx</code>, timeouts, and connection failures. Do not retry <code>4xx</code>; surface the <code>issues</code> to the user instead.</li>
+  </ol>
+
+  <h3>Caching the schema</h3>
+  <p>Schema responses carry a weak <code>ETag</code> and <code>Cache-Control: no-cache</code>. Fetch on app launch or before first showing the form, send <code>If-None-Match</code> with the stored ETag, and keep the last good copy on disk so the form can render offline. A <code>304</code> means the cached copy is current.</p>
+
+  <h3>Limits</h3>
+  <div class="tbl"><table>
+    <tr><th>limit</th><th>value</th></tr>
+    <tr><td>request body</td><td>64 KB</td></tr>
+    <tr><td><code>feedback_text</code></td><td>500 characters</td></tr>
+    <tr><td><code>issue_categories</code></td><td>≥ 1 item</td></tr>
+    <tr><td>list page size</td><td>1–200, default 50</td></tr>
+  </table></div>
+</section>
+
+<section class="block" id="forms">
+  <div class="overline">04</div>
+  <h2>Rendering a form from the schema</h2>
+  <p>The schema is a list of <strong>field definitions</strong>. Each has <code>key</code> (JSON key to send), <code>label</code>, <code>type</code>, <code>required</code>, and an optional <code>help</code> hint. Type-specific properties:</p>
+  <div class="tbl"><table>
+    <tr><th>type</th><th>extra properties</th><th>render as</th><th>send as</th></tr>
+    <tr><td><code>boolean</code></td><td></td><td>toggle / segmented control</td><td><code>true</code> / <code>false</code></td></tr>
+    <tr><td><code>text</code></td><td><code>maxLength</code>, <code>multiline</code></td><td>text area with a counter</td><td>string</td></tr>
+    <tr><td><code>date</code></td><td><code>format</code>, <code>allowFuture</code> (absent = false)</td><td>date picker, max = today</td><td><code>"YYYY-MM-DD"</code></td></tr>
+    <tr><td><code>number</code></td><td><code>min</code>, <code>max</code>, <code>integer</code>, <code>unit</code></td><td>numeric keypad; stepper if <code>integer</code></td><td>JSON number</td></tr>
+    <tr><td><code>time_12h</code></td><td><code>format</code></td><td>time picker in 12-hour mode</td><td><code>"HH:MM AM/PM"</code></td></tr>
+    <tr><td><code>string</code></td><td><code>maxLength</code>, <code>format</code> (<code>email</code>), <code>options</code></td><td>text field; a picker if <code>options</code> is present</td><td>string</td></tr>
+    <tr><td><code>multi_select</code></td><td><code>minItems</code>, <code>optionsFrom</code></td><td>multi-select chips from the feature's <code>issue_categories</code></td><td>array of option <code>key</code>s</td></tr>
+  </table></div>
+  <p><strong>Where fields live in the request body.</strong> <code>common_fields</code> go at the top level. <code>features[].fields</code> go inside <code>details</code>. The <code>client</code> block takes the fields listed in <code>client_context_fields</code> (same shape as any other field definition; <code>platform</code> carries <code>options</code>).</p>
+  <p><strong>Rules.</strong> <code>features[].rules</code> lists cross-field constraints the server enforces. There is one kind today:</p>
+  <pre><code>{ "kind": "time_pair_distinct", "start": "actual_start_time", "end": "actual_end_time" }</code></pre>
+  <p>If both fields are filled they must not be identical. There is no ordering check, because sleep and workouts can cross midnight.</p>
+  <div class="callout"><div class="overline">Forward compatibility</div><p>Skip any field whose <code>type</code> the client doesn't recognise and ignore unknown properties. The server rejects unknown <em>keys</em> in the body, so only send keys the schema lists. <code>schema_version</code> increments on breaking changes.</p></div>
+</section>
+
+<section class="block" id="endpoints">
+  <div class="overline">05</div>
+  <h2>Endpoints</h2>
+
+  <div id="ep-health" class="endpoint"><span class="method get">GET</span><code class="path">/healthz</code><span class="auth open">no auth</span></div>
+  <p>Returns <code>{ "ok": true, "db": "up" }</code>, or <code>503</code> with <code>{ "ok": false, "db": "down" }</code>.</p>
+
+  <hr class="ep">
+  <div id="ep-schema" class="endpoint"><span class="method get">GET</span><code class="path">/v1/feedback/schema</code><span class="auth">x-api-key</span></div>
+  <p>Everything needed to build the form for every active feature. Features come back in display order; deactivated features are omitted. Response headers: <code>ETag</code>, <code>Cache-Control: no-cache</code>.</p>
+  <details open><summary>Response 200 (live, verbatim)</summary>
+<pre><code>{
+  "schema_version": 1,
+  "common_fields": [
+    { "key": "is_positive",      "type": "boolean",      "label": "Was this a positive experience?", "required": true },
+    { "key": "occurred_on",      "type": "date",         "format": "YYYY-MM-DD", "label": "Date the issue occurred", "required": true },
+    { "key": "user_id",          "type": "number",       "label": "User ID", "required": true, "integer": true, "min": 1 },
+    { "key": "email",            "type": "string",       "format": "email", "label": "Email", "required": true, "maxLength": 254 },
+    { "key": "issue_categories", "type": "multi_select", "label": "What went wrong?", "required": true, "minItems": 1, "optionsFrom": "issue_categories" },
+    { "key": "feedback_text",    "type": "text",         "label": "Tell us more", "required": false, "maxLength": 500, "multiline": true }
+  ],
+  "client_context_keys": ["platform", "app_version", "build_number", "build_channel", "firmware_version", "os_version", "device_id", "session_id"],
+  "client_context_fields": [
+    { "key": "platform",         "type": "string", "label": "Platform",              "required": false, "options": ["ios", "android"] },
+    { "key": "app_version",      "type": "string", "label": "App version",           "required": false, "maxLength": 200 },
+    { "key": "build_number",     "type": "string", "label": "Build number",          "required": false, "maxLength": 200 },
+    { "key": "build_channel",    "type": "string", "label": "Build channel",         "required": false, "maxLength": 200 },
+    { "key": "firmware_version", "type": "string", "label": "Ring firmware version", "required": false, "maxLength": 200 },
+    { "key": "os_version",       "type": "string", "label": "OS version",            "required": false, "maxLength": 200 },
+    { "key": "device_id",        "type": "string", "label": "Device ID",             "required": false, "maxLength": 200 },
+    { "key": "session_id",       "type": "string", "label": "Session ID",            "required": false, "maxLength": 200 }
+  ],
+  "features": [
+    {
+      "key": "home", "label": "Home",
+      "issue_categories": [
+        { "key": "wrong_peak_score",      "label": "Wrong peak score" },
+        { "key": "peak_score_not_loaded", "label": "Peak score not loaded" },
+        { "key": "guidance_incorrect",    "label": "Guidance incorrect" }
+      ],
+      "fields": [
+        { "key": "peak_score_value", "type": "number", "label": "Peak score shown", "required": false, "min": 0, "max": 100 }
+      ],
+      "rules": []
+    },
+    {
+      "key": "sleep", "label": "Sleep",
+      "issue_categories": [
+        { "key": "incorrect_sleep",       "label": "Incorrect sleep" },
+        { "key": "sleep_not_recorded",    "label": "Sleep not recorded" },
+        { "key": "incorrect_sleep_stage", "label": "Incorrect sleep stage" },
+        { "key": "vitals_not_recorded",   "label": "Vitals not recorded" }
+      ],
+      "fields": [
+        { "key": "actual_start_time",   "type": "time_12h", "format": "HH:MM AM/PM", "label": "Actual sleep start",   "required": false },
+        { "key": "actual_end_time",     "type": "time_12h", "format": "HH:MM AM/PM", "label": "Actual sleep end",     "required": false },
+        { "key": "recorded_start_time", "type": "time_12h", "format": "HH:MM AM/PM", "label": "Recorded sleep start", "required": false },
+        { "key": "recorded_end_time",   "type": "time_12h", "format": "HH:MM AM/PM", "label": "Recorded sleep end",   "required": false }
+      ],
+      "rules": [
+        { "kind": "time_pair_distinct", "start": "actual_start_time",   "end": "actual_end_time" },
+        { "kind": "time_pair_distinct", "start": "recorded_start_time", "end": "recorded_end_time" }
+      ]
+    },
+    {
+      "key": "activity", "label": "Activity",
+      "issue_categories": [
+        { "key": "incorrect_steps",           "label": "Incorrect steps" },
+        { "key": "incorrect_total_calories",  "label": "Incorrect total calories" },
+        { "key": "incorrect_active_calories", "label": "Incorrect active calories" },
+        { "key": "incorrect_training_load",   "label": "Incorrect training load" },
+        { "key": "workout_not_showing",       "label": "Workout not showing" }
+      ],
+      "fields": [
+        { "key": "steps",           "type": "number", "label": "Steps",           "required": false, "integer": true, "min": 0 },
+        { "key": "active_calories", "type": "number", "label": "Active calories", "required": false, "min": 0, "unit": "kcal" },
+        { "key": "total_calories",  "type": "number", "label": "Total calories",  "required": false, "min": 0, "unit": "kcal" }
+      ],
+      "rules": []
+    },
+    {
+      "key": "workout", "label": "Workout",
+      "issue_categories": [
+        { "key": "incorrect_duration",  "label": "Incorrect duration" },
+        { "key": "incorrect_calories",  "label": "Incorrect calories" },
+        { "key": "hr_not_showing",      "label": "HR not showing" },
+        { "key": "map_not_loading",     "label": "Map not loading" },
+        { "key": "incorrect_zones",     "label": "Incorrect zones" },
+        { "key": "incorrect_intensity", "label": "Incorrect intensity" },
+        { "key": "start_workout_fail",  "label": "Start workout fail" },
+        { "key": "end_workout_fail",    "label": "End workout fail" }
+      ],
+      "fields": [
+        { "key": "workout_type", "type": "string",   "label": "Workout type",  "required": false, "maxLength": 100 },
+        { "key": "start_time",   "type": "time_12h", "format": "HH:MM AM/PM", "label": "Workout start", "required": false },
+        { "key": "end_time",     "type": "time_12h", "format": "HH:MM AM/PM", "label": "Workout end",   "required": false },
+        { "key": "intensity",    "type": "string",   "label": "Intensity",     "required": false, "maxLength": 50 }
+      ],
+      "rules": [
+        { "kind": "time_pair_distinct", "start": "start_time", "end": "end_time" }
+      ]
+    }
+  ]
+}</code></pre>
+  </details>
+
+  <hr class="ep">
+  <div id="ep-schema-one" class="endpoint"><span class="method get">GET</span><code class="path">/v1/feedback/schema/{feature}</code><span class="auth">x-api-key</span></div>
+  <p>One feature only: a single element of <code>features[]</code> above (<code>key</code>, <code>label</code>, <code>issue_categories</code>, <code>fields</code>, <code>rules</code>). It does <strong>not</strong> include <code>common_fields</code>; fetch the full schema for those. <code>404</code> if the feature is unknown or deactivated.</p>
+
+  <hr class="ep">
+  <div id="ep-submit" class="endpoint"><span class="method post">POST</span><code class="path">/v1/feedback/{feature}</code><span class="auth">x-api-key</span></div>
+  <p>Create a submission. <code>{feature}</code> is one of <code>home</code>, <code>sleep</code>, <code>activity</code>, <code>workout</code>.</p>
+  <h4>Request body</h4>
+  <div class="tbl"><table>
+    <tr><th>field</th><th>type</th><th>required</th><th>notes</th></tr>
+    <tr><td><code>is_positive</code></td><td>boolean</td><td><span class="req yes">yes</span></td><td></td></tr>
+    <tr><td><code>occurred_on</code></td><td>date</td><td><span class="req yes">yes</span></td><td>not in the future (IST)</td></tr>
+    <tr><td><code>user_id</code></td><td>integer ≥ 1</td><td><span class="req yes">yes</span></td><td></td></tr>
+    <tr><td><code>email</code></td><td>email string</td><td><span class="req yes">yes</span></td><td></td></tr>
+    <tr><td><code>issue_categories</code></td><td>string[]</td><td><span class="req yes">yes</span></td><td>category keys for this feature, ≥ 1, unique</td></tr>
+    <tr><td><code>feedback_text</code></td><td>string ≤ 500</td><td><span class="req no">no</span></td><td>free text</td></tr>
+    <tr><td><code>details</code></td><td>object</td><td><span class="req no">no</span></td><td>feature fields, see <a href="#features">Feature reference</a>. Unknown keys are rejected. Defaults to <code>{}</code></td></tr>
+    <tr><td><code>client</code></td><td>object</td><td><span class="req no">no</span></td><td>any subset of the <a href="#client">client context</a> keys. Unknown keys are rejected</td></tr>
+  </table></div>
+  <p>Optional fields may be omitted or sent as <code>null</code>. Whitespace is trimmed from strings.</p>
+  <h4>Example request</h4>
+<pre><code>POST /v1/feedback/workout HTTP/1.1
+Host: luna-feedback.buildsage.tech
+x-api-key: &lt;APP_API_KEY&gt;
+content-type: application/json
+Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
+
+{
+  "is_positive": false,
+  "occurred_on": "2026-09-01",
+  "user_id": 10482,
+  "email": "tester@luna.app",
+  "issue_categories": ["hr_not_showing", "incorrect_zones"],
+  "feedback_text": "HR stayed at -- for the whole run.",
+  "details": {
+    "workout_type": "Outdoor Run",
+    "start_time": "6:00 AM",
+    "end_time": "6:45 AM",
+    "intensity": "High"
+  },
+  "client": {
+    "platform": "ios",
+    "app_version": "2.4.0",
+    "build_number": "512",
+    "build_channel": "stage",
+    "firmware_version": "1.9.2",
+    "os_version": "iOS 19.1",
+    "device_id": "3F2B0C7A-1D2E-4F5A-9B8C-7D6E5F4A3B2C",
+    "session_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+  }
+}</code></pre>
+  <h4>Response 201 Created (live, verbatim)</h4>
+<pre><code>{
+  "id": "178239d2-2581-4207-a378-742b0ac186ef",
+  "feature_key": "workout",
+  "is_positive": false,
+  "occurred_on": "2026-09-01",
+  "user_id": 10482,
+  "email": "tester@luna.app",
+  "issue_categories": ["hr_not_showing", "incorrect_zones"],
+  "created_at": "2026-09-02T08:20:23.521Z",
+  "feedback_text": "HR stayed at -- for the whole run.",
+  "details": {
+    "workout_type": "Outdoor Run",
+    "start_time": "06:00 AM",
+    "end_time": "06:45 AM",
+    "intensity": "High"
+  },
+  "platform": "ios",
+  "app_version": "2.4.0",
+  "build_number": "512",
+  "build_channel": "stage",
+  "firmware_version": "1.9.2",
+  "os_version": "iOS 19.1",
+  "device_id": "3F2B0C7A-1D2E-4F5A-9B8C-7D6E5F4A3B2C",
+  "session_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "schema_version": 1,
+  "created_at_ist": "2026-09-02 13:50:23 +05:30"
+}</code></pre>
+  <p>Times come back zero-padded, and the <code>client</code> block is flattened to top-level fields. Client keys not sent come back as <code>null</code>.</p>
+  <p><strong>Response 200 OK</strong>: same body, returned when the <code>Idempotency-Key</code> was already used. Treat as success.</p>
+  <h4>Response 422</h4>
+<pre><code>{
+  "error": {
+    "code": "VALIDATION_FAILED",
+    "message": "Request failed validation",
+    "issues": [
+      { "path": "details.end_time", "message": "must differ from start_time" },
+      { "path": "feedback_text", "message": "must be at most 500 characters" }
+    ]
+  }
+}</code></pre>
+  <p><strong>Response 404</strong>: <code>{ "error": { "code": "NOT_FOUND", "message": "Unknown feature \"nutrition\"" } }</code></p>
+
+  <hr class="ep">
+  <div id="ep-list" class="endpoint"><span class="method get">GET</span><code class="path">/v1/feedback</code><span class="auth">x-api-key</span></div>
+  <p>List submissions, newest first. Used by the dashboard; the app does not need it.</p>
+  <div class="tbl"><table>
+    <tr><th>param</th><th>type</th><th>notes</th></tr>
+    <tr><td><code>feature</code></td><td>string</td><td><code>home</code> / <code>sleep</code> / <code>activity</code> / <code>workout</code></td></tr>
+    <tr><td><code>platform</code></td><td>string</td><td><code>ios</code> / <code>android</code></td></tr>
+    <tr><td><code>user_id</code></td><td>integer</td><td></td></tr>
+    <tr><td><code>from</code>, <code>to</code></td><td>date</td><td>inclusive bounds on <code>occurred_on</code></td></tr>
+    <tr><td><code>is_positive</code></td><td><code>true</code> / <code>false</code></td><td></td></tr>
+    <tr><td><code>category</code></td><td>string</td><td>submissions whose <code>issue_categories</code> contains this key</td></tr>
+    <tr><td><code>limit</code></td><td>1–200</td><td>default 50</td></tr>
+    <tr><td><code>cursor</code></td><td>string</td><td>value of <code>next_cursor</code> from the previous page</td></tr>
+  </table></div>
+<pre><code>{
+  "items": [ { …submission… }, { …submission… } ],
+  "next_cursor": "2026-09-02T08:20:23.521Z|178239d2-2581-4207-a378-742b0ac186ef"
+}</code></pre>
+  <p><code>next_cursor</code> is <code>null</code> on the last page. Pass it back URL-encoded as <code>cursor</code>. Invalid parameters return <code>422</code>.</p>
+
+  <div id="ep-one" class="endpoint" style="margin-top:20px"><span class="method get">GET</span><code class="path">/v1/feedback/{id}</code><span class="auth">x-api-key</span></div>
+  <p>One submission by UUID. <code>404</code> if not found or the id is not a UUID.</p>
+
+  <hr class="ep">
+  <div id="ep-stats" class="endpoint"><span class="method get">GET</span><code class="path">/v1/feedback/stats</code><span class="auth">x-api-key</span></div>
+  <p>Aggregates for the dashboard. Accepts the same filters as the list (<code>feature</code>, <code>platform</code>, <code>user_id</code>, <code>from</code>, <code>to</code>, <code>is_positive</code>, <code>category</code>). <code>to</code> defaults to today in IST and <code>from</code> to 30 days earlier.</p>
+<pre><code>{
+  "range": { "from": "2026-08-04", "to": "2026-09-02" },
+  "totals": { "submissions": 42, "positive": 30, "negative": 12, "users": 9 },
+  "by_day": [ { "date": "2026-08-30", "positive": 3, "negative": 1 }, … ],
+  "by_feature": [ { "feature_key": "home", "label": "Home", "positive": 8, "negative": 2 }, … ],
+  "by_category": [ { "feature_key": "sleep", "key": "incorrect_sleep", "label": "Incorrect sleep", "count": 5 }, … ]
+}</code></pre>
+
+  <hr class="ep">
+  <div id="ep-admin" class="endpoint"><code class="path">Admin routes</code><span class="auth">x-admin-key</span></div>
+  <p>Not for the app. Listed so the front-end team knows how categories change. The <a href="/dashboard">dashboard</a> wraps these.</p>
+  <div class="tbl"><table>
+    <tr><th>method</th><th>path</th><th>body</th></tr>
+    <tr><td><span class="method get">GET</span></td><td><code>/v1/admin/features</code></td><td></td></tr>
+    <tr><td><span class="method patch">PATCH</span></td><td><code>/v1/admin/features/{feature}</code></td><td><code>{ "label"?, "sort_order"?, "is_active"? }</code></td></tr>
+    <tr><td><span class="method get">GET</span></td><td><code>/v1/admin/features/{feature}/issue-categories</code></td><td>includes inactive</td></tr>
+    <tr><td><span class="method post">POST</span></td><td><code>/v1/admin/features/{feature}/issue-categories</code></td><td><code>{ "key", "label", "sort_order"? }</code> · key is a lowercase slug · <code>409</code> on duplicate</td></tr>
+    <tr><td><span class="method patch">PATCH</span></td><td><code>/v1/admin/issue-categories/{id}</code></td><td><code>{ "label"?, "sort_order"?, "is_active"? }</code></td></tr>
+  </table></div>
+  <div class="callout"><div class="overline">Stale schema</div><p>Categories are never deleted. Deactivating one removes it from the schema and makes the server reject it on new submissions, so a client holding a stale cached schema may get a <code>422</code> on <code>issue_categories.N</code>. Handle that by refetching the schema and asking the user to re-pick.</p></div>
+</section>
+
+<section class="block" id="features">
+  <div class="overline">06</div>
+  <h2>Feature reference</h2>
+  <p>Everything below is also in the schema response; duplicated for quick reading. All <code>details</code> fields are optional.</p>
+  <div class="two">
+    <div>
+      <h3>Home</h3>
+      <div class="tbl"><table><tr><th>category key</th><th>label</th></tr>
+        <tr><td><code>wrong_peak_score</code></td><td>Wrong peak score</td></tr>
+        <tr><td><code>peak_score_not_loaded</code></td><td>Peak score not loaded</td></tr>
+        <tr><td><code>guidance_incorrect</code></td><td>Guidance incorrect</td></tr></table></div>
+      <div class="tbl"><table><tr><th>details field</th><th>type</th><th>constraints</th></tr>
+        <tr><td><code>peak_score_value</code></td><td>number</td><td>0–100</td></tr></table></div>
+    </div>
+    <div>
+      <h3>Sleep</h3>
+      <div class="tbl"><table><tr><th>category key</th><th>label</th></tr>
+        <tr><td><code>incorrect_sleep</code></td><td>Incorrect sleep</td></tr>
+        <tr><td><code>sleep_not_recorded</code></td><td>Sleep not recorded</td></tr>
+        <tr><td><code>incorrect_sleep_stage</code></td><td>Incorrect sleep stage</td></tr>
+        <tr><td><code>vitals_not_recorded</code></td><td>Vitals not recorded</td></tr></table></div>
+      <div class="tbl"><table><tr><th>details field</th><th>type</th><th>constraints</th></tr>
+        <tr><td><code>actual_start_time</code></td><td>time_12h</td><td></td></tr>
+        <tr><td><code>actual_end_time</code></td><td>time_12h</td><td>must differ from <code>actual_start_time</code></td></tr>
+        <tr><td><code>recorded_start_time</code></td><td>time_12h</td><td></td></tr>
+        <tr><td><code>recorded_end_time</code></td><td>time_12h</td><td>must differ from <code>recorded_start_time</code></td></tr></table></div>
+    </div>
+    <div>
+      <h3>Activity</h3>
+      <div class="tbl"><table><tr><th>category key</th><th>label</th></tr>
+        <tr><td><code>incorrect_steps</code></td><td>Incorrect steps</td></tr>
+        <tr><td><code>incorrect_total_calories</code></td><td>Incorrect total calories</td></tr>
+        <tr><td><code>incorrect_active_calories</code></td><td>Incorrect active calories</td></tr>
+        <tr><td><code>incorrect_training_load</code></td><td>Incorrect training load</td></tr>
+        <tr><td><code>workout_not_showing</code></td><td>Workout not showing</td></tr></table></div>
+      <div class="tbl"><table><tr><th>details field</th><th>type</th><th>constraints</th></tr>
+        <tr><td><code>steps</code></td><td>number</td><td>integer ≥ 0</td></tr>
+        <tr><td><code>active_calories</code></td><td>number</td><td>≥ 0, kcal</td></tr>
+        <tr><td><code>total_calories</code></td><td>number</td><td>≥ 0, kcal</td></tr></table></div>
+    </div>
+    <div>
+      <h3>Workout</h3>
+      <div class="tbl"><table><tr><th>category key</th><th>label</th></tr>
+        <tr><td><code>incorrect_duration</code></td><td>Incorrect duration</td></tr>
+        <tr><td><code>incorrect_calories</code></td><td>Incorrect calories</td></tr>
+        <tr><td><code>hr_not_showing</code></td><td>HR not showing</td></tr>
+        <tr><td><code>map_not_loading</code></td><td>Map not loading</td></tr>
+        <tr><td><code>incorrect_zones</code></td><td>Incorrect zones</td></tr>
+        <tr><td><code>incorrect_intensity</code></td><td>Incorrect intensity</td></tr>
+        <tr><td><code>start_workout_fail</code></td><td>Start workout fail</td></tr>
+        <tr><td><code>end_workout_fail</code></td><td>End workout fail</td></tr></table></div>
+      <div class="tbl"><table><tr><th>details field</th><th>type</th><th>constraints</th></tr>
+        <tr><td><code>workout_type</code></td><td>string</td><td>≤ 100 chars, free text</td></tr>
+        <tr><td><code>start_time</code></td><td>time_12h</td><td></td></tr>
+        <tr><td><code>end_time</code></td><td>time_12h</td><td>must differ from <code>start_time</code></td></tr>
+        <tr><td><code>intensity</code></td><td>string</td><td>≤ 50 chars, free text</td></tr></table></div>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="client">
+  <div class="overline">07</div>
+  <h2>Client context</h2>
+  <p>Optional <code>client</code> object on POST, identical for every feature. Send it on every submission: the dashboard filters by platform and slices by app and firmware version, so <code>platform</code>, <code>app_version</code>, and <code>firmware_version</code> are the most valuable. The schema lists these under <code>client_context_fields</code> with their allowed values.</p>
+  <div class="tbl"><table>
+    <tr><th>key</th><th>example</th><th>source</th></tr>
+    <tr><td><code>platform</code></td><td><code>"ios"</code> · <code>"android"</code></td><td>fixed; case-insensitive on input, stored lower-case</td></tr>
+    <tr><td><code>app_version</code></td><td><code>"2.4.0"</code></td><td><code>CFBundleShortVersionString</code></td></tr>
+    <tr><td><code>build_number</code></td><td><code>"512"</code></td><td><code>CFBundleVersion</code></td></tr>
+    <tr><td><code>build_channel</code></td><td><code>"stage"</code></td><td>build channel / scheme</td></tr>
+    <tr><td><code>firmware_version</code></td><td><code>"1.9.2"</code></td><td>connected ring firmware</td></tr>
+    <tr><td><code>os_version</code></td><td><code>"iOS 19.1"</code></td><td><code>UIDevice.current.systemVersion</code></td></tr>
+    <tr><td><code>device_id</code></td><td><code>"3F2B0C7A-…"</code></td><td><code>identifierForVendor</code></td></tr>
+    <tr><td><code>session_id</code></td><td><code>"7c9e6679-…"</code></td><td>app session UUID</td></tr>
+  </table></div>
+</section>
+
+<section class="block" id="errors">
+  <div class="overline">08</div>
+  <h2>Error reference</h2>
+  <div class="tbl"><table>
+    <tr><th>error.code</th><th>HTTP</th><th>meaning</th><th>client action</th></tr>
+    <tr><td><code>UNAUTHORIZED</code></td><td class="status">401</td><td>key missing or wrong</td><td>check build config; do not retry</td></tr>
+    <tr><td><code>NOT_FOUND</code></td><td class="status">404</td><td>route, feature, or id unknown</td><td>refetch schema if it was a feature</td></tr>
+    <tr><td><code>VALIDATION_FAILED</code></td><td class="status">400 / 422</td><td>malformed JSON, or field errors in <code>issues</code></td><td>map <code>issues[].path</code> to fields; do not retry unchanged</td></tr>
+    <tr><td><code>CONFLICT</code></td><td class="status">409</td><td>admin duplicate</td><td>n/a for app</td></tr>
+    <tr><td><code>INTERNAL</code></td><td class="status">500</td><td>server fault</td><td>retry with the same <code>Idempotency-Key</code></td></tr>
+  </table></div>
+</section>
+
+<section class="block" id="swift">
+  <div class="overline">09</div>
+  <h2>Swift reference implementation</h2>
+  <p>Minimal <code>URLSession</code> client covering schema fetch with ETag and a submission with idempotency. Adapt to the app's networking layer; the endpoint must be marked as <strong>not</strong> requiring Luna's bearer token.</p>
+<pre><code>import Foundation
+
+struct FeedbackAPI {
+    let baseURL = URL(string: "https://luna-feedback.buildsage.tech")!
+    let apiKey: String
+    let session: URLSession = .shared
+    let decoder = JSONDecoder()
+
+    // MARK: Schema
+
+    struct Field: Decodable {
+        let key: String
+        let label: String
+        let type: String
+        let required: Bool
+        let help: String?
+        let maxLength: Int?
+        let multiline: Bool?
+        let format: String?
+        let allowFuture: Bool?
+        let min: Double?
+        let max: Double?
+        let integer: Bool?
+        let unit: String?
+        let options: [String]?
+        let minItems: Int?
+        let optionsFrom: String?
+    }
+    struct Category: Decodable { let key: String; let label: String }
+    struct Rule: Decodable { let kind: String; let start: String; let end: String }
+    struct Feature: Decodable {
+        let key: String
+        let label: String
+        let issueCategories: [Category]
+        let fields: [Field]
+        let rules: [Rule]
+        enum CodingKeys: String, CodingKey { case key, label, fields, rules, issueCategories = "issue_categories" }
+    }
+    struct Schema: Decodable {
+        let schemaVersion: Int
+        let commonFields: [Field]
+        let clientContextKeys: [String]
+        let clientContextFields: [Field]
+        let features: [Feature]
+        enum CodingKeys: String, CodingKey {
+            case features
+            case schemaVersion = "schema_version"
+            case commonFields = "common_fields"
+            case clientContextKeys = "client_context_keys"
+            case clientContextFields = "client_context_fields"
+        }
+    }
+
+    enum SchemaResult { case updated(Schema, etag: String?), notModified }
+
+    func fetchSchema(etag: String?) async throws -&gt; SchemaResult {
+        var req = URLRequest(url: baseURL.appendingPathComponent("v1/feedback/schema"))
+        req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        if let etag { req.setValue(etag, forHTTPHeaderField: "If-None-Match") }
+        let (data, resp) = try await session.data(for: req)
+        let http = resp as! HTTPURLResponse
+        switch http.statusCode {
+        case 304: return .notModified
+        case 200: return .updated(try decoder.decode(Schema.self, from: data),
+                                  etag: http.value(forHTTPHeaderField: "ETag"))
+        default: throw try APIError.from(data, status: http.statusCode)
+        }
+    }
+
+    // MARK: Submit
+
+    struct Submission: Encodable {
+        let isPositive: Bool
+        let occurredOn: String            // "YYYY-MM-DD"
+        let userId: Int
+        let email: String
+        let issueCategories: [String]
+        let feedbackText: String?
+        let details: [String: JSONValue]  // feature fields
+        let client: [String: String]          // include "platform": "ios"
+        enum CodingKeys: String, CodingKey {
+            case email, details, client
+            case isPositive = "is_positive"
+            case occurredOn = "occurred_on"
+            case userId = "user_id"
+            case issueCategories = "issue_categories"
+            case feedbackText = "feedback_text"
+        }
+    }
+
+    struct SubmissionResponse: Decodable {
+        let id: String
+        let createdAt: String
+        let createdAtIST: String
+        enum CodingKeys: String, CodingKey {
+            case id
+            case createdAt = "created_at"
+            case createdAtIST = "created_at_ist"
+        }
+    }
+
+    /// `idempotencyKey` must be generated once per user submission and reused on every retry.
+    func submit(_ body: Submission, feature: String, idempotencyKey: UUID) async throws -&gt; SubmissionResponse {
+        var req = URLRequest(url: baseURL.appendingPathComponent("v1/feedback/\(feature)"))
+        req.httpMethod = "POST"
+        req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        req.setValue("application/json", forHTTPHeaderField: "content-type")
+        req.setValue(idempotencyKey.uuidString, forHTTPHeaderField: "Idempotency-Key")
+        req.httpBody = try JSONEncoder().encode(body)
+        let (data, resp) = try await session.data(for: req)
+        let http = resp as! HTTPURLResponse
+        guard (200...201).contains(http.statusCode) else { throw try APIError.from(data, status: http.statusCode) }
+        return try decoder.decode(SubmissionResponse.self, from: data)
+    }
+
+    // MARK: Errors
+
+    struct APIError: Error, Decodable {
+        struct Issue: Decodable { let path: String; let message: String }
+        struct Body: Decodable { let code: String; let message: String; let issues: [Issue]? }
+        let error: Body
+        var status: Int = 0
+        var isRetryable: Bool { status &gt;= 500 }
+
+        static func from(_ data: Data, status: Int) throws -&gt; APIError {
+            var e = (try? JSONDecoder().decode(APIError.self, from: data))
+                ?? APIError(error: .init(code: "INTERNAL", message: "Unexpected response", issues: nil))
+            e.status = status
+            return e
+        }
+    }
+}
+
+/// Small JSON value wrapper so `details` can hold numbers and strings.
+enum JSONValue: Encodable {
+    case string(String), number(Double), bool(Bool), null
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case .string(let s): try c.encode(s)
+        case .number(let n): try c.encode(n)
+        case .bool(let b): try c.encode(b)
+        case .null: try c.encodeNil()
+        }
+    }
+}</code></pre>
+  <h4>Formatting helpers</h4>
+<pre><code>// occurred_on
+let dateFormatter: DateFormatter = {
+    let f = DateFormatter(); f.calendar = Calendar(identifier: .gregorian)
+    f.timeZone = TimeZone(identifier: "Asia/Kolkata"); f.dateFormat = "yyyy-MM-dd"; return f
+}()
+
+// time_12h
+let timeFormatter: DateFormatter = {
+    let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX")
+    f.dateFormat = "hh:mm a"; return f   // "07:05 AM"
+}()</code></pre>
+</section>
+
+<section class="block" id="versioning">
+  <div class="overline">10</div>
+  <h2>Versioning and change policy</h2>
+  <ul>
+    <li><strong>Additive changes</strong> (new category, new optional field, new feature) ship without notice. Clients that render from the schema pick them up on the next fetch.</li>
+    <li><strong>Breaking changes</strong> (renamed key, new required field, removed type) bump <code>schema_version</code> and are announced before deploy. The <code>v1</code> path prefix stays until the wire contract itself changes.</li>
+    <li>Backend repo: <code>github.com/karankumar-tech/luna-internal-feedback</code>. Field definitions live in <code>src/schema/registry.ts</code>; categories live in the database and are managed from the <a href="/dashboard">dashboard</a>.</li>
+  </ul>
+  <div class="foot">Luna Internal Feedback API · v1 · schema 1 · this page is served by the API itself at /docs</div>
+</section>
+
+</main>
+</div>
+</body>
+</html>

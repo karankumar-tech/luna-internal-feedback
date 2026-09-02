@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Luna Design System — 2026 Brand</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100;200;300;400;500;600;700;800;900&family=Geist+Mono:wght@100;200;300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --color-pure-black:   #000000;
+    --color-dark-gray:    #737373;
+    --color-medium-gray:  #9E9E9E;
+    --color-light-gray:   #D9D9D9;
+    --color-pure-white:   #FFFFFF;
+    --color-luna-yellow:  #F5F85D;
+    --color-recovery-blue:   #2E64E4;
+    --color-insights-magenta:#FF4B97;
+    --color-strain-orange:   #FF985D;
+
+    --font-sans: 'Geist', -apple-system, sans-serif;
+    --font-mono: 'Geist Mono', monospace;
+
+    --radius-none: 0px;
+    --radius-xs:   2px;
+    --radius-s:    4px;
+    --radius-m:    6px;
+    --radius-l:    8px;
+    --radius-xl:   12px;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background: #F2F2F2;
+    color: #000000;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 64px 48px;
+    background: #FFFFFF;
+    min-height: 100vh;
+  }
+
+  /* ─── Utilities ─── */
+  .section { margin-bottom: 88px; }
+
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 400;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #9E9E9E;
+    border-bottom: 1px solid #D9D9D9;
+    padding-bottom: 12px;
+    margin-bottom: 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .section-label span { color: #C4C4C4; }
+
+  .group-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #9E9E9E;
+    margin-bottom: 16px;
+    font-family: var(--font-mono);
+  }
+
+  .badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-weight: 500;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .badge-yellow  { background: #F5F85D; color: #000; }
+  .badge-black   { background: #000; color: #fff; }
+  .badge-subtle  { background: #EFEFEF; color: #737373; border: 1px solid #D9D9D9; }
+  .badge-flag    { background: #FFF4D6; color: #7E5C00; border: 1px solid #F5D87A; }
+  .badge-add     { background: #EBF0FD; color: #1A4FCC; border: 1px solid #93B3F5; }
+  .badge-question{ background: #FFF0FB; color: #99006A; border: 1px solid #FDB0FE; }
+
+  /* ─── Doc header ─── */
+  .doc-header {
+    margin-bottom: 80px;
+    padding-bottom: 40px;
+    border-bottom: 1px solid #D9D9D9;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+  .doc-title {
+    font-size: 52px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    color: #000;
+  }
+  .doc-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #9E9E9E;
+    margin-bottom: 14px;
+  }
+  .doc-meta {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: #C4C4C4;
+    text-align: right;
+    line-height: 2;
+  }
+
+  /* ─── Color swatches ─── */
+  .color-grid {
+    display: grid;
+    gap: 12px;
+  }
+  .color-grid-5  { grid-template-columns: repeat(5, 1fr); }
+  .color-grid-4  { grid-template-columns: repeat(4, 1fr); }
+  .color-grid-8  { grid-template-columns: repeat(8, 1fr); }
+  .color-grid-6  { grid-template-columns: repeat(6, 1fr); }
+  .color-grid-3  { grid-template-columns: repeat(3, 1fr); }
+
+  .color-card { display: flex; flex-direction: column; }
+
+  .swatch {
+    border-radius: var(--radius-s);
+    border: 1px solid rgba(0,0,0,0.07);
+    margin-bottom: 10px;
+  }
+  .swatch-lg  { height: 96px; }
+  .swatch-md  { height: 56px; }
+  .swatch-sm  { height: 40px; }
+  .swatch-xs  { height: 32px; }
+
+  .color-name { font-size: 12px; font-weight: 600; color: #000; margin-bottom: 2px; }
+  .color-hex  { font-family: var(--font-mono); font-size: 10px; color: #737373; }
+  .color-note { font-size: 10px; color: #9E9E9E; margin-top: 2px; line-height: 1.5; }
+
+  /* ─── Scale row ─── */
+  .scale-row { display: flex; gap: 4px; margin-bottom: 32px; }
+  .scale-chip { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .scale-swatch { width: 100%; height: 44px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.07); }
+  .scale-label { font-family: var(--font-mono); font-size: 8.5px; color: #9E9E9E; text-align: center; line-height: 1.5; }
+  .scale-label.primary { color: #000; font-weight: 700; }
+
+  /* ─── Color combo matrix ─── */
+  .combo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .combo-card {
+    border-radius: var(--radius-l);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 120px;
+  }
+
+  .combo-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 500;
+    opacity: 0.55;
+  }
+
+  .combo-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .combo-chip {
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    border: 1px solid rgba(0,0,0,0.06);
+    flex-shrink: 0;
+  }
+
+  .combo-rule {
+    font-size: 11px;
+    line-height: 1.5;
+    opacity: 0.7;
+  }
+
+  /* ─── Type table ─── */
+  .type-table { width: 100%; border-collapse: collapse; }
+
+  .type-table th {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #9E9E9E;
+    text-align: left;
+    padding: 8px 16px 8px 0;
+    border-bottom: 1px solid #E8E8E8;
+  }
+
+  .type-table td {
+    padding: 20px 16px 20px 0;
+    vertical-align: middle;
+    border-bottom: 1px solid #F0F0F0;
+  }
+
+  .type-token { font-family: var(--font-mono); font-size: 10px; color: #9E9E9E; white-space: nowrap; }
+  .type-meta  { font-family: var(--font-mono); font-size: 10px; color: #C4C4C4; white-space: nowrap; }
+
+  /* ─── Stroke system ─── */
+  .stroke-row { display: flex; flex-direction: column; gap: 0; margin-bottom: 32px; }
+
+  .stroke-item {
+    display: grid;
+    grid-template-columns: 180px 1fr 180px;
+    align-items: center;
+    gap: 24px;
+    padding: 16px 0;
+    border-bottom: 1px solid #F0F0F0;
+  }
+
+  .stroke-item:last-child { border-bottom: none; }
+
+  .stroke-info { display: flex; flex-direction: column; gap: 2px; }
+  .stroke-token-name { font-family: var(--font-mono); font-size: 10px; color: #737373; }
+  .stroke-desc { font-size: 11px; color: #9E9E9E; }
+  .stroke-use  { font-size: 11px; color: #737373; text-align: right; }
+
+  .stroke-preview {
+    height: 1px;
+    width: 100%;
+  }
+
+  /* ─── Radius system ─── */
+  .radius-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+
+  .radius-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 20px 16px;
+    background: #fff;
+    border-radius: 6px;
+    border: 1px solid #E8E8E8;
+  }
+
+  .radius-demo {
+    width: 56px;
+    height: 56px;
+    background: #000;
+    border: none;
+  }
+
+  .radius-label { font-family: var(--font-mono); font-size: 10px; color: #737373; text-align: center; line-height: 1.6; }
+
+  /* ─── Semantic cards ─── */
+  .semantic-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+
+  .semantic-card {
+    border-radius: var(--radius-l);
+    overflow: hidden;
+    border: 1px solid rgba(0,0,0,0.06);
+  }
+
+  .semantic-swatch { height: 72px; }
+  .semantic-info { padding: 14px; background: #fff; }
+  .semantic-name { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+  .semantic-hex  { font-family: var(--font-mono); font-size: 10px; color: #737373; margin-bottom: 4px; }
+  .semantic-note { font-size: 10px; color: #9E9E9E; line-height: 1.5; }
+
+  /* ─── Text hierarchy ─── */
+  .text-hier-table { width: 100%; border-collapse: collapse; }
+  .text-hier-table th {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #9E9E9E;
+    text-align: left;
+    padding: 8px 16px 8px 0;
+    border-bottom: 1px solid #E8E8E8;
+  }
+  .text-hier-table td {
+    padding: 18px 16px 18px 0;
+    border-bottom: 1px solid #F0F0F0;
+    vertical-align: middle;
+  }
+
+  /* ─── Notes ─── */
+  .note {
+    border-left: 2px solid #F5F85D;
+    padding: 12px 16px;
+    background: #FEFFF0;
+    border-radius: 0 4px 4px 0;
+    font-size: 12px;
+    color: #737373;
+    line-height: 1.6;
+    margin-top: 24px;
+  }
+
+  .note strong { color: #000; }
+
+  /* ─── Spacing ─── */
+  .spacing-vis { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+  .spacing-block { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .spacing-bar { background: #000; border-radius: 1px; }
+  .spacing-meta { font-family: var(--font-mono); font-size: 9px; color: #9E9E9E; text-align: center; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ─── Header ─── -->
+  <div class="doc-header">
+    <div>
+      <div class="doc-eyebrow">Luna Design System</div>
+      <h1 class="doc-title">2026 Brand<br>Foundation</h1>
+    </div>
+    <div class="doc-meta">
+      Version 0.3 — Updated<br>
+      April 2026<br>
+      Light mode only
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════
+       01 — COLOR PALETTE
+  ═══════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">01 — Color Palette <span>Defined + extended</span></div>
+
+    <!-- Neutrals -->
+    <div class="group-title" style="margin-bottom:16px;">Neutrals</div>
+    <div class="color-grid color-grid-6" style="margin-bottom:48px;">
+      <div class="color-card">
+        <div class="swatch swatch-lg" style="background:#000000;"></div>
+        <div class="color-name">Pure Black</div>
+        <div class="color-hex">#000000</div>
+        <div class="color-note">Primary text<br>High emphasis UI</div>
+      </div>
+      <div class="color-card">
+        <div class="swatch swatch-lg" style="background:#737373;"></div>
+        <div class="color-name">Dark Gray</div>
+        <div class="color-hex">#737373</div>
+        <div class="color-note">Secondary text<br>Labels, captions</div>
+      </div>
+      <div class="color-card">
+        <div class="swatch swatch-lg" style="background:#9E9E9E;"></div>
+        <div class="color-name">Medium Gray</div>
+        <div class="color-hex">#9E9E9E</div>
+        <div class="color-note">Tertiary text<br>Placeholder</div>
+      </div>
+      <div class="color-card">
+        <div class="swatch swatch-lg" style="background:#D9D9D9;"></div>
+        <div class="color-name">Light Gray</div>
+        <div class="color-hex">#D9D9D9</div>
+        <div class="color-note">Borders, dividers<br>Inactive / disabled</div>
+      </div>
+      <div class="color-card">
+        <div class="swatch swatch-lg" style="background:#F0EFEA;"></div>
+        <div class="color-name">App Background</div>
+        <div class="color-hex">#F0EFEA</div>
+        <div class="color-note">App screen background<br>Warm off-white surface</div>
+      </div>
+      <div class="color-card">
+        <div class="swatch swatch-lg" style="background:#FFFFFF;"></div>
+        <div class="color-name">Pure White</div>
+        <div class="color-hex">#FFFFFF</div>
+        <div class="color-note">Page background<br>Card fills</div>
+      </div>
+    </div>
+
+    <!-- Dark Surfaces -->
+    <div class="group-title" style="margin-top:40px;">Dark Surfaces</div>
+    <div class="color-grid color-grid-3" style="margin-bottom:48px;">
+      <div class="color-card">
+        <div class="swatch swatch-lg" style="background:#1A1A18;"></div>
+        <div class="color-name">Hero Dark</div>
+        <div class="color-hex">#1A1A18</div>
+        <div class="color-note">Hero section background<br>Warm near-black. Pairs with white and Luna Yellow text only.</div>
+      </div>
+      <div class="color-card">
+        <div class="swatch swatch-lg" style="background:#E8E6E0;"></div>
+        <div class="color-name">Brief Surface</div>
+        <div class="color-hex">#E8E6E0</div>
+        <div class="color-note">The Brief section bg<br>Slightly darker warm gray — creates subtle depth vs. app bg.</div>
+      </div>
+      <div class="color-card">
+        <div class="swatch swatch-lg" style="background:#E2E0D9;"></div>
+        <div class="color-name">Border Warm</div>
+        <div class="color-hex">#E2E0D9</div>
+        <div class="color-note">Dividers on warm surfaces<br>Replaces #D9D9D9 where cool-neutral border reads too stark.</div>
+      </div>
+    </div>
+
+    <!-- Luna Yellow -->
+    <div class="group-title">Luna Yellow <span class="badge badge-yellow">Primary</span></div>
+    <div class="scale-row">
+      <div class="scale-chip"><div class="scale-swatch" style="background:#FEFFD6;"></div><div class="scale-label">50<br>#FEFFD6</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#FDFF9E;"></div><div class="scale-label">100<br>#FDFF9E</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#F9FC70;"></div><div class="scale-label">200<br>#F9FC70</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#F5F85D; outline:2px solid #000; outline-offset:2px;"></div><div class="scale-label primary">300 ●<br>#F5F85D<br>Primary</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#D4D63B;"></div><div class="scale-label">400<br>#D4D63B</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#AAAC1E;"></div><div class="scale-label">500<br>#AAAC1E</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#7E800A;"></div><div class="scale-label">600<br>#7E800A</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#545500;"></div><div class="scale-label">700<br>#545500</div></div>
+    </div>
+    <div class="note">
+      <strong>Yellow is always black text.</strong> Never pair yellow with white or light text — contrast fails at all stops below 500. On yellow fill, only #000000 text is permitted.
+    </div>
+
+    <!-- Feature Colors -->
+    <div class="group-title" style="margin-top:48px;">Feature Colors</div>
+    <p style="font-size:12px; color:#737373; margin-bottom:24px;">Bucket assignment TBD. Each gets a full scale. Primary anchor is the 400 stop.</p>
+
+    <div style="margin-bottom:8px; font-size:11px; color:#9E9E9E; font-family:var(--font-mono);">Recovery Blue</div>
+    <div class="scale-row">
+      <div class="scale-chip"><div class="scale-swatch" style="background:#EAF0FD;"></div><div class="scale-label">50<br>#EAF0FD</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#C3D5FA;"></div><div class="scale-label">100<br>#C3D5FA</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#93B3F5;"></div><div class="scale-label">200<br>#93B3F5</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#6391EF;"></div><div class="scale-label">300<br>#6391EF</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#2E64E4; outline:2px solid #000; outline-offset:2px;"></div><div class="scale-label primary">400 ●<br>#2E64E4</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#1A4FCC;"></div><div class="scale-label">500<br>#1A4FCC</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#0C3AAA;"></div><div class="scale-label">600<br>#0C3AAA</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#072580;"></div><div class="scale-label">700<br>#072580</div></div>
+    </div>
+
+    <div style="margin-bottom:8px; font-size:11px; color:#9E9E9E; font-family:var(--font-mono);">Cycle Insights Magenta</div>
+    <div class="scale-row">
+      <div class="scale-chip"><div class="scale-swatch" style="background:#FFE8F4;"></div><div class="scale-label">50<br>#FFE8F4</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#FFBFDE;"></div><div class="scale-label">100<br>#FFBFDE</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#FF80BF;"></div><div class="scale-label">200<br>#FF80BF</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#FF66AC;"></div><div class="scale-label">300<br>#FF66AC</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#FF4B97; outline:2px solid #000; outline-offset:2px;"></div><div class="scale-label primary">400 ●<br>#FF4B97</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#E0237A;"></div><div class="scale-label">500<br>#E0237A</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#B3005C;"></div><div class="scale-label">600<br>#B3005C</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#7A003E;"></div><div class="scale-label">700<br>#7A003E</div></div>
+    </div>
+
+    <div style="margin-bottom:8px; font-size:11px; color:#9E9E9E; font-family:var(--font-mono);">Strain Orange</div>
+    <div class="scale-row" style="margin-bottom:0;">
+      <div class="scale-chip"><div class="scale-swatch" style="background:#FFF3EC;"></div><div class="scale-label">50<br>#FFF3EC</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#FFD9C4;"></div><div class="scale-label">100<br>#FFD9C4</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#FFC09D;"></div><div class="scale-label">200<br>#FFC09D</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#FFAB78;"></div><div class="scale-label">300<br>#FFAB78</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#FF985D; outline:2px solid #000; outline-offset:2px;"></div><div class="scale-label primary">400 ●<br>#FF985D</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#EF7432;"></div><div class="scale-label">500<br>#EF7432</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#D45410;"></div><div class="scale-label">600<br>#D45410</div></div>
+      <div class="scale-chip"><div class="scale-swatch" style="background:#A03600;"></div><div class="scale-label">700<br>#A03600</div></div>
+    </div>
+    <div class="note" style="margin-top:24px;">
+      <strong>Blue, Magenta, Orange → white text only.</strong> Never use black text on these fills. Contrast is insufficient at the 400 stop and above.
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════
+       02 — COLOR COMBINATIONS
+  ═══════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">02 — Color Combinations <span>From brand reference</span></div>
+
+    <p style="font-size:13px; color:#737373; margin-bottom:32px; max-width:520px; line-height:1.7;">
+      Derived from the 2026 brand combinations sheet. These pairings are defined — use only these. Anything not shown here should be validated before use.
+    </p>
+
+    <div class="combo-grid">
+
+      <!-- On Pure Black -->
+      <div class="combo-card" style="background:#000000;">
+        <div class="combo-label" style="color:#fff;">On Pure Black</div>
+        <div class="combo-chips">
+          <div class="combo-chip" style="background:#737373;"></div>
+          <div class="combo-chip" style="background:#9E9E9E;"></div>
+          <div class="combo-chip" style="background:#D9D9D9;"></div>
+          <div class="combo-chip" style="background:#FFFFFF;"></div>
+          <div class="combo-chip" style="background:#2E64E4;"></div>
+          <div class="combo-chip" style="background:#FF4B97;"></div>
+          <div class="combo-chip" style="background:#FF985D;"></div>
+          <div class="combo-chip" style="background:#F5F85D;"></div>
+        </div>
+        <div class="combo-rule" style="color:#9E9E9E;">All brand colors work on pure black. Full palette range available.</div>
+      </div>
+
+      <!-- On Pure White -->
+      <div class="combo-card" style="background:#FFFFFF; border:1px solid #E8E8E8;">
+        <div class="combo-label" style="color:#9E9E9E;">On Pure White</div>
+        <div class="combo-chips">
+          <div class="combo-chip" style="background:#000000;"></div>
+          <div class="combo-chip" style="background:#737373;"></div>
+          <div class="combo-chip" style="background:#9E9E9E;"></div>
+          <div class="combo-chip" style="background:#2E64E4;"></div>
+          <div class="combo-chip" style="background:#FF4B97;"></div>
+          <div class="combo-chip" style="background:#FF985D;"></div>
+          <div class="combo-chip" style="background:#F5F85D;"></div>
+        </div>
+        <div class="combo-rule" style="color:#9E9E9E;">All colors on white. Light Gray as text fails — use only for borders on this surface.</div>
+      </div>
+
+      <!-- On Dark Gray -->
+      <div class="combo-card" style="background:#737373;">
+        <div class="combo-label" style="color:#fff;">On Dark Gray</div>
+        <div class="combo-chips">
+          <div class="combo-chip" style="background:#000000;"></div>
+          <div class="combo-chip" style="background:#D9D9D9;"></div>
+          <div class="combo-chip" style="background:#FFFFFF;"></div>
+          <div class="combo-chip" style="background:#F5F85D;"></div>
+        </div>
+        <div class="combo-rule" style="color:rgba(255,255,255,0.65);">Black, light grays, white, and yellow. Feature colors not validated on this bg.</div>
+      </div>
+
+      <!-- On Light Gray -->
+      <div class="combo-card" style="background:#D9D9D9;">
+        <div class="combo-label" style="color:#737373;">On Light Gray</div>
+        <div class="combo-chips">
+          <div class="combo-chip" style="background:#000000;"></div>
+          <div class="combo-chip" style="background:#737373;"></div>
+          <div class="combo-chip" style="background:#F5F85D;"></div>
+        </div>
+        <div class="combo-rule" style="color:#737373;">Black and dark gray only for text. Yellow as accent. Feature colors not validated.</div>
+      </div>
+
+      <!-- On Yellow -->
+      <div class="combo-card" style="background:#F5F85D;">
+        <div class="combo-label">On Luna Yellow</div>
+        <div class="combo-chips">
+          <div class="combo-chip" style="background:#000000;"></div>
+        </div>
+        <div class="combo-rule" style="color:#5A5B00;">Black text only. No white, no gray, no feature colors on yellow. No exceptions.</div>
+      </div>
+
+      <!-- On Feature Colors -->
+      <div class="combo-card" style="background:#F5F5F5; border:1px solid #E8E8E8;">
+        <div class="combo-label" style="color:#9E9E9E;">On Blue / Magenta / Orange</div>
+        <div class="combo-chips">
+          <div class="combo-chip" style="background:#FFFFFF; border:1px solid #E0E0E0;"></div>
+        </div>
+        <div class="combo-rule" style="color:#737373;">White text only on all three feature colors at 400 stop. Black fails contrast on all three.</div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════
+       03 — TEXT HIERARCHY
+  ═══════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">03 — Text Hierarchy <span>Light mode</span></div>
+
+    <p style="font-size:13px; color:#737373; margin-bottom:32px; max-width:520px; line-height:1.7;">
+      Four levels on white and light surfaces. Derive from the neutral palette — no additional values needed.
+    </p>
+
+    <table class="text-hier-table">
+      <thead>
+        <tr>
+          <th>Role</th>
+          <th>Token</th>
+          <th>Hex</th>
+          <th>Specimen</th>
+          <th>Use</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span style="font-size:11px; font-weight:600;">Primary</span></td>
+          <td class="type-token">Text/Primary</td>
+          <td class="type-meta">#000000</td>
+          <td><span style="font-size:16px; font-weight:600; color:#000;">Peak Score</span></td>
+          <td style="font-size:11px; color:#9E9E9E;">Headlines, values, key labels</td>
+        </tr>
+        <tr>
+          <td><span style="font-size:11px; font-weight:600; color:#737373;">Secondary</span></td>
+          <td class="type-token">Text/Secondary</td>
+          <td class="type-meta">#737373</td>
+          <td><span style="font-size:16px; font-weight:400; color:#737373;">Your readiness is high today</span></td>
+          <td style="font-size:11px; color:#9E9E9E;">Body copy, descriptive text, sub-labels</td>
+        </tr>
+        <tr>
+          <td><span style="font-size:11px; font-weight:500; color:#9E9E9E;">Tertiary</span></td>
+          <td class="type-token">Text/Tertiary</td>
+          <td class="type-meta">#9E9E9E</td>
+          <td><span style="font-size:16px; font-weight:400; color:#9E9E9E;">Last updated 4 hrs ago</span></td>
+          <td style="font-size:11px; color:#9E9E9E;">Timestamps, metadata, placeholders</td>
+        </tr>
+        <tr>
+          <td><span style="font-size:11px; font-weight:400; color:#D9D9D9;">Disabled</span></td>
+          <td class="type-token">Text/Disabled</td>
+          <td class="type-meta">#D9D9D9</td>
+          <td><span style="font-size:16px; font-weight:400; color:#D9D9D9;">Unavailable state</span></td>
+          <td style="font-size:11px; color:#9E9E9E;">Disabled inputs, locked features</td>
+        </tr>
+        <tr>
+          <td><span style="font-size:11px; font-weight:600;">On Color</span></td>
+          <td class="type-token">Text/OnColor</td>
+          <td class="type-meta">#FFFFFF</td>
+          <td>
+            <span style="display:inline-flex; gap:8px;">
+              <span style="background:#2E64E4; color:#fff; font-size:13px; font-weight:500; padding:4px 10px; border-radius:4px;">Recovery</span>
+              <span style="background:#FF4B97; color:#fff; font-size:13px; font-weight:500; padding:4px 10px; border-radius:4px;">Cycle</span>
+              <span style="background:#FF985D; color:#fff; font-size:13px; font-weight:500; padding:4px 10px; border-radius:4px;">Strain</span>
+            </span>
+          </td>
+          <td style="font-size:11px; color:#9E9E9E;">Text on feature color fills</td>
+        </tr>
+        <tr>
+          <td><span style="font-size:11px; font-weight:600;">On Yellow</span></td>
+          <td class="type-token">Text/OnYellow</td>
+          <td class="type-meta">#000000</td>
+          <td><span style="background:#F5F85D; color:#000; font-size:13px; font-weight:600; padding:4px 10px; border-radius:4px;">Peak Score</span></td>
+          <td style="font-size:11px; color:#9E9E9E;">Text on yellow fills only — always black</td>
+        </tr>
+        <tr>
+          <td><span style="font-size:11px; font-weight:600; color:#fff; background:#000; padding:2px 6px; border-radius:3px;">Reversed</span></td>
+          <td class="type-token">Text/Reversed</td>
+          <td class="type-meta">#FFFFFF</td>
+          <td><span style="background:#000; color:#fff; font-size:13px; font-weight:500; padding:4px 10px; border-radius:4px;">On dark surfaces</span></td>
+          <td style="font-size:11px; color:#9E9E9E;">Text on black card fills or dark overlays</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+
+  <!-- ═══════════════════════════════
+       04 — SEMANTIC STATES
+  ═══════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">04 — Semantic State Colors <span>Suggested</span></div>
+
+    <p style="font-size:13px; color:#737373; margin-bottom:32px; max-width:560px; line-height:1.7;">
+      Keeping within the spirit of the palette — high chroma, fresh, non-clinical. These are independent from the feature bucket colors so states can exist on any screen regardless of feature color.
+    </p>
+
+    <div class="semantic-grid">
+      <div class="semantic-card">
+        <div class="semantic-swatch" style="background:#00C37A;"></div>
+        <div class="semantic-info">
+          <div class="semantic-name">Positive / Success</div>
+          <div class="semantic-hex">#00C37A</div>
+          <div class="semantic-note">Good scores, optimal metrics, goals reached. Neutral green — doesn't conflict with any feature bucket.</div>
+        </div>
+      </div>
+      <div class="semantic-card">
+        <div class="semantic-swatch" style="background:#F5F85D;"></div>
+        <div class="semantic-info">
+          <div class="semantic-name">Warning / Caution</div>
+          <div class="semantic-hex">#F5F85D</div>
+          <div class="semantic-note">Fair scores, approaching limits, moderate attention needed. Luna Yellow doubles as the warning state — natural fit.</div>
+        </div>
+      </div>
+      <div class="semantic-card">
+        <div class="semantic-swatch" style="background:#FF3B3B;"></div>
+        <div class="semantic-info">
+          <div class="semantic-name">Critical / Alert</div>
+          <div class="semantic-hex">#FF3B3B</div>
+          <div class="semantic-note">Pay attention states, failed goals, urgent signals. Sharp red — clearly distinct from Strain Orange.</div>
+        </div>
+      </div>
+      <div class="semantic-card">
+        <div class="semantic-swatch" style="background:#2E64E4;"></div>
+        <div class="semantic-info">
+          <div class="semantic-name">Informational</div>
+          <div class="semantic-hex">#2E64E4</div>
+          <div class="semantic-note">Neutral data points, tips, LifeOS AI moments, non-urgent nudges. Maps to Recovery Blue — confirm once bucket assignment is locked.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note" style="margin-top:24px;">
+      <strong>Note on Warning = Yellow:</strong> This is a strong suggestion — Yellow is the brand primary and naturally reads as "pay attention" without being alarming. If Yellow is being used heavily as a UI accent (e.g. CTA buttons), we should keep it as warning-only and use a muted amber (#F0B429) for decorative yellow moments to avoid confusion.
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════
+       05 — STROKE / BORDER TOKENS
+  ═══════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">05 — Stroke &amp; Border Tokens <span>Minimal, thin</span></div>
+
+    <p style="font-size:13px; color:#737373; margin-bottom:32px; max-width:520px; line-height:1.7;">
+      All strokes are 1px. Vibe: minimal, barely-there lines that define space without adding visual weight. No 2px dividers, no heavy borders.
+    </p>
+
+    <div class="stroke-row">
+
+      <div class="stroke-item">
+        <div class="stroke-info">
+          <div class="stroke-token-name">Border/Ghost</div>
+          <div class="stroke-desc">#F0F0F0 — 1px</div>
+        </div>
+        <div style="background:#F0F0F0; height:1px; width:100%;"></div>
+        <div class="stroke-use">Layout dividers, between-row separators. Barely perceptible.</div>
+      </div>
+
+      <div class="stroke-item">
+        <div class="stroke-info">
+          <div class="stroke-token-name">Border/Subtle</div>
+          <div class="stroke-desc">#D9D9D9 — 1px</div>
+        </div>
+        <div style="background:#D9D9D9; height:1px; width:100%;"></div>
+        <div class="stroke-use">Card borders, input fields at rest. Standard structural border.</div>
+      </div>
+
+      <div class="stroke-item">
+        <div class="stroke-info">
+          <div class="stroke-token-name">Border/Default</div>
+          <div class="stroke-desc">#9E9E9E — 1px</div>
+        </div>
+        <div style="background:#9E9E9E; height:1px; width:100%;"></div>
+        <div class="stroke-use">Section separators that need to read. Selected tabs, hover states.</div>
+      </div>
+
+      <div class="stroke-item">
+        <div class="stroke-info">
+          <div class="stroke-token-name">Border/Emphasis</div>
+          <div class="stroke-desc">#000000 — 1px</div>
+        </div>
+        <div style="background:#000000; height:1px; width:100%;"></div>
+        <div class="stroke-use">Focused input, selected card, active/pressed states. Black, sharp.</div>
+      </div>
+
+      <div class="stroke-item">
+        <div class="stroke-info">
+          <div class="stroke-token-name">Border/Brand</div>
+          <div class="stroke-desc">#F5F85D — 1px</div>
+        </div>
+        <div style="background:#F5F85D; height:1px; width:100%;"></div>
+        <div class="stroke-use">Highlighted metric, current-day indicator, brand accent border.</div>
+      </div>
+
+      <div class="stroke-item">
+        <div class="stroke-info">
+          <div class="stroke-token-name">Border/Critical</div>
+          <div class="stroke-desc">#FF3B3B — 1px</div>
+        </div>
+        <div style="background:#FF3B3B; height:1px; width:100%;"></div>
+        <div class="stroke-use">Error state on input fields, critical metric call-outs.</div>
+      </div>
+
+    </div>
+
+    <div class="note">
+      <strong>Stroke weight is always 1px.</strong> The minimal vibe comes from restraint in color, not thickness. If a border is doing structural work, use Border/Subtle. Only reach for Border/Emphasis and above for interactive feedback.
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════
+       06 — CORNER RADIUS
+  ═══════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">06 — Corner Radius <span>Small, purposeful</span></div>
+
+    <p style="font-size:13px; color:#737373; margin-bottom:32px; max-width:520px; line-height:1.7;">
+      Vibe is minimal and structural — very small radii, close to sharp. No pill shapes, no heavily rounded cards. Radius signals component type, not decoration.
+    </p>
+
+    <div class="radius-grid">
+      <div class="radius-card">
+        <div class="radius-demo" style="border-radius:0px;"></div>
+        <div class="radius-label">Radius/None<br>0px<br><span style="color:#C4C4C4;">Hard edge moments,<br>full-bleed elements</span></div>
+      </div>
+      <div class="radius-card">
+        <div class="radius-demo" style="border-radius:2px;"></div>
+        <div class="radius-label">Radius/XS<br>2px<br><span style="color:#C4C4C4;">Tags, overline chips,<br>progress bars</span></div>
+      </div>
+      <div class="radius-card">
+        <div class="radius-demo" style="border-radius:4px;"></div>
+        <div class="radius-label">Radius/S<br>4px<br><span style="color:#C4C4C4;">Badges, inline pills,<br>small buttons</span></div>
+      </div>
+      <div class="radius-card">
+        <div class="radius-demo" style="border-radius:6px;"></div>
+        <div class="radius-label">Radius/M<br>6px<br><span style="color:#C4C4C4;">Input fields,<br>compact cards</span></div>
+      </div>
+      <div class="radius-card">
+        <div class="radius-demo" style="border-radius:8px;"></div>
+        <div class="radius-label">Radius/L<br>8px<br><span style="color:#C4C4C4;">Standard cards,<br>primary buttons</span></div>
+      </div>
+      <div class="radius-card">
+        <div class="radius-demo" style="border-radius:12px;"></div>
+        <div class="radius-label">Radius/XL<br>12px<br><span style="color:#C4C4C4;">Large cards, modals,<br>sheet surfaces</span></div>
+      </div>
+    </div>
+
+    <div class="note" style="margin-top:24px;">
+      <strong>Max radius is 12px.</strong> No pill buttons. No fully-rounded cards. If a design calls for more rounding, question whether a different component pattern fits better. Consistent restraint here is what creates the crisp, structured feel.
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════
+       07 — TYPE SCALE
+  ═══════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">07 — Type Scale <span>Geist + Geist Mono</span></div>
+
+    <!-- Overline -->
+    <div class="group-title" style="margin-bottom:4px;">Overline / Eyebrow <span class="badge badge-subtle">Geist Mono</span></div>
+    <p style="font-size:12px; color:#737373; margin-bottom:20px;">Section labels, category tags, UI metadata. Always uppercase. Always tracked.</p>
+    <table class="type-table" style="margin-bottom:48px;">
+      <thead><tr><th>Token</th><th>Specimen</th><th>Size · Weight · Tracking</th><th>Use</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="type-token">Overline/L</td>
+          <td><span style="font-family:'Geist Mono',monospace; font-size:13px; font-weight:400; letter-spacing:0.14em; text-transform:uppercase; color:#737373;">Section Label</span></td>
+          <td class="type-meta">13px · 400 · +0.14em</td>
+          <td style="font-size:11px; color:#9E9E9E;">Screen-level section headers</td>
+        </tr>
+        <tr>
+          <td class="type-token">Overline/M</td>
+          <td><span style="font-family:'Geist Mono',monospace; font-size:11px; font-weight:400; letter-spacing:0.12em; text-transform:uppercase; color:#737373;">Category Label</span></td>
+          <td class="type-meta">11px · 400 · +0.12em</td>
+          <td style="font-size:11px; color:#9E9E9E;">Card overlines, badges</td>
+        </tr>
+        <tr>
+          <td class="type-token">Overline/S</td>
+          <td><span style="font-family:'Geist Mono',monospace; font-size:9px; font-weight:400; letter-spacing:0.12em; text-transform:uppercase; color:#9E9E9E;">Metadata</span></td>
+          <td class="type-meta">9px · 400 · +0.12em</td>
+          <td style="font-size:11px; color:#9E9E9E;">Timestamps, doc-level labels</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Display -->
+    <div class="group-title" style="margin-bottom:4px;">Display <span class="badge badge-subtle">Geist</span></div>
+    <p style="font-size:12px; color:#737373; margin-bottom:20px;">Hero moments — onboarding, splash, large score reveals.</p>
+    <table class="type-table" style="margin-bottom:48px;">
+      <thead><tr><th>Token</th><th>Specimen</th><th>Size · Weight · Tracking</th><th>Use</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="type-token">Display/01</td>
+          <td><span style="font-size:52px; font-weight:800; letter-spacing:-0.03em; line-height:1;">Peak.</span></td>
+          <td class="type-meta">52px · 800 · -0.03em</td>
+          <td style="font-size:11px; color:#9E9E9E;">Splash, brand moments</td>
+        </tr>
+        <tr>
+          <td class="type-token">Display/02</td>
+          <td><span style="font-size:36px; font-weight:700; letter-spacing:-0.025em; line-height:1;">Good morning.</span></td>
+          <td class="type-meta">36px · 700 · -0.025em</td>
+          <td style="font-size:11px; color:#9E9E9E;">Onboarding, greetings</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Headings -->
+    <div class="group-title" style="margin-bottom:4px;">Headings <span class="badge badge-subtle">Geist</span></div>
+    <p style="font-size:12px; color:#737373; margin-bottom:20px;">Three weights available at each step. Bold for emphasis, Medium for sub-structure, Regular for body-adjacent use.</p>
+    <table class="type-table" style="margin-bottom:48px;">
+      <thead><tr><th>Token</th><th>Specimen</th><th>Size · LH</th><th>Weights</th><th>Use</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="type-token">H1</td>
+          <td><span style="font-size:32px; font-weight:700; letter-spacing:-0.02em;">Peak Score</span></td>
+          <td class="type-meta">32px / 36px</td>
+          <td class="type-meta">700 · 500 · 400</td>
+          <td style="font-size:11px; color:#9E9E9E;">Screen title, hero value</td>
+        </tr>
+        <tr>
+          <td class="type-token">H2</td>
+          <td><span style="font-size:24px; font-weight:700; letter-spacing:-0.015em;">Today's overview</span></td>
+          <td class="type-meta">24px / 28px</td>
+          <td class="type-meta">700 · 500 · 400</td>
+          <td style="font-size:11px; color:#9E9E9E;">Section lead, modal title</td>
+        </tr>
+        <tr>
+          <td class="type-token">H3</td>
+          <td><span style="font-size:20px; font-weight:600; letter-spacing:-0.01em;">Sleep quality</span></td>
+          <td class="type-meta">20px / 24px</td>
+          <td class="type-meta">600 · 500 · 400</td>
+          <td style="font-size:11px; color:#9E9E9E;">Card heading, insight title</td>
+        </tr>
+        <tr>
+          <td class="type-token">H4</td>
+          <td><span style="font-size:16px; font-weight:600; letter-spacing:-0.005em;">Resting heart rate</span></td>
+          <td class="type-meta">16px / 20px</td>
+          <td class="type-meta">600 · 500 · 400</td>
+          <td style="font-size:11px; color:#9E9E9E;">Sub-section, list row title</td>
+        </tr>
+        <tr>
+          <td class="type-token">H5</td>
+          <td><span style="font-size:14px; font-weight:500;">Recovery index</span></td>
+          <td class="type-meta">14px / 18px</td>
+          <td class="type-meta">600 · 500 · 400</td>
+          <td style="font-size:11px; color:#9E9E9E;">Compact card title, metric label</td>
+        </tr>
+        <tr>
+          <td class="type-token">H6</td>
+          <td><span style="font-size:12px; font-weight:500;">Last updated 4 hrs ago</span></td>
+          <td class="type-meta">12px / 16px</td>
+          <td class="type-meta">600 · 500 · 400</td>
+          <td style="font-size:11px; color:#9E9E9E;">Caption, timestamp, small label</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Body -->
+    <div class="group-title" style="margin-bottom:4px;">Body <span class="badge badge-subtle">Geist</span></div>
+    <p style="font-size:12px; color:#737373; margin-bottom:20px;">For AI insights, descriptions, supporting copy. Comfortable reading at 1.6 line height.</p>
+    <table class="type-table" style="margin-bottom:48px;">
+      <thead><tr><th>Token</th><th>Specimen</th><th>Size · LH</th><th>Use</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="type-token">Body/L</td>
+          <td><span style="font-size:16px; font-weight:400; line-height:1.6; display:block; max-width:400px;">Your HRV dipped overnight — this usually means your body is still processing yesterday's load.</span></td>
+          <td class="type-meta">16px / 26px</td>
+          <td style="font-size:11px; color:#9E9E9E;">LifeOS insights, modals</td>
+        </tr>
+        <tr>
+          <td class="type-token">Body/M</td>
+          <td><span style="font-size:14px; font-weight:400; line-height:1.6; display:block; max-width:400px;">Your HRV dipped overnight — this usually means your body is still processing yesterday's load.</span></td>
+          <td class="type-meta">14px / 22px</td>
+          <td style="font-size:11px; color:#9E9E9E;">Card body, list descriptions</td>
+        </tr>
+        <tr>
+          <td class="type-token">Body/S</td>
+          <td><span style="font-size:12px; font-weight:400; line-height:1.6; display:block; max-width:400px;">HRV dipped overnight. Recovery in progress.</span></td>
+          <td class="type-meta">12px / 18px</td>
+          <td style="font-size:11px; color:#9E9E9E;">Compact surfaces, tooltips</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Numbers -->
+    <div class="group-title" style="margin-bottom:4px;">Numbers / Data <span class="badge badge-subtle">Geist Mono</span></div>
+    <p style="font-size:12px; color:#737373; margin-bottom:20px;">Mono for all metric values — tabular figures, clean column alignment. Thin weights for large display, Regular for smaller inline.</p>
+    <table class="type-table">
+      <thead><tr><th>Token</th><th>Specimen</th><th>Size · Weight</th><th>Use</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="type-token">Number/Hero</td>
+          <td><span style="font-family:'Geist Mono',monospace; font-size:72px; font-weight:300; letter-spacing:-0.02em; line-height:1;">87</span></td>
+          <td class="type-meta">72px · 300</td>
+          <td style="font-size:11px; color:#9E9E9E;">Peak Score hero, daily score reveal</td>
+        </tr>
+        <tr>
+          <td class="type-token">Number/XL</td>
+          <td><span style="font-family:'Geist Mono',monospace; font-size:48px; font-weight:300; letter-spacing:-0.02em; line-height:1;">7h 42m</span></td>
+          <td class="type-meta">48px · 300</td>
+          <td style="font-size:11px; color:#9E9E9E;">Sleep duration, activity totals</td>
+        </tr>
+        <tr>
+          <td class="type-token">Number/L</td>
+          <td><span style="font-family:'Geist Mono',monospace; font-size:36px; font-weight:400; letter-spacing:-0.015em; line-height:1;">12,453</span></td>
+          <td class="type-meta">36px · 400</td>
+          <td style="font-size:11px; color:#9E9E9E;">Steps, calories — large display</td>
+        </tr>
+        <tr>
+          <td class="type-token">Number/M</td>
+          <td><span style="font-family:'Geist Mono',monospace; font-size:28px; font-weight:400; line-height:1;">42 bpm</span></td>
+          <td class="type-meta">28px · 400</td>
+          <td style="font-size:11px; color:#9E9E9E;">Card metric display</td>
+        </tr>
+        <tr>
+          <td class="type-token">Number/S</td>
+          <td><span style="font-family:'Geist Mono',monospace; font-size:20px; font-weight:400; line-height:1;">29 ms</span></td>
+          <td class="type-meta">20px · 400</td>
+          <td style="font-size:11px; color:#9E9E9E;">Inline metric, contributor value</td>
+        </tr>
+        <tr>
+          <td class="type-token">Number/XS</td>
+          <td><span style="font-family:'Geist Mono',monospace; font-size:14px; font-weight:400; line-height:1;">98.2°F</span></td>
+          <td class="type-meta">14px · 400</td>
+          <td style="font-size:11px; color:#9E9E9E;">Dense grids, table values</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+
+  <!-- ═══════════════════════════════
+       08 — SPACING
+  ═══════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">08 — Spacing Scale <span>Base-4</span></div>
+
+    <div class="spacing-vis">
+      <div class="spacing-block"><div class="spacing-bar" style="width:2px; height:8px;"></div><div class="spacing-meta">xs<br>2</div></div>
+      <div class="spacing-block"><div class="spacing-bar" style="width:4px; height:16px;"></div><div class="spacing-meta">s<br>4</div></div>
+      <div class="spacing-block"><div class="spacing-bar" style="width:8px; height:24px;"></div><div class="spacing-meta">m<br>8</div></div>
+      <div class="spacing-block"><div class="spacing-bar" style="width:12px; height:32px;"></div><div class="spacing-meta">l<br>12</div></div>
+      <div class="spacing-block"><div class="spacing-bar" style="width:16px; height:40px;"></div><div class="spacing-meta">xl<br>16</div></div>
+      <div class="spacing-block"><div class="spacing-bar" style="width:20px; height:48px;"></div><div class="spacing-meta">xxl<br>20</div></div>
+      <div class="spacing-block"><div class="spacing-bar" style="width:24px; height:56px;"></div><div class="spacing-meta">xxxl<br>24</div></div>
+      <div class="spacing-block"><div class="spacing-bar" style="width:32px; height:64px;"></div><div class="spacing-meta">xh<br>32</div></div>
+      <div class="spacing-block"><div class="spacing-bar" style="width:40px; height:72px;"></div><div class="spacing-meta">xxh<br>40</div></div>
+      <div class="spacing-block"><div class="spacing-bar" style="width:48px; height:80px;"></div><div class="spacing-meta">h3<br>48</div></div>
+      <div class="spacing-block"><div class="spacing-bar" style="width:64px; height:96px;"></div><div class="spacing-meta">h4<br>64</div></div>
+    </div>
+    <p style="font-size:11px; color:#9E9E9E; margin-top:20px; font-family:var(--font-mono);">Screen horizontal margin = xl (16px) · Card padding = xl–xxl (16–20px) · Section gaps = xh–xxh (32–40px)</p>
+  </div>
+
+
+  <!-- ═══════════════════════════════
+       09 — HOME SCREEN COMPONENTS
+  ═══════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">09 — Home Screen Components <span>Final · v0.3</span></div>
+
+    <p style="font-size:13px; color:#737373; margin-bottom:40px; max-width:560px; line-height:1.7;">
+      Patterns locked from the final home screen design. These define the canonical components and their token usage.
+    </p>
+
+    <!-- Pill Nav -->
+    <div class="group-title">Pill Navigation</div>
+    <p style="font-size:11px; color:#9E9E9E; margin-bottom:20px; max-width:480px; line-height:1.6;">Horizontal scroll nav. Active state = white filled pill with icon + label. Inactive = 40×40px circular button on App Background (#F0EFEA). No borders on pills.</p>
+    <div style="background:#F0EFEA; border-radius:12px; padding:14px 16px; display:inline-flex; align-items:center; gap:6px; margin-bottom:40px;">
+      <!-- Avatar -->
+      <div style="width:40px;height:40px;border-radius:50%;background:#E2E0D9;display:flex;align-items:center;justify-content:center;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#5A5855" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+      </div>
+      <!-- Active pill -->
+      <div style="display:inline-flex;align-items:center;gap:8px;background:#fff;border-radius:999px;padding:0 16px 0 14px;height:42px;font-family:'Geist',sans-serif;font-size:14px;font-weight:500;color:#000;letter-spacing:-0.01em;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+        Home
+      </div>
+      <!-- Inactive pills -->
+      <div style="width:40px;height:40px;border-radius:50%;background:#E2E0D9;display:flex;align-items:center;justify-content:center;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5A5855" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      </div>
+      <div style="width:40px;height:40px;border-radius:50%;background:#E2E0D9;display:flex;align-items:center;justify-content:center;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5A5855" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+      </div>
+      <div style="width:40px;height:40px;border-radius:50%;background:#E2E0D9;display:flex;align-items:center;justify-content:center;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5A5855" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
+      </div>
+    </div>
+
+    <!-- Hero Dark Section -->
+    <div class="group-title">Hero Section</div>
+    <p style="font-size:11px; color:#9E9E9E; margin-bottom:20px; max-width:480px; line-height:1.6;">Full-width dark panel. Background #1A1A18. Score number: 80px / weight 300 / white. Score delta badge: bg #1A3D2B, text #4ADE80 (green), mono font 11px. PEAK SCORE label: mono 10px / uppercase / #8A887F. Histogram track height 44px; gray bars #3A3835, today bar Luna Yellow #F5F85D.</p>
+    <div style="background:#1A1A18; border-radius:12px; padding:20px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:flex-start; max-width:393px;">
+      <div>
+        <div style="font-family:'Geist Mono',monospace;font-size:10px;font-weight:500;letter-spacing:0.14em;text-transform:uppercase;color:#8A887F;margin-bottom:16px;">TODAY · 28 APR</div>
+        <div style="display:flex;align-items:flex-end;gap:10px;margin-bottom:8px;">
+          <span style="font-family:'Geist',sans-serif;font-size:64px;font-weight:300;line-height:0.9;letter-spacing:-0.04em;color:#fff;">84</span>
+          <span style="display:inline-flex;align-items:center;background:#1A3D2B;color:#4ADE80;font-family:'Geist Mono',monospace;font-size:11px;font-weight:600;padding:4px 8px;border-radius:6px;margin-bottom:6px;letter-spacing:0.02em;">6 ↑</span>
+        </div>
+        <div style="font-family:'Geist Mono',monospace;font-size:10px;font-weight:500;letter-spacing:0.16em;text-transform:uppercase;color:#8A887F;">PEAK SCORE</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:4px;">
+        <svg width="44" height="50" viewBox="0 0 48 54" fill="none"><ellipse cx="24" cy="27" rx="20" ry="23" stroke="#3A3835" stroke-width="10"/><ellipse cx="24" cy="27" rx="20" ry="23" stroke="#4A4843" stroke-width="6"/><ellipse cx="24" cy="27" rx="20" ry="23" stroke="url(#rg2)" stroke-width="3"/><ellipse cx="24" cy="27" rx="10" ry="13" fill="#1A1A18"/><defs><linearGradient id="rg2" x1="4" y1="4" x2="44" y2="50" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#706C65"/><stop offset="45%" stop-color="#C8C4BC"/><stop offset="100%" stop-color="#4A4843"/></linearGradient></defs></svg>
+        <span style="font-family:'Geist Mono',monospace;font-size:9px;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:#8A887F;">Last sync 2:45pm</span>
+      </div>
+    </div>
+    <div style="background:#1A1A18; border-radius:0 0 12px 12px; padding:10px 20px 14px; max-width:393px; margin-bottom:40px; border-top:1px solid #2C2C2A; display:flex; gap:4px; align-items:flex-end;">
+      <!-- 7 bars -->
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;"><div style="width:100%;height:44px;display:flex;align-items:flex-end;"><div style="width:100%;height:72%;background:#3A3835;border-radius:2px 2px 0 0;"></div></div><span style="font-family:'Geist Mono',monospace;font-size:9px;font-weight:500;color:#8A887F;text-transform:uppercase;padding-bottom:4px;">W</span></div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;"><div style="width:100%;height:44px;display:flex;align-items:flex-end;"><div style="width:100%;height:78%;background:#3A3835;border-radius:2px 2px 0 0;"></div></div><span style="font-family:'Geist Mono',monospace;font-size:9px;font-weight:500;color:#8A887F;text-transform:uppercase;padding-bottom:4px;">T</span></div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;"><div style="width:100%;height:44px;display:flex;align-items:flex-end;"><div style="width:100%;height:65%;background:#3A3835;border-radius:2px 2px 0 0;"></div></div><span style="font-family:'Geist Mono',monospace;font-size:9px;font-weight:500;color:#8A887F;text-transform:uppercase;padding-bottom:4px;">F</span></div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;"><div style="width:100%;height:44px;display:flex;align-items:flex-end;"><div style="width:100%;height:81%;background:#3A3835;border-radius:2px 2px 0 0;"></div></div><span style="font-family:'Geist Mono',monospace;font-size:9px;font-weight:500;color:#8A887F;text-transform:uppercase;padding-bottom:4px;">S</span></div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;"><div style="width:100%;height:44px;display:flex;align-items:flex-end;"><div style="width:100%;height:88%;background:#3A3835;border-radius:2px 2px 0 0;"></div></div><span style="font-family:'Geist Mono',monospace;font-size:9px;font-weight:500;color:#8A887F;text-transform:uppercase;padding-bottom:4px;">S</span></div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;"><div style="width:100%;height:44px;display:flex;align-items:flex-end;"><div style="width:100%;height:70%;background:#3A3835;border-radius:2px 2px 0 0;"></div></div><span style="font-family:'Geist Mono',monospace;font-size:9px;font-weight:500;color:#8A887F;text-transform:uppercase;padding-bottom:4px;">M</span></div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;"><div style="width:100%;height:44px;display:flex;align-items:flex-end;"><div style="width:100%;height:84%;background:#F5F85D;border-radius:2px 2px 0 0;"></div></div><span style="font-family:'Geist Mono',monospace;font-size:9px;font-weight:600;color:#F5F85D;text-transform:uppercase;padding-bottom:4px;">T</span></div>
+    </div>
+
+    <!-- The Brief -->
+    <div class="group-title">The Brief</div>
+    <p style="font-size:11px; color:#9E9E9E; margin-bottom:20px; max-width:480px; line-height:1.6;">Fixed daily insight card. Background Brief Surface (#E8E6E0). Header overline: mono 10px / uppercase / #5C5A54 + expand icon. Body: 15px / weight 500 / black. Subtitle: 12px / #5C5A54. "Ask Luna" CTA: 13px / weight 500 with chat icon.</p>
+    <div style="background:#E8E6E0; border-radius:12px; padding:16px 20px; max-width:393px; margin-bottom:40px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <span style="font-family:'Geist Mono',monospace;font-size:10px;font-weight:500;letter-spacing:0.14em;text-transform:uppercase;color:#5C5A54;">THE BRIEF</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5C5A54" stroke-width="1.6" stroke-linecap="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      </div>
+      <p style="font-size:15px;font-weight:500;color:#000;line-height:1.3;letter-spacing:-0.01em;margin-bottom:6px;">Your HRV dropped 12% overnight from travel stress.</p>
+      <p style="font-size:12px;color:#5C5A54;line-height:1.55;margin-bottom:12px;">Circadian reset is the priority. Morning sunlight + delayed caffeine will recover this within 48 hours.</p>
+      <div style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:500;color:#000;font-family:'Geist',sans-serif;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Ask Luna
+      </div>
+    </div>
+
+    <!-- Task Row -->
+    <div class="group-title">Task Row</div>
+    <p style="font-size:11px; color:#9E9E9E; margin-bottom:20px; max-width:480px; line-height:1.6;">3-column grid: 54px time col (mono 11px) · flex content col (name 14px/500 + desc 11px/#7A7870) · auto badge col. Divider: Border Warm (#E2E0D9) 1px. Active "NOW" badge: Luna Yellow bg / black text / 4px radius.</p>
+    <div style="background:#F0EFEA; border-radius:12px; overflow:hidden; max-width:393px; margin-bottom:40px;">
+      <!-- NOW row -->
+      <div style="display:grid;grid-template-columns:54px 1fr auto;column-gap:14px;align-items:start;padding:14px 20px;border-bottom:1px solid #E2E0D9;">
+        <span style="font-family:'Geist Mono',monospace;font-size:11px;font-weight:500;letter-spacing:0.06em;color:#000;padding-top:1px;">7:30</span>
+        <div><div style="font-size:14px;font-weight:500;color:#000;letter-spacing:-0.01em;margin-bottom:3px;">20 min sunlight walk</div><div style="font-size:11px;color:#7A7870;line-height:1.5;">Anchors circadian rhythm to SF time.</div></div>
+        <span style="font-family:'Geist Mono',monospace;font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;background:#F5F85D;color:#000;padding:3px 7px;border-radius:4px;margin-top:1px;">Now</span>
+      </div>
+      <!-- Muted row -->
+      <div style="display:grid;grid-template-columns:54px 1fr auto;column-gap:14px;align-items:start;padding:14px 20px;border-bottom:1px solid #E2E0D9;">
+        <span style="font-family:'Geist Mono',monospace;font-size:11px;font-weight:500;letter-spacing:0.06em;color:#B0AEA7;padding-top:1px;">8:15</span>
+        <div><div style="font-size:14px;font-weight:500;color:#B0AEA7;letter-spacing:-0.01em;margin-bottom:3px;">Magnesium + B-complex</div><div style="font-size:11px;color:#7A7870;line-height:1.5;">Travel recovery stack. Delay caffeine 90 min.</div></div>
+      </div>
+      <!-- Upcoming row -->
+      <div style="display:grid;grid-template-columns:54px 1fr auto;column-gap:14px;align-items:start;padding:14px 20px;">
+        <span style="font-family:'Geist Mono',monospace;font-size:11px;font-weight:500;letter-spacing:0.06em;color:#000;padding-top:1px;">10:00</span>
+        <div><div style="font-size:14px;font-weight:500;color:#000;letter-spacing:-0.01em;margin-bottom:3px;">Protein-first breakfast</div><div style="font-size:11px;color:#7A7870;line-height:1.5;">Eggs and greens. Skip simple carbs until lunch.</div></div>
+      </div>
+    </div>
+
+    <!-- Ask Dock -->
+    <div class="group-title">Ask Dock</div>
+    <p style="font-size:11px; color:#9E9E9E; margin-bottom:20px; max-width:480px; line-height:1.6;">Fixed to screen bottom. Input pill: white bg / 52px height / full-radius / shadow. Placeholder: 15px / #9E9B93. Mic icon inside pill right. Plus button: 52px circle / #000 fill / white icon / elevated shadow.</p>
+    <div style="background:#F0EFEA; border-radius:12px; padding:8px 16px 20px; display:flex; align-items:center; gap:10px; max-width:393px; margin-bottom:8px;">
+      <div style="flex:1;height:52px;background:#fff;border-radius:999px;display:flex;align-items:center;justify-content:space-between;padding:0 10px 0 20px;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+        <span style="font-size:15px;font-weight:400;color:#9E9B93;letter-spacing:-0.01em;font-family:'Geist',sans-serif;">Ask LifeOS Anything</span>
+        <div style="width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#6B6965;">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>
+        </div>
+      </div>
+      <div style="width:52px;height:52px;border-radius:50%;background:#000;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.22);flex-shrink:0;">
+        <svg width="17" height="17" viewBox="0 0 18 18" fill="none"><line x1="9" y1="3" x2="9" y2="15" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/><line x1="3" y1="9" x2="15" y2="9" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </div>
+    </div>
+    <div class="note">
+      <strong>Ask Dock sits above the safe area.</strong> Bottom padding = 22px on device (accounts for home indicator). Gradient fade from app bg to transparent ensures content below blends cleanly as the list scrolls under it.
+    </div>
+
+  </div>
+
+
+  <!-- Footer -->
+  <div style="border-top:1px solid #D9D9D9; padding-top:32px; display:flex; justify-content:space-between; align-items:center;">
+    <div style="font-family:'Geist Mono',monospace; font-size:10px; color:#9E9E9E; letter-spacing:0.08em; text-transform:uppercase;">
+      Luna Design System · 2026 Brand Foundation · v0.3
+    </div>
+    <div style="font-family:'Geist Mono',monospace; font-size:10px; color:#C4C4C4;">Light mode only · No gradients · Geist + Geist Mono</div>
+  </div>
+
+</div>
+<script>lucide.createIcons();</script>
+</body>
+</html>

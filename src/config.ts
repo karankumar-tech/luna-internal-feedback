@@ -5,6 +5,8 @@ const EnvSchema = z.object({
   SUPABASE_DB_URL: z.string().url().describe('Postgres connection string from Supabase'),
   APP_API_KEY: z.string().min(16, 'APP_API_KEY must be at least 16 chars'),
   ADMIN_API_KEY: z.string().min(16, 'ADMIN_API_KEY must be at least 16 chars'),
+  DASHBOARD_KEY: z.string().min(16, 'DASHBOARD_KEY must be at least 16 chars'),
+  DASHBOARD_SESSION_DAYS: z.coerce.number().int().positive().max(365).default(30),
   PORT: z.coerce.number().int().positive().default(3000),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),

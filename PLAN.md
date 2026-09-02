@@ -306,11 +306,21 @@ luna-feedback-app/
 | 5 | `POST /v1/feedback/:feature` with idempotency, IST formatting | DONE, integration tests |
 | 6 | Admin category + feature endpoints, cache invalidation | DONE, integration tests |
 | 7 | `GET /v1/feedback` list + filters + `GET /:id` | DONE, integration tests |
-| 8 | Vercel handler, `.env.example`, README with curl examples | DONE; deploy pending your Vercel project |
+| 8 | Vercel deploy (Fastify preset, `src/server.ts` entry), `.env.example`, README | DONE, live at luna-feedback.buildsage.tech |
+| 9 | `/docs` public API reference page + `docs/API.md` | DONE |
+| 10 | `/dashboard`: DASHBOARD_KEY sign-in with 30-day signed HttpOnly cookie; filters (range, feature, platform, result, category, user); KPIs; charts (by day, by feature, top categories); table with drawer + CSV; category management | DONE |
+| 11 | `GET /v1/feedback/stats` aggregates; `client.platform` (ios/android) column + filter | DONE |
 
 Steps 1, 3, and the unit tests need no credentials. Steps 2 and onward run against a local Supabase via Docker until you share the project creds, then the same migrations apply to the hosted project with `supabase db push`.
 
 ---
+
+## 6b. Dashboard and pages
+
+- `src/pages/dashboard.html` and `src/pages/docs.html` are embedded into `src/pages/generated.ts` by `scripts/embed-pages.mjs` (pre-dev/build/test hook; generated file is committed so the Vercel bundle is deterministic).
+- Design follows `docs/design/luna-design-system.html` (Geist / Geist Mono, warm off-white, 1px borders, radii ≤ 12px, light only). Chart colours: status green `#00C37A` / red `#FF3B3B` for working-fine vs issue, Recovery Blue `#2E64E4` for single-series bars; validated with the dataviz palette checker.
+- Dashboard auth: `POST /dashboard/login` exchanges `DASHBOARD_KEY` for a stateless HMAC token in an HttpOnly, SameSite=Lax cookie (`DASHBOARD_SESSION_DAYS`, default 30). Fetches carry `x-requested-with: dashboard`; the auth hook treats cookie + header as admin. Rotating the key signs everyone out. Login is rate-limited per IP in memory.
+- Demo data: `node scripts/seed-demo.mjs 60` / `--clean` (emails `@luna-demo.invalid`).
 
 ## 7. Assumptions to confirm
 

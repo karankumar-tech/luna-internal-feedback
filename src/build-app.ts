@@ -6,6 +6,8 @@ import { registerErrorHandler } from './plugins/errorHandler.js';
 import { registerHealthRoutes } from './modules/health/health.routes.js';
 import { registerFeedbackRoutes } from './modules/feedback/feedback.routes.js';
 import { registerAdminRoutes } from './modules/categories/categories.routes.js';
+import { registerPageRoutes } from './modules/pages/pages.routes.js';
+import { sessionSecretFrom } from './plugins/dashboardSession.js';
 import { CategoriesRepo } from './modules/categories/categories.repo.js';
 import { FeedbackRepo } from './modules/feedback/feedback.repo.js';
 import { FeedbackService } from './modules/feedback/feedback.service.js';
@@ -51,9 +53,11 @@ export function buildApp(opts: BuildOptions = {}): App {
   const service = new FeedbackService(feedbackRepo, categories, config.APP_TIMEZONE);
 
   registerErrorHandler(app);
-  registerAuth(app, { app: config.APP_API_KEY, admin: config.ADMIN_API_KEY });
+  const sessionSecret = sessionSecretFrom(config.DASHBOARD_KEY);
+  registerAuth(app, { app: config.APP_API_KEY, admin: config.ADMIN_API_KEY, sessionSecret });
   registerHealthRoutes(app, { db });
-  registerFeedbackRoutes(app, { service, categories });
+  registerFeedbackRoutes(app, { service, categories, timeZone: config.APP_TIMEZONE });
+  registerPageRoutes(app, { dashboardKey: config.DASHBOARD_KEY, sessionSecret, sessionDays: config.DASHBOARD_SESSION_DAYS });
   registerAdminRoutes(app, { categories });
 
   app.addHook('onClose', async () => {

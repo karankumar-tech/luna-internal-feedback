@@ -70,8 +70,12 @@ export const FEATURE_DEFINITIONS: Record<FeatureKey, FeatureDefinition> = {
   },
 };
 
-/** Optional client context the iOS module attaches; stored as columns for dashboard slicing. */
+export const PLATFORMS = ['ios', 'android'] as const;
+export type Platform = (typeof PLATFORMS)[number];
+
+/** Optional client context the app attaches; stored as columns for dashboard slicing. */
 export const CLIENT_CONTEXT_KEYS = [
+  'platform',
   'app_version',
   'build_number',
   'build_channel',
@@ -81,3 +85,15 @@ export const CLIENT_CONTEXT_KEYS = [
   'session_id',
 ] as const;
 export type ClientContextKey = (typeof CLIENT_CONTEXT_KEYS)[number];
+
+/** Client context field definitions, exposed in the schema so the app knows the allowed values. */
+export const CLIENT_CONTEXT_FIELDS: readonly FieldDef[] = [
+  { key: 'platform', type: 'string', label: 'Platform', required: false, options: [...PLATFORMS] },
+  { key: 'app_version', type: 'string', label: 'App version', required: false, maxLength: 200 },
+  { key: 'build_number', type: 'string', label: 'Build number', required: false, maxLength: 200 },
+  { key: 'build_channel', type: 'string', label: 'Build channel', required: false, maxLength: 200 },
+  { key: 'firmware_version', type: 'string', label: 'Ring firmware version', required: false, maxLength: 200 },
+  { key: 'os_version', type: 'string', label: 'OS version', required: false, maxLength: 200 },
+  { key: 'device_id', type: 'string', label: 'Device ID', required: false, maxLength: 200 },
+  { key: 'session_id', type: 'string', label: 'Session ID', required: false, maxLength: 200 },
+];

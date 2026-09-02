@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { FieldDef } from './fieldTypes.js';
-import { COMMON_FIELDS, FEATURE_DEFINITIONS, SCHEMA_VERSION, CLIENT_CONTEXT_KEYS, type FeatureKey } from './registry.js';
+import { COMMON_FIELDS, FEATURE_DEFINITIONS, SCHEMA_VERSION, CLIENT_CONTEXT_KEYS, CLIENT_CONTEXT_FIELDS, type FeatureKey } from './registry.js';
 
 export interface CategoryOption {
   key: string;
@@ -26,6 +26,7 @@ export interface SchemaResponse {
   schema_version: number;
   common_fields: FieldDef[];
   client_context_keys: readonly string[];
+  client_context_fields: FieldDef[];
   features: FeatureSchema[];
 }
 
@@ -53,6 +54,7 @@ export function buildSchemaResponse(
     schema_version: SCHEMA_VERSION,
     common_fields: [...COMMON_FIELDS],
     client_context_keys: CLIENT_CONTEXT_KEYS,
+    client_context_fields: [...CLIENT_CONTEXT_FIELDS],
     features: active.map((f) => buildFeatureSchema(f, categoriesByFeature.get(f.key) ?? [])),
   });
 }

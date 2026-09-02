@@ -75,6 +75,8 @@ describe('GET /v1/feedback/schema', () => {
     expect(sleep.fields.map((f: { key: string }) => f.key)).toEqual(['actual_start_time', 'actual_end_time', 'recorded_start_time', 'recorded_end_time']);
     expect(sleep.rules).toHaveLength(2);
     expect(body.common_fields.find((f: { key: string }) => f.key === 'feedback_text').maxLength).toBe(500);
+    expect(body.client_context_keys).toContain('platform');
+    expect(body.client_context_fields.find((f: { key: string }) => f.key === 'platform').options).toEqual(['ios', 'android']);
   });
 
   it('supports ETag / 304', async () => {
@@ -97,10 +99,11 @@ describe('POST /v1/feedback/:feature', () => {
   it('stores a home submission and returns IST timestamp', async () => {
     const r = await app.inject({
       method: 'POST', url: '/v1/feedback/home', headers: appHeaders,
-      payload: validBody({ details: { peak_score_value: 87 }, client: { app_version: '2.4.0', build_channel: 'stage', firmware_version: '1.9.2' } }),
+      payload: validBody({ details: { peak_score_value: 87 }, client: { platform: 'iOS', app_version: '2.4.0', build_channel: 'stage', firmware_version: '1.9.2' } }),
     });
     expect(r.statusCode).toBe(201);
     const b = r.json();
+    expect(b.platform).toBe('ios');
     expect(b.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(b.feature_key).toBe('home');
     expect(b.user_id).toBe(900001);
@@ -176,6 +179,10 @@ describe('GET /v1/feedback', () => {
     const byCat = (await app.inject({ method: 'GET', url: `/v1/feedback?user_id=900001&category=end_workout_fail`, headers: appHeaders })).json();
     expect(byCat.items).toHaveLength(1);
     expect(byCat.items[0].feature_key).toBe('workout');
+    const ios = (await app.inject({ method: 'GET', url: `/v1/feedback?user_id=900001&platform=ios`, headers: appHeaders })).json();
+    expect(ios.items).toHaveLength(1);
+    expect(ios.items[0].feature_key).toBe('home');
+    expect((await app.inject({ method: 'GET', url: `/v1/feedback?platform=web`, headers: appHeaders })).statusCode).toBe(422);
   });
 
   it('fetches one by id and 404s on missing', async () => {
@@ -188,6 +195,83 @@ describe('GET /v1/feedback', () => {
 
   it('rejects bad query params', async () => {
     expect((await app.inject({ method: 'GET', url: `/v1/feedback?from=2026-02-30`, headers: appHeaders })).statusCode).toBe(422);
+  });
+});
+
+describe('GET /v1/feedback/stats', () => {
+  it('aggregates the same slice as the list', async () => {
+    const r = await app.inject({ method: 'GET', url: '/v1/feedback/stats?user_id=900001&from=2026-09-01&to=2026-09-01', headers: appHeaders });
+    expect(r.statusCode).toBe(200);
+    const b = r.json();
+    expect(b.range).toEqual({ from: '2026-09-01', to: '2026-09-01' });
+    expect(b.totals.submissions).toBeGreaterThanOrEqual(4);
+    expect(b.totals.negative).toBe(b.totals.submissions);
+    expect(b.totals.users).toBe(1);
+    expect(b.by_day).toEqual([{ date: '2026-09-01', positive: 0, negative: b.totals.submissions }]);
+    expect(b.by_feature.map((f: { feature_key: string }) => f.feature_key)).toEqual(['home', 'sleep', 'activity', 'workout']);
+    expect(b.by_feature.find((f: { feature_key: string }) => f.feature_key === 'sleep').negative).toBe(1);
+    const cat = b.by_category.find((c: { key: string }) => c.key === 'end_workout_fail');
+    expect(cat).toMatchObject({ feature_key: 'workout', label: 'End workout fail', count: 1 });
+  });
+
+  it('defaults to the last 30 days and rejects inverted ranges', async () => {
+    const r = await app.inject({ method: 'GET', url: '/v1/feedback/stats', headers: appHeaders });
+    expect(r.statusCode).toBe(200);
+    const { from, to } = r.json().range;
+    expect(to >= from).toBe(true);
+    expect((await app.inject({ method: 'GET', url: '/v1/feedback/stats?from=2026-09-02&to=2026-09-01', headers: appHeaders })).statusCode).toBe(422);
+  });
+});
+
+describe('dashboard session', () => {
+  const dh = { 'x-requested-with': 'dashboard', 'content-type': 'application/json' };
+  let cookie = '';
+
+  it('rejects a wrong key and a missing header', async () => {
+    expect((await app.inject({ method: 'POST', url: '/dashboard/login', headers: dh, payload: { key: 'nope' } })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'POST', url: '/dashboard/login', headers: { 'content-type': 'application/json' }, payload: { key: cfg.DASHBOARD_KEY } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: '/dashboard/session' })).json()).toEqual({ authenticated: false });
+  });
+
+  it('issues an HttpOnly cookie for the right key', async () => {
+    const r = await app.inject({ method: 'POST', url: '/dashboard/login', headers: dh, payload: { key: cfg.DASHBOARD_KEY } });
+    expect(r.statusCode).toBe(200);
+    const sc = String(r.headers['set-cookie']);
+    expect(sc).toMatch(/^luna_dash=/);
+    expect(sc).toMatch(/HttpOnly/);
+    expect(sc).toMatch(/SameSite=Lax/);
+    cookie = sc.split(';')[0]!;
+    const s = await app.inject({ method: 'GET', url: '/dashboard/session', headers: { cookie } });
+    expect(s.json().authenticated).toBe(true);
+    expect(new Date(s.json().expires_at).getTime()).toBeGreaterThan(Date.now() + 29 * 86_400_000);
+  });
+
+  it('cookie + header reaches data and admin routes; cookie alone does not', async () => {
+    expect((await app.inject({ method: 'GET', url: '/v1/feedback/stats', headers: { cookie, 'x-requested-with': 'dashboard' } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/v1/admin/features', headers: { cookie, 'x-requested-with': 'dashboard' } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/v1/feedback/stats', headers: { cookie } })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: '/v1/feedback/stats', headers: { cookie: 'luna_dash=123.forged', 'x-requested-with': 'dashboard' } })).statusCode).toBe(401);
+  });
+
+  it('logout clears the cookie', async () => {
+    const r = await app.inject({ method: 'POST', url: '/dashboard/logout', headers: { 'x-requested-with': 'dashboard', cookie } });
+    expect(r.statusCode).toBe(200);
+    expect(String(r.headers['set-cookie'])).toMatch(/Max-Age=0/);
+  });
+});
+
+describe('pages', () => {
+  it('serves docs and dashboard without a key, redirects root', async () => {
+    const docs = await app.inject({ method: 'GET', url: '/docs' });
+    expect(docs.statusCode).toBe(200);
+    expect(docs.headers['content-type']).toMatch(/text\/html/);
+    expect(docs.body).toContain('Luna Feedback API');
+    const dash = await app.inject({ method: 'GET', url: '/dashboard' });
+    expect(dash.statusCode).toBe(200);
+    expect(dash.body).toContain('Feedback Dashboard');
+    const root = await app.inject({ method: 'GET', url: '/' });
+    expect(root.statusCode).toBe(302);
+    expect(root.headers.location).toBe('/docs');
   });
 });
 

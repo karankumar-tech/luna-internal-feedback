@@ -7,11 +7,21 @@ from, and keeps the issue-category master lists editable without a redeploy.
 All tables live in the `luna_feedback` schema of the Supabase project, isolated from
 anything in `public`. See [PLAN.md](PLAN.md) for the full design.
 
+| page | URL | access |
+|---|---|---|
+| API reference for front-end teams | `/docs` | public |
+| Review dashboard (filters, charts, table, category management) | `/dashboard` | `DASHBOARD_KEY`, 30-day session cookie |
+
+Both pages are plain HTML in `src/pages/` and are embedded into the server bundle by
+`npm run pages:embed` (runs automatically before dev/build/test; the generated
+`src/pages/generated.ts` is committed). Design tokens follow
+[docs/design/luna-design-system.html](docs/design/luna-design-system.html).
+
 ## Setup
 
 ```bash
 npm install
-cp .env.example .env      # then fill in SUPABASE_DB_URL, APP_API_KEY, ADMIN_API_KEY
+cp .env.example .env      # then fill in SUPABASE_DB_URL, APP_API_KEY, ADMIN_API_KEY, DASHBOARD_KEY
 npm run db:migrate        # applies supabase/migrations/*.sql once each
 npm run dev               # http://localhost:3000
 ```
@@ -23,6 +33,8 @@ npm run dev               # http://localhost:3000
 | `npm test` | unit + integration tests (integration hits the DB in `.env`, cleans up after itself) |
 | `npm run db:migrate` | apply pending migrations (tracked in `luna_feedback.schema_migrations`) |
 | `npm run db:verify` | print tables, RLS state, seed counts, grants |
+| `node scripts/seed-demo.mjs 60` / `--clean` | insert or remove demo submissions (`@luna-demo.invalid` emails) for trying the dashboard |
+| `scripts/smoke-remote.sh <url>` | post-deploy checks against a live deployment |
 
 ## Auth
 
@@ -30,8 +42,10 @@ npm run dev               # http://localhost:3000
 |---|---|
 | `x-api-key: <APP_API_KEY>` | app routes under `/v1/feedback` |
 | `x-admin-key: <ADMIN_API_KEY>` | admin routes under `/v1/admin`, plus everything the app key can do |
+| dashboard session cookie + `x-requested-with: dashboard` | same as the admin key; issued by `POST /dashboard/login` with `DASHBOARD_KEY` |
 
-`GET /healthz` is open.
+`GET /healthz`, `/docs`, and `/dashboard` are open. The dashboard session is a signed,
+HttpOnly cookie valid for `DASHBOARD_SESSION_DAYS`; rotating `DASHBOARD_KEY` signs everyone out.
 
 ## Endpoints
 
@@ -84,8 +98,9 @@ curl -H "x-api-key: $APP_API_KEY" "localhost:3000/v1/feedback?feature=sleep&from
 curl -H "x-api-key: $APP_API_KEY" localhost:3000/v1/feedback/<id>
 ```
 
-Filters: `feature`, `user_id`, `from`, `to` (on `occurred_on`), `is_positive`, `category`.
+Filters: `feature`, `platform`, `user_id`, `from`, `to` (on `occurred_on`), `is_positive`, `category`.
 Pagination: pass the `next_cursor` from one page as `cursor` on the next.
+`GET /v1/feedback/stats` takes the same filters and returns totals, per-day, per-feature, and per-category aggregates.
 
 ### Admin (issue-category master list)
 

@@ -3,12 +3,14 @@ import { z } from 'zod';
 import { AppError } from '../../lib/errors.js';
 import { buildFeatureSchema, buildSchemaResponse, etagFor } from '../../schema/buildSchemaResponse.js';
 import { zodIssues } from '../../schema/buildValidator.js';
-import { isValidCalendarDate } from '../../lib/time.js';
+import { isValidCalendarDate, todayInZone } from '../../lib/time.js';
+import { PLATFORMS } from '../../schema/registry.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
 import type { FeedbackService } from './feedback.service.js';
 
 const ListQuery = z.object({
   feature: z.string().optional(),
+  platform: z.enum(PLATFORMS).optional(),
   user_id: z.coerce.number().int().positive().optional(),
   from: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
   to: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
@@ -18,8 +20,38 @@ const ListQuery = z.object({
   cursor: z.string().regex(/^[^|]+\|[0-9a-f-]{36}$/, 'invalid cursor').optional(),
 });
 
-export function registerFeedbackRoutes(app: FastifyInstance, deps: { service: FeedbackService; categories: CategoriesRepo }) {
-  const { service, categories } = deps;
+const StatsQuery = z.object({
+  feature: z.string().optional(),
+  platform: z.enum(PLATFORMS).optional(),
+  user_id: z.coerce.number().int().positive().optional(),
+  from: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
+  to: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
+  is_positive: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
+  category: z.string().optional(),
+});
+
+function shiftDate(iso: string, days: number): string {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+export function registerFeedbackRoutes(
+  app: FastifyInstance,
+  deps: { service: FeedbackService; categories: CategoriesRepo; timeZone: string },
+) {
+  const { service, categories, timeZone } = deps;
+
+  // ---- aggregates for the dashboard -----------------------------------------
+  app.get('/v1/feedback/stats', async (req) => {
+    const parsed = StatsQuery.safeParse(req.query);
+    if (!parsed.success) throw AppError.validation(zodIssues(parsed.error), 'Invalid query');
+    const q = parsed.data;
+    const to = q.to ?? todayInZone(timeZone);
+    const from = q.from ?? shiftDate(to, -29);
+    if (from > to) throw AppError.validation([{ path: 'from', message: 'must not be after to' }], 'Invalid query');
+    return service.stats({ ...q, from, to });
+  });
 
   // ---- schema for form building -------------------------------------------
   app.get('/v1/feedback/schema', async (req, reply) => {

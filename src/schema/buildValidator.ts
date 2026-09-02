@@ -1,6 +1,6 @@
 import { z, type ZodTypeAny } from 'zod';
 import type { FieldDef } from './fieldTypes.js';
-import { COMMON_FIELDS, FEATURE_DEFINITIONS, CLIENT_CONTEXT_KEYS, type FeatureKey } from './registry.js';
+import { COMMON_FIELDS, FEATURE_DEFINITIONS, CLIENT_CONTEXT_FIELDS, type FeatureKey } from './registry.js';
 import { isValidCalendarDate, isValidTime12h, normalizeTime12h, todayInZone } from '../lib/time.js';
 
 export interface ValidatorContext {
@@ -86,9 +86,16 @@ function fieldsToObject(fields: readonly FieldDef[], ctx: ValidatorContext) {
   return z.object(shape).strict();
 }
 
-const ClientContextSchema = z
-  .object(Object.fromEntries(CLIENT_CONTEXT_KEYS.map((k) => [k, z.string().trim().max(200).optional().nullable()])))
-  .strict();
+function clientContextSchema(ctx: ValidatorContext) {
+  const shape: Record<string, ZodTypeAny> = {};
+  for (const f of CLIENT_CONTEXT_FIELDS) {
+    // platform is matched case-insensitively ("iOS" -> "ios")
+    shape[f.key] = f.key === 'platform'
+      ? optionalize(z.string().trim().toLowerCase().pipe(fieldToZod({ ...f, required: true }, ctx)), false)
+      : fieldToZod(f, ctx);
+  }
+  return z.object(shape).strict();
+}
 
 /**
  * Builds the full POST body validator for a feature.
@@ -112,7 +119,7 @@ export function buildSubmissionValidator(feature: FeatureKey, ctx: ValidatorCont
 
   return fieldsToObject(COMMON_FIELDS, ctx).extend({
     details: details.optional().default({}),
-    client: ClientContextSchema.optional().nullable(),
+    client: clientContextSchema(ctx).optional().nullable(),
   });
 }
 
