@@ -27,9 +27,12 @@ export function buildApp(opts: BuildOptions = {}): App {
   const config = opts.config ?? loadConfig();
   const db = opts.db ?? createPool(config);
 
+  // Pretty logs only on an interactive terminal. Serverless bundles (Vercel) cannot spawn
+  // the pino-pretty worker transport, so anything non-TTY gets plain JSON logs.
+  const pretty = config.NODE_ENV === 'development' && Boolean(process.stdout.isTTY) && !process.env.VERCEL;
   const logger =
     opts.logger ??
-    (config.NODE_ENV === 'development'
+    (pretty
       ? { level: config.LOG_LEVEL, transport: { target: 'pino-pretty', options: { colorize: true } } }
       : { level: config.LOG_LEVEL });
 
