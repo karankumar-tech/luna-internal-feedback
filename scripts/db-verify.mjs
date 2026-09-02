@@ -1,0 +1,13 @@
+import 'dotenv/config';
+import pg from 'pg';
+const c = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
+await c.connect();
+const t = await c.query(`select table_schema, table_name from information_schema.tables where table_schema in ('public','luna_feedback') order by 1,2`);
+console.log('tables:'); t.rows.forEach(r => console.log('  ' + r.table_schema + '.' + r.table_name));
+const rls = await c.query(`select relname, relrowsecurity from pg_class where relnamespace = 'luna_feedback'::regnamespace and relkind='r' order by 1`);
+console.log('rls:', rls.rows.map(r => `${r.relname}=${r.relrowsecurity}`).join(', '));
+const f = await c.query(`select f.key, f.label, count(c.id) as categories from luna_feedback.features f left join luna_feedback.issue_categories c on c.feature_key=f.key group by f.key,f.label,f.sort_order order by f.sort_order`);
+console.log('features:'); f.rows.forEach(r => console.log(`  ${r.key.padEnd(9)} ${String(r.categories).padStart(2)} categories`));
+const g = await c.query(`select grantee, string_agg(distinct privilege_type, ',') privs from information_schema.role_table_grants where table_schema='luna_feedback' and table_name='submissions' group by grantee order by 1`);
+console.log('grants on submissions:', g.rows.map(r => `${r.grantee}[${r.privs}]`).join(' '));
+await c.end();

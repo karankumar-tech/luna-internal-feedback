@@ -1,0 +1,12 @@
+import 'dotenv/config';
+import pg from 'pg';
+const { Client } = pg;
+const c = new Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
+await c.connect();
+const v = await c.query('select version(), current_database(), current_user, now()');
+console.log(v.rows[0]);
+const schemas = await c.query(`select nspname from pg_namespace where nspname not like 'pg_%' and nspname not in ('information_schema') order by 1`);
+console.log('schemas:', schemas.rows.map(r => r.nspname).join(', '));
+const pub = await c.query(`select table_schema, table_name from information_schema.tables where table_schema not in ('pg_catalog','information_schema','auth','storage','realtime','vault','extensions','graphql','graphql_public','net','supabase_functions','supabase_migrations','pgsodium','pgsodium_masks') order by 1,2`);
+console.log('user tables:'); for (const r of pub.rows) console.log('  ', r.table_schema + '.' + r.table_name);
+await c.end();

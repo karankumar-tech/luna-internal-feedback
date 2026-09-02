@@ -1,0 +1,22 @@
+# Environment — secrets live in .env locally and in Vercel project settings when deployed
+.env
+.env.*
+!.env.example
+
+# Vercel CLI (project link metadata, pulled env files)
+.vercel
+
+# Node
+node_modules/
+dist/
+coverage/
+*.log
+
+# Supabase CLI local state
+supabase/.branches
+supabase/.temp
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
