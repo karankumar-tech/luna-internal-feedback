@@ -1,8 +1,10 @@
 // Entrypoint for both `npm start` and Vercel.
-// Vercel's Fastify preset detects src/server.ts, intercepts app.listen(), and runs the app as one Function.
+// Vercel's Fastify preset detects src/server.ts because it imports `fastify` directly,
+// then intercepts app.listen() and runs the app as one Function.
+import Fastify from 'fastify';
 import { buildApp } from './build-app.js';
 
-const app = buildApp();
+const app = buildApp({ fastify: Fastify });
 
 try {
   await app.listen({ port: app.config.PORT, host: '0.0.0.0' });

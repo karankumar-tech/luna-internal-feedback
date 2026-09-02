@@ -14,6 +14,8 @@ export interface BuildOptions {
   config?: Config;
   db?: Db;
   logger?: boolean | object;
+  /** Fastify factory. server.ts passes the real import so Vercel's entrypoint detector sees `fastify` imported there. */
+  fastify?: typeof Fastify;
 }
 
 export interface App extends FastifyInstance {
@@ -31,7 +33,8 @@ export function buildApp(opts: BuildOptions = {}): App {
       ? { level: config.LOG_LEVEL, transport: { target: 'pino-pretty', options: { colorize: true } } }
       : { level: config.LOG_LEVEL });
 
-  const app = Fastify({
+  const fastify = opts.fastify ?? Fastify;
+  const app = fastify({
     logger,
     bodyLimit: 64 * 1024,
     trustProxy: true,
