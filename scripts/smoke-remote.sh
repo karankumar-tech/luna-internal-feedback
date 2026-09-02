@@ -3,7 +3,10 @@
 # Usage: scripts/smoke-remote.sh https://luna-internal-feedback.vercel.app
 set -euo pipefail
 BASE="${1:?base url required}"
-set -a; source .env; set +a
+# Read keys via dotenv (values may contain characters the shell would interpret).
+APP_API_KEY=$(node -e "require('dotenv').config({quiet:true}); process.stdout.write(process.env.APP_API_KEY||'')")
+ADMIN_API_KEY=$(node -e "require('dotenv').config({quiet:true}); process.stdout.write(process.env.ADMIN_API_KEY||'')")
+[ -n "$APP_API_KEY" ] && [ -n "$ADMIN_API_KEY" ] || { echo "APP_API_KEY / ADMIN_API_KEY missing in .env"; exit 1; }
 J='content-type: application/json'
 APP="x-api-key: $APP_API_KEY"; ADM="x-admin-key: $ADMIN_API_KEY"
 RUN="smoke-$(date +%s)"
