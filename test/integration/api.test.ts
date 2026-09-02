@@ -12,6 +12,7 @@ const appHeaders = { 'x-api-key': cfg.APP_API_KEY, 'content-type': 'application/
 const adminHeaders = { 'x-admin-key': cfg.ADMIN_API_KEY, 'content-type': 'application/json' };
 
 const validBody = (over: Record<string, unknown> = {}) => ({
+  is_test: true,
   is_positive: false,
   occurred_on: '2026-09-01',
   user_id: 900001,
@@ -104,6 +105,7 @@ describe('POST /v1/feedback/:feature', () => {
     expect(r.statusCode).toBe(201);
     const b = r.json();
     expect(b.platform).toBe('ios');
+    expect(b.is_test).toBe(true);
     expect(b.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(b.feature_key).toBe('home');
     expect(b.user_id).toBe(900001);
@@ -179,6 +181,8 @@ describe('GET /v1/feedback', () => {
     const byCat = (await app.inject({ method: 'GET', url: `/v1/feedback?user_id=900001&category=end_workout_fail`, headers: appHeaders })).json();
     expect(byCat.items).toHaveLength(1);
     expect(byCat.items[0].feature_key).toBe('workout');
+    const real = (await app.inject({ method: 'GET', url: `/v1/feedback?user_id=900001&is_test=false`, headers: appHeaders })).json();
+    expect(real.items).toHaveLength(0);
     const ios = (await app.inject({ method: 'GET', url: `/v1/feedback?user_id=900001&platform=ios`, headers: appHeaders })).json();
     expect(ios.items).toHaveLength(1);
     expect(ios.items[0].feature_key).toBe('home');
@@ -220,6 +224,17 @@ describe('GET /v1/feedback/stats', () => {
     const { from, to } = r.json().range;
     expect(to >= from).toBe(true);
     expect((await app.inject({ method: 'GET', url: '/v1/feedback/stats?from=2026-09-02&to=2026-09-01', headers: appHeaders })).statusCode).toBe(422);
+  });
+});
+
+describe('admin: test data', () => {
+  it('counts flagged rows and refuses to delete without confirmation', async () => {
+    const c = await app.inject({ method: 'GET', url: '/v1/admin/test-data', headers: adminHeaders });
+    expect(c.statusCode).toBe(200);
+    expect(c.json().count).toBeGreaterThanOrEqual(4);
+    const adm = { 'x-admin-key': cfg.ADMIN_API_KEY };
+    expect((await app.inject({ method: 'DELETE', url: '/v1/admin/test-data', headers: adm })).statusCode).toBe(422);
+    expect((await app.inject({ method: 'DELETE', url: '/v1/admin/test-data?confirm=delete', headers: { 'x-api-key': cfg.APP_API_KEY } })).statusCode).toBe(401);
   });
 });
 

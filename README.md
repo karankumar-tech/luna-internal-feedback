@@ -33,7 +33,7 @@ npm run dev               # http://localhost:3000
 | `npm test` | unit + integration tests (integration hits the DB in `.env`, cleans up after itself) |
 | `npm run db:migrate` | apply pending migrations (tracked in `luna_feedback.schema_migrations`) |
 | `npm run db:verify` | print tables, RLS state, seed counts, grants |
-| `node scripts/seed-demo.mjs 60` / `--clean` | insert or remove demo submissions (`@luna-demo.invalid` emails) for trying the dashboard |
+| `node scripts/seed-demo.mjs 60` / `--clean` | insert demo submissions flagged `is_test`, or delete every `is_test` row (also possible from the dashboard) |
 | `scripts/smoke-remote.sh <url>` | post-deploy checks against a live deployment |
 
 ## Auth

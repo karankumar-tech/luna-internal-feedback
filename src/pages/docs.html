@@ -151,6 +151,7 @@
   <p>Send the shared app key on every request under <code>/v1</code>:</p>
   <pre><code>x-api-key: &lt;APP_API_KEY&gt;</code></pre>
   <div class="callout warn"><div class="overline">Stage only</div><p>The key is distributed out of band by the backend owner. Compile the feedback module out of Release builds; never ship the key in a public binary.</p></div>
+  <div class="callout"><div class="overline">While integrating</div><p>Send <code>"is_test": true</code> on submissions from development and integration runs. They show up in the dashboard tagged TEST, can be hidden with one filter, and are deleted in bulk later without touching real tester feedback. Drop the flag (or send <code>false</code>) in the build testers use.</p></div>
   <p><code>GET /healthz</code>, <code>/docs</code>, and <code>/dashboard</code> are the only unauthenticated routes. Admin routes under <code>/v1/admin</code> need a separate key (<code>x-admin-key</code>) and are not for the app.</p>
 </section>
 
@@ -402,6 +403,7 @@ curl -X POST https://luna-feedback.buildsage.tech/v1/feedback/sleep \
     <tr><td><code>feedback_text</code></td><td>string ≤ 500</td><td><span class="req no">no</span></td><td>free text</td></tr>
     <tr><td><code>details</code></td><td>object</td><td><span class="req no">no</span></td><td>feature fields, see <a href="#features">Feature reference</a>. Unknown keys are rejected. Defaults to <code>{}</code></td></tr>
     <tr><td><code>client</code></td><td>object</td><td><span class="req no">no</span></td><td>any subset of the <a href="#client">client context</a> keys. Unknown keys are rejected</td></tr>
+    <tr><td><code>is_test</code></td><td>boolean</td><td><span class="req no">no</span></td><td>default <code>false</code>. Send <code>true</code> from integration runs and test builds: the row is stored with a TEST tag, can be filtered out, and can be bulk-deleted later without touching real feedback</td></tr>
   </table></div>
   <p>Optional fields may be omitted or sent as <code>null</code>. Whitespace is trimmed from strings.</p>
   <h4>Example request</h4>
@@ -461,6 +463,7 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
   "device_id": "3F2B0C7A-1D2E-4F5A-9B8C-7D6E5F4A3B2C",
   "session_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
   "schema_version": 1,
+  "is_test": false,
   "created_at_ist": "2026-09-02 13:50:23 +05:30"
 }</code></pre>
   <p>Times come back zero-padded, and the <code>client</code> block is flattened to top-level fields. Client keys not sent come back as <code>null</code>.</p>
@@ -485,6 +488,7 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
     <tr><th>param</th><th>type</th><th>notes</th></tr>
     <tr><td><code>feature</code></td><td>string</td><td><code>home</code> / <code>sleep</code> / <code>activity</code> / <code>workout</code></td></tr>
     <tr><td><code>platform</code></td><td>string</td><td><code>ios</code> / <code>android</code></td></tr>
+    <tr><td><code>is_test</code></td><td><code>true</code> / <code>false</code></td><td>omit for both</td></tr>
     <tr><td><code>user_id</code></td><td>integer</td><td></td></tr>
     <tr><td><code>from</code>, <code>to</code></td><td>date</td><td>inclusive bounds on <code>occurred_on</code></td></tr>
     <tr><td><code>is_positive</code></td><td><code>true</code> / <code>false</code></td><td></td></tr>
@@ -503,7 +507,7 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
 
   <hr class="ep">
   <div id="ep-stats" class="endpoint"><span class="method get">GET</span><code class="path">/v1/feedback/stats</code><span class="auth">x-api-key</span></div>
-  <p>Aggregates for the dashboard. Accepts the same filters as the list (<code>feature</code>, <code>platform</code>, <code>user_id</code>, <code>from</code>, <code>to</code>, <code>is_positive</code>, <code>category</code>). <code>to</code> defaults to today in IST and <code>from</code> to 30 days earlier.</p>
+  <p>Aggregates for the dashboard. Accepts the same filters as the list (<code>feature</code>, <code>platform</code>, <code>is_test</code>, <code>user_id</code>, <code>from</code>, <code>to</code>, <code>is_positive</code>, <code>category</code>). <code>to</code> defaults to today in IST and <code>from</code> to 30 days earlier.</p>
 <pre><code>{
   "range": { "from": "2026-08-04", "to": "2026-09-02" },
   "totals": { "submissions": 42, "positive": 30, "negative": 12, "users": 9 },
@@ -522,6 +526,8 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
     <tr><td><span class="method get">GET</span></td><td><code>/v1/admin/features/{feature}/issue-categories</code></td><td>includes inactive</td></tr>
     <tr><td><span class="method post">POST</span></td><td><code>/v1/admin/features/{feature}/issue-categories</code></td><td><code>{ "key", "label", "sort_order"? }</code> · key is a lowercase slug · <code>409</code> on duplicate</td></tr>
     <tr><td><span class="method patch">PATCH</span></td><td><code>/v1/admin/issue-categories/{id}</code></td><td><code>{ "label"?, "sort_order"?, "is_active"? }</code></td></tr>
+    <tr><td><span class="method get">GET</span></td><td><code>/v1/admin/test-data</code></td><td>→ <code>{ "count" }</code> of rows flagged <code>is_test</code></td></tr>
+    <tr><td><span class="method" style="background:var(--crit)">DELETE</span></td><td><code>/v1/admin/test-data?confirm=delete</code></td><td>deletes only <code>is_test</code> rows → <code>{ "deleted" }</code>; <code>422</code> without the confirm parameter</td></tr>
   </table></div>
   <div class="callout"><div class="overline">Stale schema</div><p>Categories are never deleted. Deactivating one removes it from the schema and makes the server reject it on new submissions, so a client holding a stale cached schema may get a <code>422</code> on <code>issue_categories.N</code>. Handle that by refetching the schema and asking the user to re-pick.</p></div>
 </section>

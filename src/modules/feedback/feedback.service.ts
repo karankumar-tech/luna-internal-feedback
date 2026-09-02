@@ -58,6 +58,7 @@ export class FeedbackService {
       client,
       idempotency_key: idempotencyKey,
       schema_version: SCHEMA_VERSION,
+      is_test: v.is_test === true,
     });
     return { dto: this.toDto(row), created };
   }
@@ -76,5 +77,13 @@ export class FeedbackService {
 
   async stats(filters: StatsFilters) {
     return this.feedback.stats(filters);
+  }
+
+  async countTestData() {
+    return this.feedback.countTestData();
+  }
+
+  async deleteTestData() {
+    return this.feedback.deleteTestData();
   }
 }

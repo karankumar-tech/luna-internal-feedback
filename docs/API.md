@@ -36,6 +36,8 @@ x-api-key: <APP_API_KEY>
 
 The key is distributed out of band by the backend owner. `GET /healthz`, `/docs` (this document), and `/dashboard` (its own sign-in) are the only unauthenticated routes. Admin routes under `/v1/admin` need a different key (`x-admin-key`) and are not for the app.
 
+**While integrating:** send `"is_test": true` on submissions from development and integration runs. They show up in the dashboard tagged TEST, can be hidden with one filter, and are deleted in bulk later without touching real tester feedback. Drop the flag in the build testers use.
+
 ---
 
 ## 2. Quick start
@@ -326,6 +328,7 @@ Create a submission. `{feature}` is one of `home`, `sleep`, `activity`, `workout
 | `feedback_text` | string ≤ 500 | no | free text |
 | `details` | object | no | feature fields, see §6. Unknown keys are rejected. Defaults to `{}` |
 | `client` | object | no | any subset of the client context keys, see §7. Unknown keys are rejected |
+| `is_test` | boolean | no | default `false`. Send `true` from integration runs and test builds: the row is tagged TEST in the dashboard, can be filtered out, and can be bulk-deleted later without touching real feedback |
 
 Optional or nullable fields may be omitted or sent as `null`. Whitespace is trimmed from strings.
 
@@ -392,6 +395,7 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
   "device_id": "3F2B0C7A-1D2E-4F5A-9B8C-7D6E5F4A3B2C",
   "session_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
   "schema_version": 1,
+  "is_test": false,
   "created_at_ist": "2026-09-02 13:50:23 +05:30"
 }
 ```
@@ -429,6 +433,7 @@ List submissions, newest first. Intended for dashboards; the app does not need i
 |---|---|---|
 | `feature` | string | `home` / `sleep` / `activity` / `workout` |
 | `platform` | string | `ios` / `android` |
+| `is_test` | `true` / `false` | omit for both |
 | `user_id` | integer | |
 | `from`, `to` | date | inclusive bounds on `occurred_on` |
 | `is_positive` | `true` / `false` | |
@@ -457,7 +462,7 @@ One submission by UUID. `404` if not found or the id is not a UUID.
 
 ### `GET /v1/feedback/stats`
 
-Aggregates for the dashboard. Same filters as the list (`feature`, `platform`, `user_id`, `from`, `to`, `is_positive`, `category`); `to` defaults to today in IST and `from` to 30 days earlier. Returns `range`, `totals` (submissions, positive, negative, users), `by_day`, `by_feature`, and `by_category`.
+Aggregates for the dashboard. Same filters as the list (`feature`, `platform`, `is_test`, `user_id`, `from`, `to`, `is_positive`, `category`); `to` defaults to today in IST and `from` to 30 days earlier. Returns `range`, `totals` (submissions, positive, negative, users), `by_day`, `by_feature`, and `by_category`.
 
 ---
 
@@ -472,6 +477,8 @@ Not for the app. Listed so the front-end team knows how categories change.
 | `GET` | `/v1/admin/features/{feature}/issue-categories` | includes inactive |
 | `POST` | `/v1/admin/features/{feature}/issue-categories` | `{ "key", "label", "sort_order"? }` · key is a lowercase slug · `409` on duplicate |
 | `PATCH` | `/v1/admin/issue-categories/{id}` | `{ "label"?, "sort_order"?, "is_active"? }` |
+| `GET` | `/v1/admin/test-data` | → `{ "count" }` of rows flagged `is_test` |
+| `DELETE` | `/v1/admin/test-data?confirm=delete` | deletes only `is_test` rows → `{ "deleted" }`; `422` without the confirm parameter |
 
 Categories are never deleted. Deactivating one removes it from the schema and makes the server reject it on new submissions, so a client holding a stale cached schema may get a `422` on `issue_categories.N`. Handle that by refetching the schema and asking the user to re-pick.
 

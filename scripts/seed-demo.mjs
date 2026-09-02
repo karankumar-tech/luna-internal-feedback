@@ -1,11 +1,12 @@
-// Inserts realistic demo submissions tagged with @luna-demo.invalid emails so they can be removed.
+// Inserts realistic demo submissions flagged is_test=true (emails @luna-demo.invalid) so they can be removed
+// with --clean (deletes every is_test row) or from the dashboard, without touching real feedback.
 // Usage: node scripts/seed-demo.mjs [count]   |   node scripts/seed-demo.mjs --clean
 import 'dotenv/config';
 import pg from 'pg';
 const c = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
 await c.connect();
 if (process.argv.includes('--clean')) {
-  const r = await c.query("delete from luna_feedback.submissions where email like '%@luna-demo.invalid'");
+  const r = await c.query('delete from luna_feedback.submissions where is_test');
   console.log('removed', r.rowCount); await c.end(); process.exit(0);
 }
 const n = Number(process.argv[2] || 60);
@@ -29,5 +30,5 @@ for (let i = 0; i < n; i++) {
   const platform = Math.random() < 0.7 ? 'ios' : 'android';
   rows.push([feature, positive, occurred, user, `tester${user}@luna-demo.invalid`, picks, positive ? rnd(['All good today.', 'Worked as expected.', '']) : rnd(texts), JSON.stringify(details), platform, '2.4.0', String(500 + Math.floor(Math.random() * 15)), 'stage', rnd(fw), platform === 'ios' ? 'iOS 19.1' : 'Android 16', crypto.randomUUID().toUpperCase(), crypto.randomUUID(), new Date(d.getTime() + Math.floor(Math.random() * 86400000)).toISOString()]);
 }
-for (const r of rows) await c.query(`insert into luna_feedback.submissions (feature_key,is_positive,occurred_on,user_id,email,issue_categories,feedback_text,details,platform,app_version,build_number,build_channel,firmware_version,os_version,device_id,session_id,created_at) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17)`, r);
+for (const r of rows) await c.query(`insert into luna_feedback.submissions (feature_key,is_positive,occurred_on,user_id,email,issue_categories,feedback_text,details,platform,app_version,build_number,build_channel,firmware_version,os_version,device_id,session_id,created_at,is_test) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,true)`, r);
 console.log('inserted', rows.length); await c.end();

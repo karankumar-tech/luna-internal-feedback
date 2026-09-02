@@ -8,9 +8,12 @@ import { PLATFORMS } from '../../schema/registry.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
 import type { FeedbackService } from './feedback.service.js';
 
+const IsTest = z.enum(['true', 'false']).transform((v) => v === 'true').optional();
+
 const ListQuery = z.object({
   feature: z.string().optional(),
   platform: z.enum(PLATFORMS).optional(),
+  is_test: IsTest,
   user_id: z.coerce.number().int().positive().optional(),
   from: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
   to: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
@@ -23,6 +26,7 @@ const ListQuery = z.object({
 const StatsQuery = z.object({
   feature: z.string().optional(),
   platform: z.enum(PLATFORMS).optional(),
+  is_test: IsTest,
   user_id: z.coerce.number().int().positive().optional(),
   from: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
   to: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
@@ -88,4 +92,14 @@ export function registerFeedbackRoutes(
   });
 
   app.get<{ Params: { id: string } }>('/v1/feedback/:id', async (req) => service.get(req.params.id));
+
+  // ---- test data housekeeping (admin) ----------------------------------------
+  app.get('/v1/admin/test-data', async () => ({ count: await service.countTestData() }));
+
+  /** Deletes only rows flagged is_test. Requires `?confirm=delete` so a stray call cannot wipe anything. */
+  app.delete('/v1/admin/test-data', async (req) => {
+    const q = req.query as { confirm?: string };
+    if (q.confirm !== 'delete') throw AppError.validation([{ path: 'confirm', message: 'pass ?confirm=delete to delete all test submissions' }]);
+    return { deleted: await service.deleteTestData() };
+  });
 }

@@ -21,6 +21,7 @@ export interface SubmissionRow {
   session_id: string | null;
   idempotency_key: string | null;
   schema_version: number;
+  is_test: boolean;
 }
 
 export interface NewSubmission {
@@ -35,11 +36,13 @@ export interface NewSubmission {
   client: Partial<Record<'platform' | 'app_version' | 'build_number' | 'build_channel' | 'firmware_version' | 'os_version' | 'device_id' | 'session_id', string | null>>;
   idempotency_key: string | null;
   schema_version: number;
+  is_test: boolean;
 }
 
 export interface ListFilters {
   feature?: string;
   platform?: string;
+  is_test?: boolean;
   user_id?: number;
   from?: string;
   to?: string;
@@ -53,6 +56,7 @@ export interface ListFilters {
 export interface StatsFilters {
   feature?: string;
   platform?: string;
+  is_test?: boolean;
   user_id?: number;
   from: string;
   to: string;
@@ -74,6 +78,7 @@ function buildWhere(f: Partial<StatsFilters>, alias = 's'): { where: string; val
   const add = (sql: string, v: unknown) => { vals.push(v); where.push(sql.replace('?', `$${vals.length}`)); };
   if (f.feature) add(`${alias}.feature_key = ?`, f.feature);
   if (f.platform) add(`${alias}.platform = ?`, f.platform);
+  if (f.is_test !== undefined) add(`${alias}.is_test = ?`, f.is_test);
   if (f.user_id !== undefined) add(`${alias}.user_id = ?`, f.user_id);
   if (f.from) add(`${alias}.occurred_on >= ?`, f.from);
   if (f.to) add(`${alias}.occurred_on <= ?`, f.to);
@@ -84,7 +89,7 @@ function buildWhere(f: Partial<StatsFilters>, alias = 's'): { where: string; val
 
 const COLUMNS = `id, feature_key, is_positive, occurred_on::text as occurred_on, user_id, email, issue_categories,
   created_at, feedback_text, details, platform, app_version, build_number, build_channel, firmware_version, os_version,
-  device_id, session_id, idempotency_key, schema_version`;
+  device_id, session_id, idempotency_key, schema_version, is_test`;
 
 export class FeedbackRepo {
   constructor(private readonly db: Db) {}
@@ -98,14 +103,14 @@ export class FeedbackRepo {
       JSON.stringify(s.details),
       s.client.platform ?? null, s.client.app_version ?? null, s.client.build_number ?? null, s.client.build_channel ?? null,
       s.client.firmware_version ?? null, s.client.os_version ?? null, s.client.device_id ?? null,
-      s.client.session_id ?? null, s.idempotency_key, s.schema_version,
+      s.client.session_id ?? null, s.idempotency_key, s.schema_version, s.is_test,
     ];
     const inserted = await this.db.query<SubmissionRow>(
       `insert into luna_feedback.submissions
          (feature_key, is_positive, occurred_on, user_id, email, issue_categories, feedback_text, details,
           platform, app_version, build_number, build_channel, firmware_version, os_version, device_id, session_id,
-          idempotency_key, schema_version)
-       values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+          idempotency_key, schema_version, is_test)
+       values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
        on conflict (idempotency_key) where idempotency_key is not null do nothing
        returning ${COLUMNS}`,
       params,
@@ -117,6 +122,17 @@ export class FeedbackRepo {
       [s.idempotency_key],
     );
     return { row: existing.rows[0]!, created: false };
+  }
+
+  /** Deletes every submission flagged as test data. Real rows are never touched. */
+  async deleteTestData(): Promise<number> {
+    const r = await this.db.query('delete from luna_feedback.submissions where is_test');
+    return r.rowCount ?? 0;
+  }
+
+  async countTestData(): Promise<number> {
+    const r = await this.db.query<{ n: number }>('select count(*)::int as n from luna_feedback.submissions where is_test');
+    return r.rows[0]!.n;
   }
 
   async byId(id: string): Promise<SubmissionRow | undefined> {

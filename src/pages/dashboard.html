@@ -132,6 +132,7 @@
   tbody tr { cursor: pointer; }
   tbody tr:hover td { background: #FAFAF7; }
   tbody tr:focus-visible { outline: 1px solid var(--black); outline-offset: -1px; }
+  td.nowrap { white-space: nowrap; }
   td.num, td.when { font-family: var(--mono); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
   td.when .d { color: var(--black); } td.when .t { color: var(--gray-mid); }
   td.text { max-width: 360px; color: var(--gray-dark); }
@@ -142,6 +143,7 @@
   .res::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
   .chips { display: flex; flex-wrap: wrap; gap: 4px; }
   .chip { font-family: var(--mono); font-size: 11px; line-height: 16px; padding: 1px 6px; border-radius: var(--r-xs); background: var(--brief); color: var(--black); white-space: nowrap; }
+  .chip.test { background: var(--yellow); color: var(--black); letter-spacing: .08em; font-size: 10px; margin-left: 6px; vertical-align: 1px; }
   .feat { font-weight: 500; }
   .tfoot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; font-size: 12px; color: var(--gray-dark); flex-wrap: wrap; }
 
@@ -253,6 +255,13 @@
           <option value="true">Working fine only</option>
         </select>
       </label>
+      <label class="field"><span>Data</span>
+        <select id="fTest">
+          <option value="">Real + test</option>
+          <option value="false">Real only</option>
+          <option value="true">Test only</option>
+        </select>
+      </label>
       <label class="field"><span>Category</span>
         <select id="fCategory"><option value="">Any category</option></select>
       </label>
@@ -324,6 +333,16 @@
         <p class="note" id="manageNote"></p>
         <div class="mgrid" id="mgrid"></div>
       </details>
+
+      <section class="card" id="housekeeping" style="margin-top:12px">
+        <div class="card-head">
+          <div><h2>Test data</h2><div class="sub">Submissions sent with <code>is_test: true</code> (demo rows and front-end integration runs) sit alongside real feedback and carry a TEST tag. Delete them here whenever you want; real feedback is never touched.</div></div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="mono tertiary" id="testCount" style="font-size:12px"></span>
+            <button class="btn small" id="btnDeleteTest" type="button">Delete test data…</button>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 </main>
@@ -396,6 +415,7 @@
     if (!state.filters) applyPreset(30);
     await refresh();
     loadManage();
+    loadTestCount();
   }
 
   function fillFeatureSelect() {
@@ -425,6 +445,7 @@
     const f = { from: $('fFrom').value, to: $('fTo').value };
     if ($('fFeature').value) f.feature = $('fFeature').value;
     if ($('fPlatform').value) f.platform = $('fPlatform').value;
+    if ($('fTest').value) f.is_test = $('fTest').value;
     if ($('fResult').value) f.is_positive = $('fResult').value;
     if ($('fCategory').value) f.category = $('fCategory').value;
     if ($('fUser').value) f.user_id = $('fUser').value;
@@ -437,9 +458,10 @@
   $('fFeature').addEventListener('change', () => { fillCategorySelect(); refresh(); });
   $('fResult').addEventListener('change', refresh);
   $('fPlatform').addEventListener('change', refresh);
+  $('fTest').addEventListener('change', refresh);
   $('fCategory').addEventListener('change', refresh);
   let userT; $('fUser').addEventListener('input', () => { clearTimeout(userT); userT = setTimeout(refresh, 400); });
-  $('btnReset').addEventListener('click', () => { $('fFeature').value = ''; $('fPlatform').value = ''; $('fResult').value = ''; $('fUser').value = ''; fillCategorySelect(); applyPreset(30); refresh(); });
+  $('btnReset').addEventListener('click', () => { $('fFeature').value = ''; $('fPlatform').value = ''; $('fTest').value = ''; $('fResult').value = ''; $('fUser').value = ''; fillCategorySelect(); applyPreset(30); refresh(); });
 
   // ---------- refresh ----------
   let inflight = 0;
@@ -575,7 +597,7 @@
       const tr = el('tr'); tr.tabIndex = 0;
       const when = el('td', 'when'); const [d, t] = r.created_at_ist.split(' '); when.appendChild(el('div', 'd', shortDate(d))); when.appendChild(el('div', 't', t)); tr.appendChild(when);
       tr.appendChild(el('td', 'feat', featLabelOf(r.feature_key)));
-      const res = el('td'); res.appendChild(el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue')); tr.appendChild(res);
+      const res = el('td', 'nowrap'); res.appendChild(el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue')); if (r.is_test) res.appendChild(el('span', 'chip test', 'TEST')); tr.appendChild(res);
       const cats = el('td'); const chips = el('div', 'chips'); for (const c of r.issue_categories) chips.appendChild(el('span', 'chip', catLabelOf(r.feature_key, c))); cats.appendChild(chips); tr.appendChild(cats);
       const user = el('td', 'num'); user.appendChild(el('div', null, String(r.user_id))); const em = el('div', 'tertiary', r.email); em.style.fontSize = '11px'; user.appendChild(em); tr.appendChild(user);
       const txt = el('td', 'text'); txt.appendChild(el('span', null, r.feedback_text || '—')); tr.appendChild(txt);
@@ -595,7 +617,7 @@
   });
   $('btnCsv').addEventListener('click', () => {
     if (!state.rows.length) { toast('Nothing to export'); return; }
-    const cols = ['id', 'created_at_ist', 'feature_key', 'is_positive', 'occurred_on', 'user_id', 'email', 'issue_categories', 'feedback_text', 'details', 'platform', 'app_version', 'build_number', 'build_channel', 'firmware_version', 'os_version', 'device_id', 'session_id'];
+    const cols = ['id', 'created_at_ist', 'feature_key', 'is_positive', 'occurred_on', 'user_id', 'email', 'issue_categories', 'feedback_text', 'details', 'is_test', 'platform', 'app_version', 'build_number', 'build_channel', 'firmware_version', 'os_version', 'device_id', 'session_id'];
     const esc = (v) => { const s = v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const csv = [cols.join(','), ...state.rows.map((r) => cols.map((c) => esc(c === 'issue_categories' ? r[c].join('|') : r[c])).join(','))].join('\n');
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = `luna-feedback-${state.filters.from}-to-${state.filters.to}.csv`; a.click(); URL.revokeObjectURL(a.href);
@@ -605,7 +627,7 @@
   function openDrawer(r) {
     const d = $('drawer'); d.replaceChildren();
     const head = el('div', 'head'); const hl = el('div'); hl.appendChild(el('div', 'overline', featLabelOf(r.feature_key) + ' · ' + shortDate(r.occurred_on)));
-    const h2 = el('h2'); h2.appendChild(el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue')); hl.appendChild(h2); head.appendChild(hl);
+    const h2 = el('h2'); h2.appendChild(el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue')); if (r.is_test) h2.appendChild(el('span', 'chip test', 'TEST')); hl.appendChild(h2); head.appendChild(hl);
     const close = el('button', 'btn small ghost', 'Close'); close.type = 'button'; close.addEventListener('click', closeDrawer); head.appendChild(close); d.appendChild(head);
     if (r.feedback_text) d.appendChild(el('div', 'quote', r.feedback_text));
     const chips = el('div', 'chips'); chips.style.marginTop = '12px'; for (const c of r.issue_categories) chips.appendChild(el('span', 'chip', catLabelOf(r.feature_key, c))); d.appendChild(chips);
@@ -617,7 +639,7 @@
     if (details.length) dl('Feature details', details.map(([k, v]) => [fieldLabel(k), v, true]));
     dl('Reporter', [['User ID', r.user_id, true], ['Email', r.email], ['Occurred on', r.occurred_on, true], ['Submitted (IST)', r.created_at_ist, true], ['Submitted (UTC)', r.created_at, true]]);
     dl('Client', [['Platform', r.platform === 'ios' ? 'iOS' : r.platform === 'android' ? 'Android' : null], ['App version', r.app_version, true], ['Build', r.build_number, true], ['Channel', r.build_channel, true], ['Firmware', r.firmware_version, true], ['OS', r.os_version], ['Device ID', r.device_id, true], ['Session', r.session_id, true]]);
-    dl('Record', [['ID', r.id, true], ['Schema version', r.schema_version, true]]);
+    dl('Record', [['ID', r.id, true], ['Schema version', r.schema_version, true], ['Test data', r.is_test ? 'yes' : 'no']]);
     d.classList.add('open'); $('scrim').classList.add('open'); close.focus();
   }
   function closeDrawer() { $('drawer').classList.remove('open'); $('scrim').classList.remove('open'); }
@@ -659,6 +681,18 @@
       grid.appendChild(card); render().catch((err) => toast(err.message));
     }
   }
+  async function loadTestCount() {
+    try { const { count } = await api('/v1/admin/test-data'); $('testCount').textContent = `${fmtN(count)} test row${count === 1 ? '' : 's'}`; $('btnDeleteTest').disabled = count === 0; }
+    catch { $('testCount').textContent = ''; }
+  }
+  $('btnDeleteTest').addEventListener('click', async () => {
+    const { count } = await api('/v1/admin/test-data');
+    if (!count) { toast('No test data to delete'); return; }
+    if (!confirm(`Delete ${count} test submission${count === 1 ? '' : 's'}? Real feedback is not affected. This cannot be undone.`)) return;
+    try { const r = await api('/v1/admin/test-data?confirm=delete', { method: 'DELETE' }); toast(`Deleted ${r.deleted} test row${r.deleted === 1 ? '' : 's'}`); await refresh(); await loadTestCount(); }
+    catch (err) { toast('Could not delete: ' + err.message); }
+  });
+
   async function afterChange() { state.schema = await api('/v1/feedback/schema'); state.features = state.schema.features; state.catsByFeature = {}; for (const f of state.features) state.catsByFeature[f.key] = f.issue_categories; fillFeatureSelect(); fillCategorySelect(); refresh(); }
 
   // ---------- start ----------

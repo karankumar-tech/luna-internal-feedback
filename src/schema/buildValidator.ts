@@ -120,6 +120,8 @@ export function buildSubmissionValidator(feature: FeatureKey, ctx: ValidatorCont
   return fieldsToObject(COMMON_FIELDS, ctx).extend({
     details: details.optional().default({}),
     client: clientContextSchema(ctx).optional().nullable(),
+    /** Marks integration/demo submissions so they can be filtered and deleted without touching real feedback. */
+    is_test: z.boolean().optional().default(false),
   });
 }
 
