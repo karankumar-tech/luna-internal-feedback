@@ -90,7 +90,7 @@
   .filters input[type=number] { width: 120px; }
 
   /* ---- KPI row ---- */
-  .kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
   .kpi { background: var(--white); border: 1px solid var(--gray-light); border-radius: var(--r-l); padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   .kpi .v { font-family: var(--mono); font-size: 28px; line-height: 32px; font-weight: 400; letter-spacing: -0.01em; }
   .kpi .l { font-size: 12px; line-height: 16px; color: var(--gray-dark); display: flex; align-items: center; gap: 6px; }
@@ -143,6 +143,12 @@
   .res::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
   .chips { display: flex; flex-wrap: wrap; gap: 4px; }
   .chip { font-family: var(--mono); font-size: 11px; line-height: 16px; padding: 1px 6px; border-radius: var(--r-xs); background: var(--brief); color: var(--black); white-space: nowrap; }
+  .aibadge { margin-top: 4px; font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--gray-mid); display: flex; align-items: center; gap: 5px; }
+  .aibadge::before { content: ''; width: 8px; height: 8px; border-radius: var(--r-xs); background: var(--gray-light); }
+  .aibadge.firmware::before { background: #EF7432; } .aibadge.sdk::before { background: #2E64E4; } .aibadge.app::before { background: #000; } .aibadge.backend::before { background: #E0237A; } .aibadge.other::before { background: #9E9E9E; }
+  .aibadge.firmware, .aibadge.sdk, .aibadge.app, .aibadge.backend, .aibadge.other { color: var(--black); }
+  .aibadge.waiting_logs::before { background: var(--yellow); border: 1px solid #545500; box-sizing: border-box; }
+  .aibadge.failed::before { background: var(--crit); }
   .chip.test { background: var(--yellow); color: var(--black); letter-spacing: .08em; font-size: 10px; margin-left: 6px; vertical-align: 1px; }
   .feat { font-weight: 500; }
   .tfoot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; font-size: 12px; color: var(--gray-dark); flex-wrap: wrap; }
@@ -188,7 +194,8 @@
 
   .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--black); color: var(--white); padding: 8px 14px; border-radius: var(--r-l); font-size: 13px; z-index: 40; display: none; }
 
-  @media (max-width: 980px) { .kpis { grid-template-columns: repeat(3, 1fr); } .charts .row2 { grid-template-columns: 1fr; } }
+  @media (max-width: 1100px) { .kpis { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 980px) { .charts .row2 { grid-template-columns: 1fr; } }
   @media (max-width: 600px) { .kpis { grid-template-columns: 1fr 1fr; } .filters input[type=date] { width: 100%; } }
   @media (prefers-reduced-motion: reduce) { .drawer, .loading, .chart rect.mark { transition: none; } }
 </style>
@@ -262,6 +269,37 @@
           <option value="true">Test only</option>
         </select>
       </label>
+      <label class="field"><span>AI check</span>
+        <select id="fAi">
+          <option value="">Any</option>
+          <option value="none">Not checked</option>
+          <option value="waiting_logs">Waiting for logs</option>
+          <option value="done">Diagnosed</option>
+          <option value="no_logs">No logs</option>
+          <option value="failed">Failed</option>
+        </select>
+      </label>
+      <label class="field"><span>Root cause</span>
+        <select id="fSide">
+          <option value="">Any</option>
+          <option value="firmware">Firmware</option>
+          <option value="sdk">Ring SDK</option>
+          <option value="app">App</option>
+          <option value="backend">Backend</option>
+          <option value="user_expectation">User expectation</option>
+          <option value="not_a_bug">Not a bug</option>
+          <option value="insufficient_logs">Insufficient logs</option>
+        </select>
+      </label>
+      <label class="field"><span>Severity</span>
+        <select id="fSev">
+          <option value="">Any</option>
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+      </label>
       <label class="field"><span>Category</span>
         <select id="fCategory"><option value="">Any category</option></select>
       </label>
@@ -276,6 +314,7 @@
         <div class="kpi"><div class="v" id="kPos">–</div><div class="l"><span class="sw" style="background:var(--ok)"></span>Working fine</div><div class="d" id="kPosD"></div></div>
         <div class="kpi"><div class="v" id="kUsers">–</div><div class="l">Testers reporting</div><div class="d">distinct user IDs</div></div>
         <div class="kpi"><div class="v" id="kRate">–</div><div class="l">Issue rate</div><div class="d">issues ÷ submissions</div></div>
+        <div class="kpi"><div class="v" id="kAi">–</div><div class="l">AI checked</div><div class="d" id="kAiD">of reported issues</div></div>
       </section>
 
       <section class="charts">
@@ -285,6 +324,13 @@
             <div class="legend"><span><i style="background:var(--crit)"></i>Issues</span><span><i style="background:var(--ok)"></i>Working fine</span></div>
           </div>
           <div class="chart" id="cDay"></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div><h2>Root cause by feature</h2><div class="sub">Where the AI placed the fault for diagnosed issues</div></div>
+            <div class="legend" id="sideLegend"></div>
+          </div>
+          <div class="chart" id="cSide"></div>
         </div>
         <div class="row2">
           <div class="card">
@@ -334,6 +380,15 @@
         <div class="mgrid" id="mgrid"></div>
       </details>
 
+      <section class="card" id="diagOps" style="margin-top:12px">
+        <div class="card-head">
+          <div><h2>AI diagnosis</h2><div class="sub" id="diagOpsSub">Every reported issue is diagnosed in the background from the tester's logs. Same-day reports wait for the evening log sync.</div></div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span class="mono tertiary" id="diagOpsStats" style="font-size:12px"></span>
+            <button class="btn small" id="btnRunPending" type="button">Run pending now</button>
+          </div>
+        </div>
+      </section>
       <section class="card" id="housekeeping" style="margin-top:12px">
         <div class="card-head">
           <div><h2>Test data</h2><div class="sub">Submissions sent with <code>is_test: true</code> (demo rows and front-end integration runs) sit alongside real feedback and carry a TEST tag. Delete them here whenever you want; real feedback is never touched.</div></div>
@@ -416,6 +471,10 @@
     await refresh();
     loadManage();
     loadTestCount();
+    loadDiagOps(true);
+    // deep link after sign-in (detail pages redirect here when the session is missing)
+    const next = new URLSearchParams(location.search).get('next');
+    if (next && /^\/dashboard\/submissions\/[0-9a-f-]{36}$/.test(next)) location.replace(next);
   }
 
   function fillFeatureSelect() {
@@ -446,6 +505,9 @@
     if ($('fFeature').value) f.feature = $('fFeature').value;
     if ($('fPlatform').value) f.platform = $('fPlatform').value;
     if ($('fTest').value) f.is_test = $('fTest').value;
+    if ($('fAi').value) f.ai_status = $('fAi').value;
+    if ($('fSide').value) f.ai_side = $('fSide').value;
+    if ($('fSev').value) f.ai_severity = $('fSev').value;
     if ($('fResult').value) f.is_positive = $('fResult').value;
     if ($('fCategory').value) f.category = $('fCategory').value;
     if ($('fUser').value) f.user_id = $('fUser').value;
@@ -459,9 +521,10 @@
   $('fResult').addEventListener('change', refresh);
   $('fPlatform').addEventListener('change', refresh);
   $('fTest').addEventListener('change', refresh);
+  for (const fid of ['fAi', 'fSide', 'fSev']) $(fid).addEventListener('change', refresh);
   $('fCategory').addEventListener('change', refresh);
   let userT; $('fUser').addEventListener('input', () => { clearTimeout(userT); userT = setTimeout(refresh, 400); });
-  $('btnReset').addEventListener('click', () => { $('fFeature').value = ''; $('fPlatform').value = ''; $('fTest').value = ''; $('fResult').value = ''; $('fUser').value = ''; fillCategorySelect(); applyPreset(30); refresh(); });
+  $('btnReset').addEventListener('click', () => { $('fFeature').value = ''; $('fPlatform').value = ''; $('fTest').value = ''; $('fAi').value = ''; $('fSide').value = ''; $('fSev').value = ''; $('fResult').value = ''; $('fUser').value = ''; fillCategorySelect(); applyPreset(30); refresh(); });
 
   // ---------- refresh ----------
   let inflight = 0;
@@ -492,6 +555,9 @@
     $('kPos').textContent = fmtN(t.positive); $('kPosD').textContent = pct(t.positive, t.submissions) + ' of submissions';
     $('kUsers').textContent = fmtN(t.users);
     $('kRate').textContent = pct(t.negative, t.submissions);
+    const dg = state.stats.diagnosis || { checked: 0, with_verdict: 0, waiting: 0, failed: 0 };
+    $('kAi').textContent = t.negative ? pct(dg.checked, t.negative) : '–';
+    $('kAiD').textContent = `${fmtN(dg.with_verdict)} diagnosed · ${fmtN(dg.waiting)} waiting${dg.failed ? ' · ' + fmtN(dg.failed) + ' failed' : ''}`;
   }
 
   // ---------- tooltip ----------
@@ -507,7 +573,41 @@
   function bindTip(node, title, rows) { node.addEventListener('pointerenter', (e) => showTip(e, title, rows)); node.addEventListener('pointermove', moveTip); node.addEventListener('pointerleave', hideTip); node.setAttribute('tabindex', '0'); node.addEventListener('focus', (e) => { const r = node.getBoundingClientRect(); showTip({ clientX: r.left + r.width / 2, clientY: r.top }, title, rows); }); node.addEventListener('blur', hideTip); }
 
   // ---------- charts ----------
-  function renderCharts() { renderByDay(); renderByFeature(); renderByCategory(); }
+  const SIDES = [
+    { key: 'firmware', label: 'Firmware', color: '#EF7432' },
+    { key: 'sdk', label: 'Ring SDK', color: '#2E64E4' },
+    { key: 'app', label: 'App', color: '#000000' },
+    { key: 'backend', label: 'Backend', color: '#E0237A' },
+    { key: 'other', label: 'Other / unclear', color: '#9E9E9E' },
+  ];
+  const sideOf = (s) => (SIDES.find((x) => x.key === s) ? s : 'other');
+  function renderCharts() { renderByDay(); renderBySide(); renderByFeature(); renderByCategory(); }
+
+  function renderBySide() {
+    const host = $('cSide'); host.replaceChildren();
+    const leg = $('sideLegend'); leg.replaceChildren();
+    for (const sd of SIDES) { const sp = el('span'); const i = el('i'); i.style.background = sd.color; sp.appendChild(i); sp.appendChild(document.createTextNode(sd.label)); leg.appendChild(sp); }
+    const rows = (state.stats.diagnosis && state.stats.diagnosis.by_side) || [];
+    if (!rows.length) { host.appendChild(el('div', 'empty', 'No diagnosed issues in this range yet.')); return; }
+    const feats = state.stats.by_feature.map((f) => ({ key: f.feature_key, label: f.label }));
+    const byFeat = new Map(feats.map((f) => [f.key, Object.fromEntries(SIDES.map((s) => [s.key, 0]))]));
+    for (const r of rows) { const m = byFeat.get(r.feature_key); if (m) m[sideOf(r.side)] += r.count; }
+    const totals = feats.map((f) => Object.values(byFeat.get(f.key)).reduce((a, b) => a + b, 0));
+    const max = Math.max(1, ...totals);
+    const W = 1000, rowH = 34, padL = 90, padR = 40, padT = 4, H = padT + feats.length * rowH + 4, plotW = W - padL - padR;
+    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Root cause side per feature' });
+    feats.forEach((f, i) => {
+      const y0 = padT + i * rowH; const g = svgEl('g', { class: 'bar' });
+      const lbl = svgEl('text', { x: padL - 12, y: y0 + rowH / 2 + 4, 'text-anchor': 'end', class: 'cat' }); lbl.textContent = f.label; g.appendChild(lbl);
+      let x = padL; const m = byFeat.get(f.key); const total = totals[i];
+      for (const sd of SIDES) { const n = m[sd.key]; if (!n) continue; const w = (n / max) * plotW; g.appendChild(svgEl('rect', { class: 'mark', x, y: y0 + rowH / 2 - 7, width: Math.max(w - 2, 1), height: 14, fill: sd.color, rx: 2 })); x += w; }
+      if (total) { const t = svgEl('text', { x: x + 6, y: y0 + rowH / 2 + 4, class: 'lbl strong' }); t.textContent = total; g.appendChild(t); }
+      const hit = svgEl('rect', { class: 'hit', x: 0, y: y0, width: W, height: rowH });
+      bindTip(hit, f.label, SIDES.filter((sd) => m[sd.key]).map((sd) => ({ label: sd.label, value: m[sd.key], color: sd.color })).concat([{ label: 'Diagnosed', value: total }]));
+      g.appendChild(hit); svg.appendChild(g);
+    });
+    host.appendChild(svg);
+  }
 
   function renderByDay() {
     const host = $('cDay'); host.replaceChildren();
@@ -588,6 +688,7 @@
   }
 
   // ---------- table ----------
+  const SIDE_LABEL = { firmware: 'Firmware', sdk: 'Ring SDK', app: 'App', backend: 'Backend', user_expectation: 'User expectation', not_a_bug: 'Not a bug', insufficient_logs: 'Insufficient logs' };
   const featLabelOf = (k) => (state.features.find((f) => f.key === k) || { label: k }).label;
   const catLabelOf = (fk, ck) => ((state.catsByFeature[fk] || []).find((c) => c.key === ck) || { label: ck }).label;
   function renderTable(append) {
@@ -597,7 +698,9 @@
       const tr = el('tr'); tr.tabIndex = 0;
       const when = el('td', 'when'); const [d, t] = r.created_at_ist.split(' '); when.appendChild(el('div', 'd', shortDate(d))); when.appendChild(el('div', 't', t)); tr.appendChild(when);
       tr.appendChild(el('td', 'feat', featLabelOf(r.feature_key)));
-      const res = el('td', 'nowrap'); res.appendChild(el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue')); if (r.is_test) res.appendChild(el('span', 'chip test', 'TEST')); tr.appendChild(res);
+      const res = el('td', 'nowrap'); res.appendChild(el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue')); if (r.is_test) res.appendChild(el('span', 'chip test', 'TEST'));
+      if (!r.is_positive) { const ai = el('div', 'aibadge ' + (r.ai_side ? sideOf(r.ai_side) : (r.ai_status || 'none')), r.ai_side ? SIDE_LABEL[r.ai_side] || r.ai_side : r.ai_status === 'waiting_logs' ? 'waiting for logs' : r.ai_status === 'no_logs' ? 'no logs' : r.ai_status === 'failed' ? 'AI failed' : r.ai_status ? 'AI ' + r.ai_status : 'not checked'); res.appendChild(ai); }
+      tr.appendChild(res);
       const cats = el('td'); const chips = el('div', 'chips'); for (const c of r.issue_categories) chips.appendChild(el('span', 'chip', catLabelOf(r.feature_key, c))); cats.appendChild(chips); tr.appendChild(cats);
       const user = el('td', 'num'); user.appendChild(el('div', null, String(r.user_id))); const em = el('div', 'tertiary', r.email); em.style.fontSize = '11px'; user.appendChild(em); tr.appendChild(user);
       const txt = el('td', 'text'); txt.appendChild(el('span', null, r.feedback_text || '—')); tr.appendChild(txt);
@@ -617,7 +720,7 @@
   });
   $('btnCsv').addEventListener('click', () => {
     if (!state.rows.length) { toast('Nothing to export'); return; }
-    const cols = ['id', 'created_at_ist', 'feature_key', 'is_positive', 'occurred_on', 'user_id', 'email', 'issue_categories', 'feedback_text', 'device_serial', 'details', 'is_test', 'platform', 'app_version', 'build_number', 'build_channel', 'firmware_version', 'os_version', 'device_id', 'session_id'];
+    const cols = ['id', 'created_at_ist', 'feature_key', 'is_positive', 'occurred_on', 'user_id', 'email', 'issue_categories', 'feedback_text', 'device_serial', 'details', 'is_test', 'ai_status', 'ai_side', 'ai_severity', 'platform', 'app_version', 'build_number', 'build_channel', 'firmware_version', 'os_version', 'device_id', 'session_id'];
     const esc = (v) => { const s = v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const csv = [cols.join(','), ...state.rows.map((r) => cols.map((c) => esc(c === 'issue_categories' ? r[c].join('|') : r[c])).join(','))].join('\n');
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = `luna-feedback-${state.filters.from}-to-${state.filters.to}.csv`; a.click(); URL.revokeObjectURL(a.href);
@@ -628,7 +731,10 @@
     const d = $('drawer'); d.replaceChildren();
     const head = el('div', 'head'); const hl = el('div'); hl.appendChild(el('div', 'overline', featLabelOf(r.feature_key) + ' · ' + shortDate(r.occurred_on)));
     const h2 = el('h2'); h2.appendChild(el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue')); if (r.is_test) h2.appendChild(el('span', 'chip test', 'TEST')); hl.appendChild(h2); head.appendChild(hl);
-    const close = el('button', 'btn small ghost', 'Close'); close.type = 'button'; close.addEventListener('click', closeDrawer); head.appendChild(close); d.appendChild(head);
+    const actions = el('div'); actions.style.display = 'flex'; actions.style.gap = '6px';
+    const open = el('a', 'btn small primary', 'Open detail →'); open.href = '/dashboard/submissions/' + r.id; open.style.textDecoration = 'none'; actions.appendChild(open);
+    const close = el('button', 'btn small ghost', 'Close'); close.type = 'button'; close.addEventListener('click', closeDrawer); actions.appendChild(close); head.appendChild(actions); d.appendChild(head);
+    if (!r.is_positive) { const ai = el('div', 'aibadge ' + (r.ai_side ? sideOf(r.ai_side) : (r.ai_status || 'none')), r.ai_side ? 'AI: ' + (SIDE_LABEL[r.ai_side] || r.ai_side) + (r.ai_severity ? ' · ' + r.ai_severity : '') : r.ai_status === 'waiting_logs' ? 'AI: waiting for logs' : r.ai_status === 'no_logs' ? 'AI: no logs found' : r.ai_status === 'failed' ? 'AI: failed' : r.ai_status ? 'AI: ' + r.ai_status : 'AI: not checked'); ai.style.marginBottom = '8px'; d.appendChild(ai); }
     if (r.feedback_text) d.appendChild(el('div', 'quote', r.feedback_text));
     const chips = el('div', 'chips'); chips.style.marginTop = '12px'; for (const c of r.issue_categories) chips.appendChild(el('span', 'chip', catLabelOf(r.feature_key, c))); d.appendChild(chips);
     const dl = (title, pairs) => { const s = el('div', 'section'); s.appendChild(el('div', 'overline', title)); const l = el('dl'); l.style.marginTop = '10px'; for (const [k, v, mono] of pairs) { l.appendChild(el('dt', null, k)); l.appendChild(el('dd', mono ? 'mono' : null, v == null || v === '' ? '—' : String(v))); } s.appendChild(l); d.appendChild(s); };
@@ -681,6 +787,22 @@
       grid.appendChild(card); render().catch((err) => toast(err.message));
     }
   }
+  async function loadDiagOps(sweep) {
+    try {
+      if (sweep) { api('/v1/admin/diagnoses/run-pending?limit=3', { method: 'POST' }).then((r) => { if (r.ran) { toast(`Diagnosed ${r.ran} pending`); refresh(); loadDiagOps(false); } }).catch(() => {}); }
+      const s = await api('/v1/admin/diagnoses/summary');
+      if (!s.enabled) { $('diagOpsStats').textContent = 'disabled: set LUNA_LOGS_APIKEY and OPEN_ROUTER_KEY'; $('btnRunPending').disabled = true; return; }
+      const due = s.queued + s.running;
+      $('diagOpsStats').textContent = `${fmtN(s.done)} diagnosed · ${fmtN(s.waiting)} waiting for logs · ${fmtN(s.no_logs)} no logs · ${fmtN(s.failed)} failed · queue ${fmtN(due)} · today $${s.spend_today.toFixed(3)} (${s.runs_today} runs) · month $${s.spend_month.toFixed(2)}`;
+      $('btnRunPending').disabled = false;
+    } catch (err) { $('diagOpsStats').textContent = ''; }
+  }
+  $('btnRunPending').addEventListener('click', async () => {
+    const b = $('btnRunPending'); b.disabled = true; const old = b.textContent; b.textContent = 'Running…';
+    try { const r = await api('/v1/admin/diagnoses/run-pending?limit=5', { method: 'POST' }); toast(r.ran ? `Ran ${r.ran}: ` + r.results.map((x) => x.status).join(', ') : 'Nothing due right now'); await refresh(); await loadDiagOps(false); }
+    catch (err) { toast('Could not run: ' + err.message); } finally { b.disabled = false; b.textContent = old; }
+  });
+
   async function loadTestCount() {
     try { const { count } = await api('/v1/admin/test-data'); $('testCount').textContent = `${fmtN(count)} test row${count === 1 ? '' : 's'}`; $('btnDeleteTest').disabled = count === 0; }
     catch { $('testCount').textContent = ''; }

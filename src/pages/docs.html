@@ -121,6 +121,7 @@
   <a href="#ep-list"><span class="m">GET</span>/v1/feedback</a>
   <a href="#ep-one" class="sub"><span class="m">GET</span>/v1/feedback/{id}</a>
   <a href="#ep-stats"><span class="m">GET</span>/v1/feedback/stats</a>
+  <a href="#ep-diagnosis"><span class="m">GET</span>…/{id}/diagnosis</a>
   <a href="#ep-admin">Admin routes</a>
   <div class="grp"></div>
   <a href="#features">Feature reference</a>
@@ -566,6 +567,22 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
   "by_feature": [ { "feature_key": "home", "label": "Home", "positive": 8, "negative": 2 }, … ],
   "by_category": [ { "feature_key": "sleep", "key": "incorrect_sleep", "label": "Incorrect sleep", "count": 5 }, … ]
 }</code></pre>
+
+  <hr class="ep">
+  <div id="ep-diagnosis" class="endpoint"><span class="method get">GET</span><code class="path">/v1/feedback/{id}/diagnosis</code><span class="auth">x-api-key</span></div>
+  <p>The AI diagnosis for a reported issue, produced in the background from the tester's device logs. <code>404</code> until the first run has started. Not needed by the app; useful for tooling.</p>
+<pre><code>{
+  "status": "done",                       // pending · running · waiting_logs · done · no_logs · failed
+  "root_cause_side": "firmware",          // firmware · sdk · app · backend · user_expectation · not_a_bug · insufficient_logs
+  "confidence": 0.9, "severity": "medium", "tags": ["algorithm_output"], "reproducible": "likely",
+  "summary": "…", "suggested_fix": "…", "questions_for_tester": ["…"],
+  "evidence": [ { "source": "firmware", "ts": "05:31:14", "line": "sleep save long …", "why": "…" } ],
+  "log_files": { "app": ["https://…"], "ring": ["https://…"], "firmware": ["https://…"] },
+  "log_excerpt": "===== [app] … =====\n…", "log_excerpt_lines": 52, "log_coverage": "full",
+  "fw_version_seen": "1.2.6", "app_version_seen": "2.0.0.staging.luna",
+  "model": "google/gemini-3.1-flash-lite", "cost_usd": 0.0021, "duration_ms": 6300
+}</code></pre>
+  <p>Submissions also carry <code>ai_status</code>, <code>ai_side</code>, <code>ai_severity</code>, and <code>ai_checked_at</code>; the list and stats accept <code>ai_status</code>, <code>ai_side</code>, and <code>ai_severity</code> filters. Same-day reports usually wait for the evening log sync before a verdict exists.</p>
 
   <hr class="ep">
   <div id="ep-admin" class="endpoint"><code class="path">Admin routes</code><span class="auth">x-admin-key</span></div>

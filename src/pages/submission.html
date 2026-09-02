@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Luna Feedback Submission</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&display=swap">
+<style>
+  :root {
+    --black: #000; --white: #fff; --gray-dark: #737373; --gray-mid: #9E9E9E; --gray-light: #D9D9D9;
+    --bg: #F0EFEA; --brief: #E8E6E0; --border-warm: #E2E0D9; --border-ghost: #F0F0F0; --hero: #1A1A18; --hero-muted: #8A887F;
+    --yellow: #F5F85D; --yellow-50: #FEFFD6; --blue: #2E64E4; --blue-50: #EAF0FD; --orange: #EF7432; --orange-50: #FFF3EC; --magenta: #E0237A; --magenta-50: #FFE8F4;
+    --ok: #00C37A; --ok-bg: #E6F8F0; --crit: #FF3B3B; --crit-bg: #FFECEC; --warn: #F0B429;
+    --sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --r-xs: 2px; --r-s: 4px; --r-m: 6px; --r-l: 8px; --r-xl: 12px;
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: light; }
+  body { margin: 0; background: var(--bg); color: var(--black); font-family: var(--sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; }
+  button, input, textarea { font: inherit; color: inherit; }
+  .mono { font-family: var(--mono); }
+  .overline { font-family: var(--mono); font-size: 11px; line-height: 16px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); }
+  h1 { font-size: 24px; line-height: 28px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 16px; line-height: 20px; font-weight: 600; margin: 0; }
+  h3 { font-size: 12px; line-height: 16px; font-weight: 600; margin: 16px 0 6px; color: var(--gray-dark); text-transform: uppercase; letter-spacing: .08em; font-family: var(--mono); }
+  .tertiary { color: var(--gray-mid); } .muted { color: var(--gray-dark); }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px 64px; }
+
+  .top { background: var(--white); border-bottom: 1px solid var(--gray-light); }
+  .top-inner { max-width: 1240px; margin: 0 auto; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .crumb { font-size: 13px; color: var(--gray-dark); text-decoration: none; }
+  .crumb:hover { color: var(--black); }
+  .btn { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-l); padding: 7px 12px; line-height: 18px; cursor: pointer; font-weight: 500; }
+  .btn:hover { border-color: var(--gray-mid); }
+  .btn.primary { background: var(--black); color: var(--white); border-color: var(--black); }
+  .btn.small { padding: 4px 10px; font-size: 12px; line-height: 16px; border-radius: var(--r-s); }
+  .btn.ghost { border-color: transparent; background: transparent; } .btn.ghost:hover { background: var(--brief); }
+  .btn[disabled] { opacity: .5; cursor: default; }
+  .btn:focus-visible, textarea:focus-visible, input:focus-visible { outline: none; border-color: var(--black); box-shadow: 0 0 0 1px var(--black); }
+
+  .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 20px 0 16px; }
+  .head .meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--gray-dark); margin-top: 6px; }
+  .head .meta b { color: var(--black); font-weight: 500; }
+  .res { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; letter-spacing: .04em; padding: 2px 8px; border-radius: var(--r-s); border: 1px solid; white-space: nowrap; vertical-align: 2px; }
+  .res.ok { background: var(--ok-bg); border-color: #9BE3C4; color: #00583A; } .res.bad { background: var(--crit-bg); border-color: #FFB3B3; color: #8A1010; }
+  .res::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .chip { font-family: var(--mono); font-size: 11px; line-height: 16px; padding: 1px 6px; border-radius: var(--r-xs); background: var(--brief); color: var(--black); white-space: nowrap; display: inline-block; }
+  .chip.test { background: var(--yellow); letter-spacing: .08em; font-size: 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+
+  .grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 12px; }
+  .card { background: var(--white); border: 1px solid var(--gray-light); border-radius: var(--r-xl); padding: 16px 20px; min-width: 0; }
+  .card + .card { margin-top: 12px; }
+  .quote { background: var(--brief); border-radius: var(--r-l); padding: 12px 14px; font-size: 15px; line-height: 24px; font-weight: 500; white-space: pre-wrap; margin: 8px 0 10px; }
+  dl { display: grid; grid-template-columns: 140px 1fr; gap: 6px 12px; margin: 0; font-size: 13px; line-height: 18px; }
+  dt { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--gray-dark); padding-top: 2px; }
+  dd { margin: 0; word-break: break-word; } dd.mono { font-family: var(--mono); font-size: 12px; }
+  .files { font-size: 13px; }
+  .files .row { display: grid; grid-template-columns: 78px 1fr auto; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border-ghost); align-items: center; }
+  .files .src { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--gray-dark); }
+  .files a { font-family: var(--mono); font-size: 12px; color: var(--blue); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .files a:hover { text-decoration: underline; }
+  .files .used { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #00583A; background: var(--ok-bg); padding: 1px 6px; border-radius: var(--r-xs); }
+  .files .date { font-family: var(--mono); font-size: 12px; color: var(--gray-dark); }
+
+  /* diagnosis */
+  .status-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--gray-dark); margin-bottom: 12px; }
+  .status-line .pill { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; padding: 3px 8px; border-radius: var(--r-s); border: 1px solid var(--gray-light); background: var(--white); text-transform: uppercase; }
+  .pill.done { background: var(--ok-bg); border-color: var(--ok); color: #00583A; }
+  .pill.running, .pill.pending { background: var(--blue-50); border-color: var(--blue); color: #0C3AAA; }
+  .pill.waiting_logs { background: var(--yellow-50); border-color: #545500; color: #545500; }
+  .pill.no_logs { background: var(--brief); border-color: var(--gray-light); color: var(--gray-dark); }
+  .pill.failed { background: var(--crit-bg); border-color: var(--crit); color: #8A1010; }
+  .verdict { display: grid; grid-template-columns: auto 1fr; gap: 12px 20px; align-items: center; margin-bottom: 14px; }
+  .side { display: inline-flex; align-items: center; font-family: var(--mono); font-size: 13px; letter-spacing: .1em; text-transform: uppercase; padding: 8px 14px; border-radius: var(--r-m); color: var(--white); font-weight: 500; }
+  .side.firmware { background: var(--orange); } .side.sdk { background: var(--blue); } .side.app { background: var(--black); } .side.backend { background: var(--magenta); }
+  .side.user_expectation, .side.not_a_bug { background: var(--gray-dark); } .side.insufficient_logs { background: var(--yellow); color: var(--black); }
+  .meter { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .meter .lbl { display: flex; justify-content: space-between; font-size: 12px; color: var(--gray-dark); }
+  .meter .lbl b { font-family: var(--mono); color: var(--black); font-weight: 500; }
+  .meter .track { height: 6px; border-radius: 3px; background: var(--brief); overflow: hidden; }
+  .meter .fill { height: 100%; border-radius: 3px; background: var(--black); width: 0; transition: width .3s; }
+  .sev { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: var(--r-s); border: 1px solid; }
+  .sev.low { border-color: var(--gray-light); color: var(--gray-dark); } .sev.medium { border-color: var(--warn); color: #7A5A00; background: #FFF8E1; }
+  .sev.high { border-color: var(--orange); color: #A03600; background: var(--orange-50); } .sev.critical { border-color: var(--crit); color: #8A1010; background: var(--crit-bg); }
+  .summary { font-size: 15px; line-height: 24px; margin: 0 0 8px; }
+  .fix { background: var(--bg); border: 1px solid var(--border-warm); border-radius: var(--r-l); padding: 10px 14px; font-size: 14px; line-height: 22px; }
+  .evidence { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .evidence li { border: 1px solid var(--border-warm); border-radius: var(--r-m); padding: 8px 10px; cursor: pointer; }
+  .evidence li:hover { border-color: var(--gray-mid); }
+  .evidence .src { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; margin-right: 8px; }
+  .evidence .src.app { color: var(--black); } .evidence .src.ring { color: #0C3AAA; } .evidence .src.firmware { color: #A03600; }
+  .evidence code { font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+  .evidence .why { font-size: 12px; color: var(--gray-dark); margin-top: 2px; }
+  ul.q { margin: 0; padding-left: 18px; font-size: 13px; }
+  .metaline { font-family: var(--mono); font-size: 11px; color: var(--gray-mid); margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border-ghost); display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .review { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-warm); }
+  .review .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .review textarea { width: 100%; border: 1px solid var(--gray-light); border-radius: var(--r-m); padding: 7px 10px; min-height: 56px; margin-top: 8px; resize: vertical; }
+  .review input { border: 1px solid var(--gray-light); border-radius: var(--r-m); padding: 5px 8px; width: 160px; }
+  .review .btn.on { background: var(--black); color: var(--white); border-color: var(--black); }
+  .review .verdict-note { font-size: 12px; color: var(--gray-dark); margin-top: 6px; }
+  .empty { padding: 20px 0; color: var(--gray-mid); font-size: 13px; text-align: center; }
+  .callout { border: 1px solid #545500; background: var(--yellow-50); border-radius: var(--r-l); padding: 10px 14px; font-size: 13px; line-height: 20px; }
+  .callout.err { border-color: var(--crit); background: var(--crit-bg); }
+
+  /* excerpt */
+  .excerpt { margin-top: 12px; }
+  .excerpt pre { margin: 0; background: var(--hero); color: #E6E4DC; border-radius: var(--r-l); padding: 12px 0; font-family: var(--mono); font-size: 12px; line-height: 18px; overflow-x: auto; max-height: 640px; overflow-y: auto; }
+  .excerpt .ln { display: block; padding: 0 14px; white-space: pre; }
+  .excerpt .ln.sep { color: var(--yellow); font-weight: 500; margin-top: 6px; }
+  .excerpt .ln.hl { background: #3A3835; color: var(--white); }
+  .excerpt .ln .t { color: var(--hero-muted); }
+  details.runs { margin-top: 12px; border: 1px solid var(--border-warm); border-radius: var(--r-l); padding: 0 12px; }
+  details.runs summary { cursor: pointer; padding: 8px 0; font-size: 13px; font-weight: 500; }
+  details.runs table { width: 100%; border-collapse: collapse; font-size: 12px; font-family: var(--mono); margin-bottom: 8px; }
+  details.runs td, details.runs th { text-align: left; padding: 4px 6px; border-top: 1px solid var(--border-ghost); white-space: nowrap; }
+  details.runs th { font-weight: 400; color: var(--gray-dark); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--black); color: var(--white); padding: 8px 14px; border-radius: var(--r-l); font-size: 13px; z-index: 40; display: none; }
+  @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
+  @media (prefers-reduced-motion: reduce) { .meter .fill { transition: none; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <div>
+      <a class="crumb" href="/dashboard">← Dashboard</a>
+      <div class="overline" style="margin-top:2px">Luna · Internal feedback · Submission</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn small" id="btnCopyLink" type="button">Copy link</button>
+      <button class="btn primary" id="btnDiagnose" type="button" hidden>Diagnose now</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="loading" class="empty">Loading…</div>
+  <div id="page" hidden>
+    <section class="head">
+      <div>
+        <h1 id="title"></h1>
+        <div class="meta" id="meta"></div>
+      </div>
+    </section>
+
+    <div class="grid">
+      <div>
+        <section class="card">
+          <h2>Feedback</h2>
+          <div class="quote" id="quote"></div>
+          <div class="chips" id="cats"></div>
+          <h3>Feature details</h3>
+          <dl id="details"></dl>
+          <h3>Reporter</h3>
+          <dl id="reporter"></dl>
+          <h3>Client</h3>
+          <dl id="client"></dl>
+        </section>
+        <section class="card">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
+            <h2>Log files</h2>
+            <span class="tertiary" style="font-size:12px" id="filesSub"></span>
+          </div>
+          <div class="files" id="files"><div class="empty">Looking up the logging service…</div></div>
+        </section>
+      </div>
+
+      <div>
+        <section class="card" id="diagCard">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:8px">
+            <h2>AI diagnosis</h2>
+            <span class="tertiary" style="font-size:12px" id="diagWhen"></span>
+          </div>
+          <div id="diagBody"></div>
+        </section>
+      </div>
+    </div>
+
+    <section class="card excerpt" id="excerptCard" hidden>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+        <div><h2>Log excerpt</h2><div class="tertiary" style="font-size:12px" id="excerptSub"></div></div>
+        <button class="btn small" id="btnCopyExcerpt" type="button">Copy</button>
+      </div>
+      <pre id="excerpt"></pre>
+    </section>
+  </div>
+</main>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; };
+  const id = location.pathname.split('/').filter(Boolean).pop();
+  const state = { sub: null, diag: null, schema: null, files: null, pollTimer: null };
+  let toastT; const toast = (m) => { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', 2400); };
+
+  async function api(path, opts = {}) {
+    const headers = Object.assign({ 'x-requested-with': 'dashboard' }, opts.headers || {});
+    if (opts.body) headers['content-type'] = 'application/json';
+    const r = await fetch(path, Object.assign({ credentials: 'same-origin' }, opts, { headers }));
+    const text = await r.text(); let body = null; try { body = text ? JSON.parse(text) : null; } catch { body = null; }
+    if (!r.ok) { const e = new Error((body && body.error && body.error.message) || `HTTP ${r.status}`); e.status = r.status; e.body = body; throw e; }
+    return body;
+  }
+  const shortDate = (iso) => { if (!iso) return '—'; const [y, m, d] = iso.split('-'); return `${d} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m - 1]} ${y}`; };
+  const istStamp = (iso) => { if (!iso) return '—'; const d = new Date(iso); return new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).format(d) + ' IST'; };
+  const SIDE_LABEL = { firmware: 'Firmware', sdk: 'Ring SDK', app: 'App', backend: 'Backend', user_expectation: 'User expectation', not_a_bug: 'Not a bug', insufficient_logs: 'Insufficient logs' };
+  const STATUS_TEXT = { pending: 'Queued', running: 'Diagnosing…', waiting_logs: 'Waiting for logs', done: 'Done', no_logs: 'No logs', failed: 'Failed' };
+
+  // ---------- load ----------
+  async function load() {
+    const s = await api('/dashboard/session').catch(() => ({ authenticated: false }));
+    if (!s.authenticated) { location.replace('/dashboard?next=' + encodeURIComponent(location.pathname)); return; }
+    const [sub, schema] = await Promise.all([api('/v1/feedback/' + id), api('/v1/feedback/schema')]);
+    state.sub = sub; state.schema = schema;
+    renderSubmission();
+    $('loading').hidden = true; $('page').hidden = false;
+    $('btnDiagnose').hidden = false;
+    await refreshDiagnosis();
+    loadFiles();
+  }
+
+  const feature = () => (state.schema.features.find((f) => f.key === state.sub.feature_key) || { label: state.sub.feature_key, fields: [], issue_categories: [] });
+  const catLabel = (k) => ((feature().issue_categories || []).find((c) => c.key === k) || { label: k }).label;
+
+  function renderSubmission() {
+    const r = state.sub; const f = feature();
+    document.title = `${f.label} · ${r.is_positive ? 'Working fine' : 'Issue'} · Luna Feedback`;
+    $('title').replaceChildren(el('span', null, f.label + ' · '), el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue'), ...(r.is_test ? [el('span', null, ' '), el('span', 'chip test', 'TEST')] : []));
+    const meta = $('meta'); meta.replaceChildren();
+    const m = (k, v) => { const s = el('span'); s.appendChild(el('span', null, k + ' ')); s.appendChild(el('b', null, v)); meta.appendChild(s); };
+    m('occurred', shortDate(r.occurred_on)); m('submitted', istStamp(r.created_at)); m('tester', String(r.user_id));
+    m('platform', r.platform === 'ios' ? 'iOS' : r.platform === 'android' ? 'Android' : '—'); m('app', r.app_version || '—'); m('fw', r.firmware_version || '—');
+    $('quote').textContent = r.feedback_text || '(no text)';
+    const cats = $('cats'); cats.replaceChildren(); for (const c of r.issue_categories) cats.appendChild(el('span', 'chip', catLabel(c)));
+    const dl = (host, pairs) => { host.replaceChildren(); for (const [k, v, mono] of pairs) { host.appendChild(el('dt', null, k)); host.appendChild(el('dd', mono ? 'mono' : null, v == null || v === '' ? '—' : v)); } };
+    const order = f.fields.map((x) => x.key);
+    const det = Object.entries(r.details || {}).sort(([a], [b]) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999));
+    dl($('details'), det.length ? det.map(([k, v]) => [((f.fields.find((x) => x.key === k) || { label: k }).label), v, true]) : [['—', 'none entered']]);
+    dl($('reporter'), [['User ID', r.user_id, true], ['Email', r.email], ['Device serial', r.device_serial, true], ['Occurred on', r.occurred_on, true], ['Submitted (IST)', r.created_at_ist, true], ['Record', r.id, true]]);
+    dl($('client'), [['Platform', r.platform], ['App version', r.app_version, true], ['Build', r.build_number, true], ['Channel', r.build_channel, true], ['Firmware', r.firmware_version, true], ['OS', r.os_version], ['Device ID', r.device_id, true], ['Session', r.session_id, true]]);
+  }
+
+  // ---------- diagnosis ----------
+  async function refreshDiagnosis() {
+    try { state.diag = await api('/v1/feedback/' + id + '/diagnosis'); } catch (err) { if (err.status === 404) state.diag = null; else { toast(err.message); return; } }
+    renderDiagnosis();
+    clearTimeout(state.pollTimer);
+    if (state.diag && (state.diag.status === 'pending' || state.diag.status === 'running')) state.pollTimer = setTimeout(refreshDiagnosis, 3000);
+  }
+
+  function renderDiagnosis() {
+    const d = state.diag; const body = $('diagBody'); body.replaceChildren();
+    $('btnDiagnose').textContent = d && d.status === 'done' ? 'Re-run diagnosis' : 'Diagnose now';
+    $('btnDiagnose').disabled = !!(d && (d.status === 'running'));
+    if (!d) {
+      $('diagWhen').textContent = '';
+      body.appendChild(el('div', 'empty', state.sub.is_positive ? 'Positive feedback is not diagnosed automatically. Run it manually if something looks off.' : 'Not diagnosed yet.'));
+      $('excerptCard').hidden = true; return;
+    }
+    $('diagWhen').textContent = d.updated_at ? 'updated ' + istStamp(d.updated_at) : '';
+    const st = el('div', 'status-line');
+    st.appendChild(el('span', 'pill ' + d.status, STATUS_TEXT[d.status] || d.status));
+    if (d.trigger) st.appendChild(el('span', null, d.trigger === 'auto' ? 'automatic run' : 'manual run'));
+    if (d.log_coverage) st.appendChild(el('span', null, 'log coverage: ' + d.log_coverage));
+    body.appendChild(st);
+
+    if (d.status === 'waiting_logs') {
+      body.appendChild(el('div', 'callout', 'The logging service does not have this day\'s files yet. Phones upload logs on a schedule (iOS after about 8 PM IST), so this will be retried automatically. ' + (d.error ? 'Reason: ' + d.error + '.' : '')));
+    } else if (d.status === 'no_logs') {
+      body.appendChild(el('div', 'callout', 'No logs could be found for this tester around the issue day, so there is nothing to diagnose from. ' + (d.error ? 'Reason: ' + d.error + '.' : '') + ' Ask the tester to share logs from the app, then re-run.'));
+    } else if (d.status === 'failed') {
+      body.appendChild(el('div', 'callout err', 'The last run failed: ' + (d.error || 'unknown error') + '. It will be retried; you can also re-run now.'));
+    } else if (d.status === 'pending' || d.status === 'running') {
+      body.appendChild(el('div', 'empty', d.status === 'running' ? 'Fetching logs and asking the model… this takes 5–20 seconds.' : 'Queued. Refreshing…'));
+    }
+
+    if (d.root_cause_side) {
+      const v = el('div', 'verdict');
+      v.appendChild(el('span', 'side ' + d.root_cause_side, SIDE_LABEL[d.root_cause_side] || d.root_cause_side));
+      const meter = el('div', 'meter'); const lbl = el('div', 'lbl'); lbl.appendChild(el('span', null, 'Confidence')); lbl.appendChild(el('b', null, d.confidence == null ? '—' : Math.round(d.confidence * 100) + '%')); meter.appendChild(lbl);
+      const track = el('div', 'track'); const fill = el('div', 'fill'); track.appendChild(fill); meter.appendChild(track); v.appendChild(meter);
+      body.appendChild(v); requestAnimationFrame(() => { fill.style.width = Math.round((d.confidence || 0) * 100) + '%'; });
+      const row = el('div', 'chips'); row.style.marginBottom = '12px';
+      if (d.severity) row.appendChild(el('span', 'sev ' + d.severity, d.severity));
+      if (d.reproducible) row.appendChild(el('span', 'chip', 'reproducible: ' + d.reproducible));
+      for (const t of d.tags || []) row.appendChild(el('span', 'chip', t));
+      body.appendChild(row);
+    }
+    if (d.summary) body.appendChild(el('p', 'summary', d.summary));
+    if (d.suggested_fix) { body.appendChild(el('h3', null, 'Suggested next step')); body.appendChild(el('div', 'fix', d.suggested_fix)); }
+    if (d.evidence && d.evidence.length) {
+      body.appendChild(el('h3', null, `Evidence (${d.evidence.length})`));
+      const ul = el('ul', 'evidence');
+      d.evidence.forEach((e, i) => {
+        const li = el('li'); const top = el('div'); top.appendChild(el('span', 'src ' + e.source, e.source)); if (e.ts) top.appendChild(el('span', 'mono tertiary', e.ts + '  '));
+        const line = String(e.line || '').replace(/^\d{2}:\d{2}:\d{2}~?\s+/, ''); top.appendChild(el('code', null, line)); li.appendChild(top);
+        if (e.why) li.appendChild(el('div', 'why', e.why));
+        li.addEventListener('click', () => highlightExcerpt(line)); li.title = 'Show in excerpt'; ul.appendChild(li);
+      });
+      body.appendChild(ul);
+    }
+    if (d.questions_for_tester && d.questions_for_tester.length) { body.appendChild(el('h3', null, 'Questions for the tester')); const ul = el('ul', 'q'); for (const q of d.questions_for_tester) ul.appendChild(el('li', null, q)); body.appendChild(ul); }
+    if (d.fw_version_seen || d.app_version_seen) {
+      const mism = [];
+      if (d.fw_version_seen && state.sub.firmware_version && d.fw_version_seen !== state.sub.firmware_version) mism.push(`firmware ${state.sub.firmware_version} reported vs ${d.fw_version_seen} in logs`);
+      if (d.app_version_seen && state.sub.app_version && d.app_version_seen !== state.sub.app_version) mism.push(`app ${state.sub.app_version} reported vs ${d.app_version_seen} in logs`);
+      if (mism.length) body.appendChild(el('div', 'callout', 'Version mismatch: ' + mism.join('; ') + '.'));
+    }
+    const ml = el('div', 'metaline');
+    if (d.model) ml.appendChild(el('span', null, d.model));
+    if (d.prompt_tokens != null) ml.appendChild(el('span', null, `${d.prompt_tokens}+${d.completion_tokens} tokens`));
+    if (d.cost_usd != null) ml.appendChild(el('span', null, '$' + Number(d.cost_usd).toFixed(4)));
+    if (d.duration_ms != null) ml.appendChild(el('span', null, (d.duration_ms / 1000).toFixed(1) + 's'));
+    if (d.log_excerpt_lines) ml.appendChild(el('span', null, d.log_excerpt_lines + ' excerpt lines'));
+    if (d.fw_version_seen) ml.appendChild(el('span', null, 'fw seen ' + d.fw_version_seen));
+    if (d.log_device && d.log_device.device_model) ml.appendChild(el('span', null, `${d.log_device.device_manufacturer || ''} ${d.log_device.device_model} · ${d.log_device.platform || ''} ${d.log_device.os_version || ''}`.trim()));
+    body.appendChild(ml);
+
+    if (d.status === 'done') renderReview(body, d);
+    renderRuns(body);
+
+    if (d.log_excerpt) { renderExcerpt(d.log_excerpt); $('excerptCard').hidden = false; $('excerptSub').textContent = `${d.log_excerpt_lines} lines · window ${d.log_window_from ? istStamp(d.log_window_from) + ' → ' + istStamp(d.log_window_to) : '—'} · times in IST, "~" = inferred`; }
+    else $('excerptCard').hidden = true;
+  }
+
+  function renderReview(body, d) {
+    const box = el('div', 'review');
+    box.appendChild(el('h3', null, 'Your review'));
+    const row = el('div', 'row');
+    const mk = (v, label) => { const b = el('button', 'btn small' + (d.review_verdict === v ? ' on' : ''), label); b.type = 'button'; b.addEventListener('click', () => submitReview(v)); return b; };
+    row.append(mk('agree', 'Agree'), mk('disagree', 'Disagree'), mk('unsure', 'Unsure'));
+    const who = el('input'); who.placeholder = 'your name'; who.value = d.reviewed_by || localStorage.getItem('luna_reviewer') || ''; who.id = 'reviewer'; row.appendChild(who);
+    box.appendChild(row);
+    const ta = el('textarea'); ta.id = 'reviewNote'; ta.placeholder = 'Optional note: what was right or wrong'; ta.value = d.review_note || ''; box.appendChild(ta);
+    if (d.review_verdict) box.appendChild(el('div', 'verdict-note', `Reviewed: ${d.review_verdict}${d.reviewed_by ? ' by ' + d.reviewed_by : ''}${d.reviewed_at ? ' · ' + istStamp(d.reviewed_at) : ''}`));
+    body.appendChild(box);
+  }
+  async function submitReview(verdict) {
+    const reviewer = ($('reviewer').value || '').trim() || null; const note = ($('reviewNote').value || '').trim() || null;
+    try { if (reviewer) localStorage.setItem('luna_reviewer', reviewer); } catch {}
+    try { state.diag = await api(`/v1/admin/submissions/${id}/diagnosis/review`, { method: 'PATCH', body: JSON.stringify({ verdict, note, reviewer }) }); toast('Review saved'); renderDiagnosis(); }
+    catch (err) { toast('Could not save review: ' + err.message); }
+  }
+
+  async function renderRuns(body) {
+    const det = el('details', 'runs'); det.appendChild(el('summary', null, 'Run history')); body.appendChild(det);
+    det.addEventListener('toggle', async () => {
+      if (!det.open || det.dataset.loaded) return; det.dataset.loaded = '1';
+      try {
+        const { items } = await api(`/v1/admin/submissions/${id}/diagnosis/runs`);
+        const t = el('table'); const th = el('tr'); for (const h of ['when (IST)', 'status', 'trigger', 'model', 'tokens', 'cost', 'time', 'note']) th.appendChild(el('th', null, h)); t.appendChild(th);
+        for (const r of items) { const tr = el('tr'); for (const v of [istStamp(r.created_at), r.status, r.trigger, r.model || '—', r.prompt_tokens != null ? `${r.prompt_tokens}+${r.completion_tokens}` : '—', r.cost_usd != null ? '$' + Number(r.cost_usd).toFixed(4) : '—', r.duration_ms != null ? (r.duration_ms / 1000).toFixed(1) + 's' : '—', r.error || '']) tr.appendChild(el('td', null, v)); t.appendChild(tr); }
+        det.appendChild(t);
+      } catch (err) { det.appendChild(el('div', 'empty', err.message)); }
+    });
+  }
+
+  // ---------- excerpt ----------
+  function renderExcerpt(text) {
+    const pre = $('excerpt'); pre.replaceChildren();
+    for (const line of text.split('\n')) {
+      const span = el('span', 'ln'); span.dataset.text = line.replace(/^\d{2}:\d{2}:\d{2}~?\s+/, '').replace(/^\[[A-Za-z]+\]\s+/, '');
+      if (/^=====/.test(line)) { span.classList.add('sep'); span.textContent = line; }
+      else { const m = /^(\d{2}:\d{2}:\d{2}~?|\s{8})\s(.*)$/.exec(line); if (m) { span.appendChild(el('span', 't', m[1] + ' ')); span.appendChild(document.createTextNode(m[2])); } else span.textContent = line; }
+      pre.appendChild(span);
+    }
+  }
+  function highlightExcerpt(text) {
+    const pre = $('excerpt'); let target = null; const needle = text.replace(/^\[[A-Za-z]+\]\s+/, '').slice(0, 60);
+    for (const ln of pre.querySelectorAll('.ln')) { ln.classList.remove('hl'); if (!target && needle && ln.dataset.text && ln.dataset.text.includes(needle)) target = ln; }
+    if (target) { target.classList.add('hl'); $('excerptCard').hidden = false; target.scrollIntoView({ block: 'center', behavior: 'smooth' }); } else toast('Line not found in excerpt');
+  }
+  $('btnCopyExcerpt').addEventListener('click', async () => { try { await navigator.clipboard.writeText(state.diag.log_excerpt || ''); toast('Excerpt copied'); } catch { toast('Copy failed'); } });
+  $('btnCopyLink').addEventListener('click', async () => { try { await navigator.clipboard.writeText(location.href); toast('Link copied'); } catch { toast('Copy failed'); } });
+
+  // ---------- diagnose now ----------
+  $('btnDiagnose').addEventListener('click', async () => {
+    const b = $('btnDiagnose'); b.disabled = true; const old = b.textContent; b.textContent = 'Diagnosing…';
+    try { const out = await api(`/v1/admin/submissions/${id}/diagnose`, { method: 'POST' }); if (out.diagnosis) state.diag = out.diagnosis; toast(out.status === 'done' ? 'Diagnosis complete' : (out.reason || out.status)); renderDiagnosis(); loadFiles(); }
+    catch (err) { toast('Could not diagnose: ' + err.message); }
+    finally { b.disabled = false; b.textContent = old; }
+  });
+
+  // ---------- log files ----------
+  async function loadFiles() {
+    const host = $('files'); const r = state.sub;
+    const q = r.device_serial ? 'serial_no=' + encodeURIComponent(r.device_serial) : 'email=' + encodeURIComponent(r.email);
+    try {
+      const { items } = await api('/v1/admin/logs/lookup?' + q);
+      host.replaceChildren();
+      $('filesSub').textContent = items.length ? `${items.length} device${items.length === 1 ? '' : 's'} in the logging service (looked up by ${r.device_serial ? 'serial' : 'email'})` : 'nothing in the logging service for this tester';
+      if (!items.length) { host.appendChild(el('div', 'empty', 'No log uploads found. Logs sync from the phone on a schedule; iOS after about 8 PM IST.')); return; }
+      const used = new Set(state.diag && state.diag.log_files ? [].concat(...Object.values(state.diag.log_files)) : []);
+      for (const dev of items) {
+        const h = el('div', 'overline', `${dev.platform || '?'} · ${dev.device_manufacturer || ''} ${dev.device_model || ''} · app ${dev.version_name || '?'} · fv ${dev.fv || '?'} · last upload ${dev.updated_at ? istStamp(dev.updated_at) : '?'}`); h.style.margin = '8px 0 4px'; host.appendChild(h);
+        const rows = [];
+        for (const src of ['app', 'ring', 'firmware']) for (const f of dev.files[src] || []) rows.push({ src, f });
+        rows.sort((a, b) => (b.f.date || '').localeCompare(a.f.date || '') || a.src.localeCompare(b.src));
+        for (const { src, f } of rows.slice(0, 30)) {
+          const row = el('div', 'row'); row.appendChild(el('span', 'src', src));
+          const a = el('a', null, (f.url.split('/').pop() || f.url)); a.href = f.url; a.target = '_blank'; a.rel = 'noopener'; row.appendChild(a);
+          const right = el('span'); right.appendChild(el('span', 'date', f.date || '')); if (used.has(f.url)) { right.appendChild(document.createTextNode(' ')); right.appendChild(el('span', 'used', 'used')); } row.appendChild(right);
+          host.appendChild(row);
+        }
+        if (rows.length > 30) host.appendChild(el('div', 'tertiary', `… ${rows.length - 30} older files`));
+      }
+    } catch (err) { host.replaceChildren(el('div', 'empty', 'Lookup failed: ' + err.message)); }
+  }
+
+  load().catch((err) => { $('loading').textContent = 'Could not load: ' + err.message; });
+})();
+</script>
+</body>
+</html>

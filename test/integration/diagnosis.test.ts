@@ -204,6 +204,20 @@ describe('auto diagnosis on negative submission', () => {
     expect(lookup.items[0].files.app).toHaveLength(2);
   });
 
+  it('the sweep backfills negative submissions that were never diagnosed', async () => {
+    // Insert directly, bypassing the hook, as if it arrived before diagnosis existed.
+    const ins = await app.db.query(
+      `insert into luna_feedback.submissions (feature_key, is_positive, occurred_on, user_id, email, issue_categories, is_test, platform)
+       values ('home', false, '2026-08-20', 900010, $1, '{wrong_peak_score}', true, 'android') returning id`, [`backfill+${run}@${DOMAIN}`]);
+    const id = ins.rows[0].id;
+    expect(await app.diagnosis.get(id)).toBeNull();
+    const sweep = (await app.inject({ method: 'POST', url: '/v1/admin/diagnoses/run-pending?limit=5', headers: adminHeaders })).json();
+    expect(sweep.results.map((r: { submission_id: string }) => r.submission_id)).toContain(id);
+    const d = await app.diagnosis.get(id);
+    expect(d).not.toBeNull();
+    expect(['no_logs', 'waiting_logs', 'done']).toContain(d!.status);
+  });
+
   it('cron bearer can call the sweep when CRON_SECRET is set', async () => {
     const cfg2 = loadConfig({ NODE_ENV: 'test', LOG_LEVEL: 'silent', CRON_SECRET: 'cron-secret-for-tests-123' });
     const app2 = buildApp({ config: cfg2, logger: false, db: app.db, diagnosis: { logs: null, ai: null } });

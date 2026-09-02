@@ -29,7 +29,7 @@ export const DASHBOARD_HEADER = 'x-requested-with';
 export function registerAuth(app: FastifyInstance, keys: { app: string; admin: string; sessionSecret: string; cronSecret?: string }) {
   app.addHook('onRequest', async (req) => {
     const url = req.url.split('?')[0] ?? '';
-    if (PUBLIC_PATHS.has(url)) return;
+    if (PUBLIC_PATHS.has(url) || /^\/dashboard\/submissions\/[^/]+$/.test(url)) return;
 
     const apiKey = header(req, 'x-api-key');
     const adminKey = header(req, 'x-admin-key');

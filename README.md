@@ -120,6 +120,28 @@ curl -X PATCH -H "x-admin-key: $ADMIN_API_KEY" -H "content-type: application/jso
 Categories are never deleted. Deactivating removes them from the schema and rejects
 them on new submissions; old rows keep their keys.
 
+## AI diagnosis
+
+Every negative submission is diagnosed in the background: the tester's logs are fetched from the
+Luna logging API (`device_serial` first, `email` fallback), the ≤100 most relevant lines around the
+issue time are extracted and redacted, and an OpenRouter model returns a structured verdict
+(`root_cause_side`, confidence, severity, tags, evidence, suggested fix). Results live in
+`luna_feedback.diagnoses` with `ai_*` columns denormalised onto `submissions`.
+
+- Runs after the HTTP response via `waitUntil` (Vercel) or `setImmediate` (local). Same-day reports
+  park as `waiting_logs` until the evening log sync (`DIAGNOSIS_SYNC_HOUR_IST`) and retry.
+- `POST /v1/admin/diagnoses/run-pending` sweeps due jobs and backfills undiagnosed issues; the
+  dashboard calls it on load and `vercel.json` schedules it nightly (needs `CRON_SECRET`).
+- Detail page: `/dashboard/submissions/{id}` (verdict, evidence linked to the excerpt, log file links,
+  Diagnose now / Re-run, Agree / Disagree review).
+- Env: `LUNA_LOGS_APIKEY`, `OPEN_ROUTER_KEY`, `OPENROUTER_MODEL`, `DIAGNOSIS_AUTO`,
+  `DIAGNOSIS_DAILY_BUDGET_USD`, `DIAGNOSIS_SYNC_HOUR_IST`, `CRON_SECRET`. Missing keys disable
+  diagnosis without affecting submissions.
+- `node scripts/diagnose-live.mjs <email> <serial|-> <feature> <YYYY-MM-DD> [platform]` runs one
+  real diagnosis locally (creates and removes an `is_test` submission; `KEEP=1` keeps it).
+
+Design: [docs/PLAN-diagnosis.md](docs/PLAN-diagnosis.md).
+
 ## Adding a field or feature
 
 1. Edit `src/schema/registry.ts` (fields, rules, or a new entry in `FEATURE_KEYS` and `FEATURE_DEFINITIONS`).

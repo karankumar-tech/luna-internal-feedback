@@ -21,7 +21,10 @@ const clip = (s: string) => (s.length > MAX_LINE ? s.slice(0, MAX_LINE - 1) + '�
 const APP_SEP = /^={20,}\s*$/m;
 const TIME_RE = /"time"\s*:\s*"?(\d{10,13})"?/;
 
-function summarizeAppEntry(chunk: string): { ts: number | null; lines: string[] } {
+const XLOG_RE = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})\.(\d{3})\s+([A-Z])\/X-LOG:\s*(.*)$/;
+const JSON_FRAGMENT = /^\s*(["{}\[\],]|\]|\},?$)/;
+
+function summarizeAppEntry(chunk: string): { ts: number | null; lines: string[]; raw?: string[] } {
   const trimmed = chunk.trim();
   if (!trimmed) return { ts: null, lines: [] };
   const tsMatch = TIME_RE.exec(trimmed);
@@ -30,9 +33,8 @@ function summarizeAppEntry(chunk: string): { ts: number | null; lines: string[] 
   try { const parsed = JSON.parse(trimmed); if (parsed && typeof parsed === 'object') obj = parsed as Record<string, unknown>; } catch { /* not pure JSON */ }
 
   if (!obj) {
-    // Keep the first meaningful line(s) of non-JSON chunks.
-    const firstLines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 2);
-    return { ts, lines: firstLines.map(clip) };
+    // Not a JSON dump: X-LOG style lines ("2026-08-10 17:28:19.008 E/X-LOG: …") and free text.
+    return { ts, lines: [], raw: trimmed.split('\n') };
   }
   const success = obj.success;
   const message = typeof obj.message === 'string' ? obj.message : '';
@@ -53,7 +55,24 @@ export function parseAppLog(text: string, ref: LogFileRef): LogLine[] {
   const out: LogLine[] = [];
   let lastTs: number | null = null;
   for (const chunk of text.split(APP_SEP)) {
-    const { ts, lines } = summarizeAppEntry(chunk);
+    const { ts, lines, raw } = summarizeAppEntry(chunk);
+    if (raw) {
+      for (const rawLine of raw) {
+        const line = rawLine.trim();
+        if (!line || /^=+$/.test(line)) continue;
+        const m = XLOG_RE.exec(line);
+        if (m) {
+          const lts = istToEpoch(+m[1]!, +m[2]!, +m[3]!, +m[4]!, +m[5]!, +m[6]!, +m[7]!);
+          lastTs = lts;
+          out.push({ source: 'app', channel: 'app', ts: lts, approx: false, text: redact(clip(`${m[8]}/ ${m[9]}`)) });
+        } else if (!JSON_FRAGMENT.test(line)) {
+          // Free text (e.g. "Comment : Connected"); JSON fragments of a large dump are skipped.
+          out.push({ source: 'app', channel: 'app', ts: ts ?? lastTs, approx: true, text: redact(clip(line)) });
+        }
+      }
+      if (ts) lastTs = ts;
+      continue;
+    }
     const useTs = ts ?? lastTs;
     for (const l of lines) out.push({ source: 'app', channel: 'app', ts: useTs, approx: ts === null, text: redact(l) });
     if (ts) lastTs = ts;
@@ -68,6 +87,7 @@ export function parseAppLog(text: string, ref: LogFileRef): LogLine[] {
 // ---------------------------------------------------------------------------
 const RING_RE = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2}):(\d{3})\s+(.*)$/;
 const BLE_PAYLOAD = /(receive|write)\s*=\s*[0-9A-F]{2}(\s[0-9A-F]{2})+/i;
+const DATA_DUMP = /(Bean\{|dailyData\s*=|\[(?:\s*-?\d+,){8,}|realtimedata > .*\{)/;
 
 export function parseRingAndroid(text: string, memberName: string): LogLine[] {
   const channel = /BEHAVIOR/i.test(memberName) ? 'ring/BEHAVIOR' : /BLE/i.test(memberName) ? 'ring/BLE' : 'ring';
@@ -86,6 +106,7 @@ export function parseRingAndroid(text: string, memberName: string): LogLine[] {
       lastTs = ts;
     }
     if (isBle && BLE_PAYLOAD.test(body)) continue;
+    if (DATA_DUMP.test(body)) continue;
     const compact = body.replace(/^-+>\s*/, '').replace(/-{3,}>/g, '>').replace(/\s{2,}/g, ' ');
     out.push({ source: 'ring', channel, ts: ts ?? lastTs, approx: ts === null, text: redact(clip(compact)) });
   }
@@ -139,6 +160,22 @@ export function parseFirmware(text: string, ref: LogFileRef): LogLine[] {
 
 // ---------------------------------------------------------------------------
 
+/** Collapse runs of identical lines (e.g. a polling loop) into one line with a repeat count. */
+export function collapseRepeats(lines: LogLine[]): LogLine[] {
+  const out: LogLine[] = [];
+  let count = 0;
+  for (const l of lines) {
+    const prev = out[out.length - 1];
+    if (prev && prev.text === l.text && prev.channel === l.channel) { count += 1; continue; }
+    if (prev && count > 0) { prev.text = `${prev.text}  (×${count + 1})`; }
+    count = 0;
+    out.push({ ...l });
+  }
+  const last = out[out.length - 1];
+  if (last && count > 0) last.text = `${last.text}  (×${count + 1})`;
+  return out;
+}
+
 export function parseFetched(ref: LogFileRef, parts: { name: string; text: string }[], bytes: number): ParsedFile {
   const lines: LogLine[] = [];
   const members: string[] = [];
@@ -149,5 +186,5 @@ export function parseFetched(ref: LogFileRef, parts: { name: string; text: strin
     else if (/watchLogs|ring-trace|\.txt$/i.test(part.name) && !/BEHAVIOR|BLE/i.test(part.name)) lines.push(...parseRingIos(part.text));
     else lines.push(...parseRingAndroid(part.text, part.name));
   }
-  return { ref, lines, bytes, members };
+  return { ref, lines: collapseRepeats(lines), bytes, members };
 }

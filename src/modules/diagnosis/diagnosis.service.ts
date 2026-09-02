@@ -87,6 +87,7 @@ export class DiagnosisService {
   /** Process due jobs sequentially (each ~5–20 s). Used by the dashboard sweep and the nightly cron. */
   async runPending(limit = 5): Promise<RunOutcome[]> {
     if (!this.enabled) return [];
+    await this.d.repo.enqueueMissing(limit);
     const jobs = await this.d.repo.dueJobs(limit, this.d.config.maxAttempts);
     const out: RunOutcome[] = [];
     for (const j of jobs) out.push(await this.run(j.submission_id, 'auto'));

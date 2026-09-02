@@ -14,7 +14,7 @@ export interface ExcerptResult {
 const CAPS: Record<LogSource, number> = { app: 40, ring: 40, firmware: 20 };
 const TOTAL_CAP = 100;
 
-const GENERIC = /\b(error|fail|failed|failure|timeout|timed out|disconnect|disconnected|retry|exception|crash|reboot|reset|battery|abort|denied|unauthori[sz]ed|invalid|missing|null|not found|refused|lost|stuck|frozen|hang)\b/i;
+const GENERIC = /\b(error|fail|failed|failure|timeout|timed out|disconnect|disconnected|retry|exception|crash|reboot|reset|battery|abort|denied|unauthori[sz]ed|invalid|missing|not found|refused|lost|stuck|frozen|hang)\b/i;
 const FEATURE_WORDS: Record<string, RegExp> = {
   sleep: /\b(sleep|stage|hrv|spo2|vital|nap|bed|wake|night)\b/i,
   workout: /\b(workout|exercise|hr|heart|gps|map|zone|intensity|start|stop|end|calorie)\b/i,
@@ -77,6 +77,8 @@ function scoreLine(line: LogLine, feature: string, win: WindowSpec): number {
   const fw = FEATURE_WORDS[feature];
   if (fw && fw.test(line.text)) s += 2;
   if (line.text.startsWith('FAIL')) s += 3;
+  if (/^E\/ /.test(line.text)) s += 3;
+  if (/^W\/ /.test(line.text)) s += 1;
   if (line.ts === null) return s > 0 ? s : 0;
   if (line.ts >= win.from && line.ts <= win.to) s += 2;
   else {

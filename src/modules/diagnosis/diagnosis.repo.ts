@@ -109,6 +109,26 @@ export class DiagnosisRepo {
     );
   }
 
+  /** Queue recent negative submissions that were never diagnosed (e.g. arrived before diagnosis was enabled). */
+  async enqueueMissing(limit = 20, days = 14): Promise<number> {
+    const r = await this.db.query<{ id: string }>(
+      `insert into luna_feedback.diagnosis_jobs (submission_id, state)
+       select s.id, 'queued' from luna_feedback.submissions s
+        where not s.is_positive
+          and s.created_at > now() - ($2::int * interval '1 day')
+          and not exists (select 1 from luna_feedback.diagnoses d where d.submission_id = s.id)
+          and not exists (select 1 from luna_feedback.diagnosis_jobs j where j.submission_id = s.id)
+        order by s.created_at desc limit $1
+       returning submission_id as id`,
+      [limit, days],
+    );
+    for (const row of r.rows) {
+      await this.db.query(`insert into luna_feedback.diagnoses (submission_id, status) values ($1, 'pending') on conflict (submission_id) do nothing`, [row.id]);
+      await this.db.query(`update luna_feedback.submissions set ai_status = 'pending' where id = $1 and ai_status is null`, [row.id]);
+    }
+    return r.rowCount ?? 0;
+  }
+
   /** Jobs that are due: queued and run_after passed, or running but stale. Oldest first. */
   async dueJobs(limit: number, maxAttempts: number, staleMs = 6 * 60_000): Promise<JobRow[]> {
     const r = await this.db.query<JobRow>(

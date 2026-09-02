@@ -49,6 +49,7 @@ export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
 
   app.get('/docs', html(PAGES.docs));
   app.get('/dashboard', html(PAGES.dashboard));
+  app.get('/dashboard/submissions/:id', html(PAGES.submission));
   app.get('/', async (_req, reply) => reply.redirect('/docs', 302));
 
   /** Is the caller signed in? Read by the dashboard on load. */

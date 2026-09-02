@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeEntry, toFileRefs } from '../../../src/modules/diagnosis/logs/client.js';
 import { pickEntry, pickFiles } from '../../../src/modules/diagnosis/logs/select.js';
-import { parseAppLog, parseFirmware, parseRingAndroid, parseRingIos, istToEpoch, epochToIst } from '../../../src/modules/diagnosis/logs/parse.js';
+import { parseAppLog, parseFirmware, parseRingAndroid, parseRingIos, istToEpoch, epochToIst, collapseRepeats } from '../../../src/modules/diagnosis/logs/parse.js';
 import { redact } from '../../../src/modules/diagnosis/logs/redact.js';
 import { buildExcerpt, computeWindow } from '../../../src/modules/diagnosis/extract.js';
 import type { ParsedFile } from '../../../src/modules/diagnosis/logs/types.js';
@@ -65,6 +65,28 @@ describe('parsers', () => {
     expect(lines[1]!.text).toMatch(/^FAIL success=false message="Session expired"/);
     expect(lines[2]!.text).toContain('[REDACTED]');
     expect(lines[2]!.text).not.toContain('abc123def');
+  });
+  it('parses X-LOG lines inside app logs with real timestamps', () => {
+    const text = '2026-08-10 17:28:19.008 I/X-LOG: ZhConnectHandler softDisconnect (keep binding)\n2026-08-10 17:28:19.039 E/X-LOG: Exception = 01 FF\nComment : Connected\n';
+    const l = parseAppLog(text, { source: 'app', url: 'x', date: '2026-08-10' });
+    expect(l).toHaveLength(3);
+    expect(l[0]).toMatchObject({ approx: false, text: 'I/ ZhConnectHandler softDisconnect (keep binding)' });
+    expect(new Date(l[0]!.ts!).toISOString()).toBe('2026-08-10T11:58:19.008Z');
+    expect(l[1]!.text).toBe('E/ Exception = 01 FF');
+    expect(l[2]).toMatchObject({ approx: true, text: 'Comment : Connected' });
+  });
+  it('skips JSON fragments of unparseable dumps and collapses repeats', () => {
+    const text = '2026-08-10 17:35:20.000 E/X-LOG: Exception = 02 FF\n{\n    "data": {\n        "sub_id": null,\n        "habit_tracking_id": null,\n    },\n}\nComment : Connected\n';
+    const l = parseAppLog(text, { source: 'app', url: 'x', date: '2026-08-10' });
+    expect(l.map((x) => x.text)).toEqual(['E/ Exception = 02 FF', 'Comment : Connected']);
+    const rep = collapseRepeats([{ source: 'ring', channel: 'r', ts: 1, approx: false, text: 'tick' }, { source: 'ring', channel: 'r', ts: 2, approx: false, text: 'tick' }, { source: 'ring', channel: 'r', ts: 3, approx: false, text: 'tick' }, { source: 'ring', channel: 'r', ts: 4, approx: false, text: 'other' }]);
+    expect(rep.map((x) => x.text)).toEqual(['tick  (×3)', 'other']);
+  });
+  it('drops BLE data-bean dumps', () => {
+    const t = '2026-08-10 17:36:09:000 ----> fitnessparsing ---------> parsingFitness dailyData = DailyBean{stepsFrequency=60, stepsData=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}\n2026-08-10 17:36:10:000 ----> bluetoothservice ---------> connection lost\n';
+    const l = parseRingAndroid(t, 'BLE_2026-08-10.log');
+    expect(l).toHaveLength(1);
+    expect(l[0]!.text).toContain('connection lost');
   });
   it('parses Android ring lines and drops BLE hex payloads', () => {
     const behaviour = '2026-08-10 17:35:59:103 ----> sdk --- realtimedata -----> Open\n2026-08-10 17:36:00:000 ----> sdk --- dailysync --------> Add\n';
