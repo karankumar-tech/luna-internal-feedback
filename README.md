@@ -115,7 +115,11 @@ Both the schema endpoint and the validator read the registry, so nothing else ch
 
 ## Deploy (Vercel)
 
-`api/index.ts` wraps the Fastify app; `vercel.json` rewrites every path to it. Set the
-variables from `.env.example` in the Vercel project settings, with `DB_POOL_MAX=1`
-and a `SUPABASE_DB_URL` pointing at the transaction pooler (port `6543`).
+Zero-config: Vercel's Fastify preset detects `src/server.ts` as the entrypoint and
+intercepts `app.listen()`, running the whole app as one Function. Do not add an
+`api/` directory or a `src/app.ts` / `src/index.ts` file, both would change what Vercel
+picks as the entry.
+
+Set the variables from `.env.example` in the Vercel project settings, with
+`DB_POOL_MAX=1` and a `SUPABASE_DB_URL` pointing at the transaction pooler (port `6543`).
 Migrations are run from a developer machine with `npm run db:migrate`.

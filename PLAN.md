@@ -22,7 +22,7 @@ without a redeploy.
 | Field definitions | Code registry (`src/schema/registry.ts`), versioned | Field types carry validation rules (0-100, HH:MM AM/PM). Keeping these in code keeps validation typed and simple. Categories are the only piece that changes at runtime |
 | Timestamps | `created_at timestamptz` stored in UTC; every response also returns `created_at_ist` formatted `Asia/Kolkata` | Storing local time in Postgres loses ordering guarantees across DST/zone edits; formatting at the edge is lossless |
 | Auth | `x-api-key` shared secret for the app, separate `x-admin-key` for admin routes | Internal-only, Release binary excludes the module; matches the iOS side's `requiresAuth: false` endpoint plan |
-| Hosting | Fastify app exported as a handler; runs on Vercel (`api/index.ts`) or `node dist/server.js` | Earlier plan pointed the iOS endpoint at a Vercel route |
+| Hosting | `src/server.ts` is the single entrypoint; Vercel's Fastify preset detects it and intercepts `listen()`, `npm start` runs it as a plain server | Earlier plan pointed the iOS endpoint at a Vercel route |
 
 ---
 

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { buildApp, type App } from '../../src/app.js';
+import { buildApp, type App } from '../../src/build-app.js';
 import { loadConfig } from '../../src/config.js';
 
 const TEST_EMAIL_DOMAIN = 'luna-test.invalid';

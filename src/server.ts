@@ -1,4 +1,6 @@
-import { buildApp } from './app.js';
+// Entrypoint for both `npm start` and Vercel.
+// Vercel's Fastify preset detects src/server.ts, intercepts app.listen(), and runs the app as one Function.
+import { buildApp } from './build-app.js';
 
 const app = buildApp();
 
