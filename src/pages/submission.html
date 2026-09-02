@@ -83,7 +83,7 @@
   .meter .lbl { display: flex; justify-content: space-between; font-size: 12px; color: var(--gray-dark); }
   .meter .lbl b { font-family: var(--mono); color: var(--black); font-weight: 500; }
   .meter .track { height: 6px; border-radius: 3px; background: var(--brief); overflow: hidden; }
-  .meter .fill { height: 100%; border-radius: 3px; background: var(--black); width: 0; transition: width .3s; }
+  .meter .fill { height: 100%; width: 100%; border-radius: 3px; background: var(--black); transform: scaleX(0); transform-origin: left center; transition: transform .3s; }
   .sev { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: var(--r-s); border: 1px solid; }
   .sev.low { border-color: var(--gray-light); color: var(--gray-dark); } .sev.medium { border-color: var(--warn); color: #7A5A00; background: #FFF8E1; }
   .sev.high { border-color: var(--orange); color: #A03600; background: var(--orange-50); } .sev.critical { border-color: var(--crit); color: #8A1010; background: var(--crit-bg); }
@@ -288,7 +288,7 @@
       v.appendChild(el('span', 'side ' + d.root_cause_side, SIDE_LABEL[d.root_cause_side] || d.root_cause_side));
       const meter = el('div', 'meter'); const lbl = el('div', 'lbl'); lbl.appendChild(el('span', null, 'Confidence')); lbl.appendChild(el('b', null, d.confidence == null ? '—' : Math.round(d.confidence * 100) + '%')); meter.appendChild(lbl);
       const track = el('div', 'track'); const fill = el('div', 'fill'); track.appendChild(fill); meter.appendChild(track); v.appendChild(meter);
-      body.appendChild(v); requestAnimationFrame(() => { fill.style.width = Math.round((d.confidence || 0) * 100) + '%'; });
+      body.appendChild(v); requestAnimationFrame(() => { fill.style.transform = 'scaleX(' + Math.max(0, Math.min(1, d.confidence || 0)) + ')'; });
       const row = el('div', 'chips'); row.style.marginBottom = '12px';
       if (d.severity) row.appendChild(el('span', 'sev ' + d.severity, d.severity));
       if (d.reproducible) row.appendChild(el('span', 'chip', 'reproducible: ' + d.reproducible));
