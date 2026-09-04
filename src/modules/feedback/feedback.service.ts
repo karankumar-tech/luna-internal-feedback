@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { AppError } from '../../lib/errors.js';
-import { formatInZone } from '../../lib/time.js';
+import { formatInZone, todayInZone } from '../../lib/time.js';
 import { buildSubmissionValidator, zodIssues } from '../../schema/buildValidator.js';
 import { SCHEMA_VERSION, isFeatureKey } from '../../schema/registry.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
@@ -59,10 +59,10 @@ export class FeedbackService {
     const { row, created } = await this.feedback.insert({
       feature_key: featureKey,
       is_positive: v.is_positive as boolean,
-      occurred_on: v.occurred_on as string,
+      occurred_on: (v.occurred_on as string | null | undefined) ?? todayInZone(this.timeZone),
       user_id: v.user_id as number,
       email: v.email as string,
-      issue_categories: v.issue_categories as string[],
+      issue_categories: (v.issue_categories as string[] | null | undefined) ?? [],
       feedback_text: (v.feedback_text as string | null | undefined) ?? null,
       device_serial: (v.device_serial as string | null | undefined) || null,
       details,

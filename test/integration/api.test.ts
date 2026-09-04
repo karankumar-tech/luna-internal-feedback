@@ -129,6 +129,20 @@ describe('POST /v1/feedback/:feature', () => {
     expect(r.json().details).toEqual({ actual_start_time: '11:30 PM', recorded_end_time: '05:00 AM' });
   });
 
+  it('accepts positive feedback without categories or date, defaulting the date to today (IST)', async () => {
+    const r = await app.inject({ method: 'POST', url: '/v1/feedback/home', headers: appHeaders,
+      payload: { is_test: true, is_positive: true, user_id: 900001, email: `tester+${run}@${TEST_EMAIL_DOMAIN}`, feedback_text: 'All good' } });
+    expect(r.statusCode).toBe(201);
+    expect(r.json().issue_categories).toEqual([]);
+    expect(r.json().occurred_on).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const neg = await app.inject({ method: 'POST', url: '/v1/feedback/home', headers: appHeaders,
+      payload: { is_test: true, is_positive: false, user_id: 900001, email: `tester+${run}@${TEST_EMAIL_DOMAIN}` } });
+    expect(neg.statusCode).toBe(422);
+    expect(neg.json().error.issues.map((i: { path: string }) => i.path).sort()).toEqual(['issue_categories', 'occurred_on']);
+    const schema = (await app.inject({ method: 'GET', url: '/v1/feedback/schema', headers: appHeaders })).json();
+    expect(schema.common_fields.find((f: { key: string }) => f.key === 'issue_categories').requiredIf).toEqual({ field: 'is_positive', equals: false });
+  });
+
   it('stores an "other" submission with the screen field', async () => {
     const r = await app.inject({ method: 'POST', url: '/v1/feedback/other', headers: appHeaders,
       payload: validBody({ issue_categories: ['app_crash', 'something_else'], details: { screen: 'Settings > Profile' } }) });

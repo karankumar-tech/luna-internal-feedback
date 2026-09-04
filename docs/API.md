@@ -93,7 +93,7 @@ curl -X POST https://luna-feedback.buildsage.tech/v1/feedback/sleep \
 | timestamps (responses) | `created_at`: `"2026-09-02T08:20:23.521Z"` · `created_at_ist`: `"2026-09-02 13:50:23 +05:30"` | `created_at` is ISO 8601 UTC. `created_at_ist` is the same instant in Asia/Kolkata for display |
 | `user_id` | `10482` | JSON number, positive integer |
 | `email` | `"tester@luna.app"` | valid email, ≤ 254 chars, stored as given |
-| `issue_categories` | `["incorrect_sleep"]` | array of category **keys** (not labels), at least one, no duplicates, only keys the schema lists for that feature |
+| `issue_categories` | `["incorrect_sleep"]` | array of category **keys** (not labels), no duplicates, only keys the schema lists for that feature. At least one when `is_positive` is false; omit or send `[]` for positive feedback |
 | ids | `"178239d2-2581-4207-a378-742b0ac186ef"` | UUID v4 |
 
 ### Error envelope
@@ -151,7 +151,7 @@ Schema responses carry a weak `ETag` and `Cache-Control: no-cache`. Recommended:
 |---|---|
 | request body | 64 KB |
 | `feedback_text` | 500 characters |
-| `issue_categories` | ≥ 1 item |
+| `issue_categories` | ≥ 1 item for issues; empty allowed for positive feedback |
 | list page size | 1–200, default 50 |
 
 ---
@@ -172,6 +172,12 @@ Real tester feedback and integration traffic share one database. The `is_test` f
 ```
 
 Omit it, or send `false`, in the build that real testers use. It defaults to `false`.
+
+**Positive feedback is one tap.** When `is_positive` is `true`, only `user_id` and `email` are required. Skip the category picker and the date; the server stores `issue_categories: []` and today's date:
+
+```json
+{ "is_positive": true, "user_id": 10482, "email": "tester@luna.app", "client": { "platform": "ios", "app_version": "2.4.0" } }
+```
 
 **What it does**
 
@@ -194,6 +200,7 @@ The schema is a list of **field definitions**. Each has:
 | `label` | all | display label |
 | `type` | all | one of the types below |
 | `required` | all | must be present and non-null |
+| `requiredIf` | some common fields | `{ "field", "equals" }` overrides `required`: mandatory only while `field` equals `equals`. Today `issue_categories` and `occurred_on` carry `{ "field": "is_positive", "equals": false }`, so a positive form can hide both |
 | `help` | any | optional hint text |
 
 Type-specific properties:
@@ -241,10 +248,12 @@ Everything needed to build the form for every active feature.
   "schema_version": 1,
   "common_fields": [
     { "key": "is_positive",      "type": "boolean",      "label": "Was this a positive experience?", "required": true },
-    { "key": "occurred_on",      "type": "date",         "format": "YYYY-MM-DD", "label": "Date the issue occurred", "required": true },
+    { "key": "occurred_on",      "type": "date",         "format": "YYYY-MM-DD", "label": "Date the issue occurred", "required": true,
+      "requiredIf": { "field": "is_positive", "equals": false }, "help": "Required for issues. Optional for positive feedback; defaults to today (IST)." },
     { "key": "user_id",          "type": "number",       "label": "User ID", "required": true, "integer": true, "min": 1 },
     { "key": "email",            "type": "string",       "format": "email", "label": "Email", "required": true, "maxLength": 254 },
-    { "key": "issue_categories", "type": "multi_select", "label": "What went wrong?", "required": true, "minItems": 1, "optionsFrom": "issue_categories" },
+    { "key": "issue_categories", "type": "multi_select", "label": "What went wrong?", "required": true, "minItems": 1, "optionsFrom": "issue_categories",
+      "requiredIf": { "field": "is_positive", "equals": false }, "help": "Required for issues. Omit (or send []) for positive feedback." },
     { "key": "feedback_text",    "type": "text",         "label": "Tell us more", "required": false, "maxLength": 500, "multiline": true },
     { "key": "device_serial",    "type": "string",       "label": "Ring or band serial number", "required": false, "maxLength": 64,
       "help": "Fill automatically from the connected ring or band, e.g. R2N08250600302. Not typed by the tester. Used to fetch device logs; email is the fallback." }
@@ -371,10 +380,10 @@ Create a submission. `{feature}` is one of `home`, `sleep`, `activity`, `workout
 | field | type | required | notes |
 |---|---|---|---|
 | `is_positive` | boolean | yes | |
-| `occurred_on` | date | yes | not in the future (IST) |
+| `occurred_on` | date | issues | not in the future (IST). Required when `is_positive` is `false`; for positive feedback it may be omitted and defaults to today (IST) |
 | `user_id` | integer ≥ 1 | yes | |
 | `email` | email string | yes | |
-| `issue_categories` | string[] | yes | category keys for this feature, ≥ 1, unique |
+| `issue_categories` | string[] | issues | category keys for this feature, ≥ 1, unique. Required when `is_positive` is `false`; for positive feedback omit it or send `[]` |
 | `feedback_text` | string ≤ 500 | no | free text |
 | `device_serial` | string ≤ 64 | no | **send whenever a ring or band is connected**, e.g. `"R2N08250600302"`. Read from the SDK; never typed by the tester. Used to fetch that device's logs for AI diagnosis; `email` is the fallback |
 | `details` | object | no | feature fields, see §6. Unknown keys are rejected. Defaults to `{}` |

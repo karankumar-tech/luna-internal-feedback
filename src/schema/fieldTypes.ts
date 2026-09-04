@@ -8,6 +8,11 @@ interface Base {
   label: string;
   required: boolean;
   help?: string;
+  /**
+   * Overrides `required`: the field is mandatory only when another field equals `equals`.
+   * Otherwise it may be omitted (and, for `occurred_on`, defaults to today in IST).
+   */
+  requiredIf?: { field: string; equals: string | number | boolean };
 }
 
 export interface BooleanField extends Base { type: 'boolean' }

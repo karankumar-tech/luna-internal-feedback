@@ -16,15 +16,18 @@ function optionalize(schema: ZodTypeAny, required: boolean): ZodTypeAny {
 }
 
 /** Turns one registry field into a Zod schema. */
-export function fieldToZod(field: FieldDef, ctx: ValidatorContext): ZodTypeAny {
+export function fieldToZod(field: FieldDef, ctx: ValidatorContext, lenient = false): ZodTypeAny {
+  // A conditionally required field (requiredIf) is optional only in the lenient variant of the schema.
+  const relaxed = lenient && !!field.requiredIf;
+  const required = field.required && !relaxed;
   switch (field.type) {
     case 'boolean':
-      return optionalize(z.boolean({ invalid_type_error: 'must be true or false' }), field.required);
+      return optionalize(z.boolean({ invalid_type_error: 'must be true or false' }), required);
 
     case 'text':
       return optionalize(
         z.string().trim().max(field.maxLength, `must be at most ${field.maxLength} characters`),
-        field.required,
+        required,
       );
 
     case 'date': {
@@ -33,7 +36,7 @@ export function fieldToZod(field: FieldDef, ctx: ValidatorContext): ZodTypeAny {
         .string()
         .refine(isValidCalendarDate, 'must be a real date in YYYY-MM-DD format')
         .refine((v) => field.allowFuture || v <= today, `must not be in the future (today is ${today})`);
-      return optionalize(s, field.required);
+      return optionalize(s, required);
     }
 
     case 'number': {
@@ -41,13 +44,13 @@ export function fieldToZod(field: FieldDef, ctx: ValidatorContext): ZodTypeAny {
       if (field.integer) n = n.int('must be a whole number');
       if (field.min !== undefined) n = n.min(field.min, `must be >= ${field.min}`);
       if (field.max !== undefined) n = n.max(field.max, `must be <= ${field.max}`);
-      return optionalize(n, field.required);
+      return optionalize(n, required);
     }
 
     case 'time_12h':
       return optionalize(
         z.string().trim().refine(isValidTime12h, 'must be HH:MM AM/PM, e.g. "10:45 PM"').transform(normalizeTime12h),
-        field.required,
+        required,
       );
 
     case 'string': {
@@ -59,14 +62,14 @@ export function fieldToZod(field: FieldDef, ctx: ValidatorContext): ZodTypeAny {
         const allowed = new Set(field.options);
         out = s.refine((v) => allowed.has(v), `must be one of: ${field.options.join(', ')}`);
       }
-      return optionalize(out, field.required);
+      return optionalize(out, required);
     }
 
     case 'multi_select': {
       const allowed = new Set(ctx.categoryKeys);
-      const s = z
-        .array(z.string().trim())
-        .min(field.minItems, field.minItems === 1 ? 'select at least one' : `select at least ${field.minItems}`)
+      // The minimum is enforced here for unconditional fields; conditional ones check it in the body-level refine.
+      const base = z.array(z.string().trim());
+      const s = (relaxed ? base : base.min(field.minItems, minItemsMessage(field.minItems)))
         .superRefine((arr, rctx) => {
           const seen = new Set<string>();
           arr.forEach((v, i) => {
@@ -75,14 +78,16 @@ export function fieldToZod(field: FieldDef, ctx: ValidatorContext): ZodTypeAny {
             seen.add(v);
           });
         });
-      return optionalize(s, field.required);
+      return optionalize(s, required);
     }
   }
 }
 
-function fieldsToObject(fields: readonly FieldDef[], ctx: ValidatorContext) {
+const minItemsMessage = (n: number) => (n === 1 ? 'select at least one' : `select at least ${n}`);
+
+function fieldsToObject(fields: readonly FieldDef[], ctx: ValidatorContext, lenient = false) {
   const shape: Record<string, ZodTypeAny> = {};
-  for (const f of fields) shape[f.key] = fieldToZod(f, ctx);
+  for (const f of fields) shape[f.key] = fieldToZod(f, ctx, lenient);
   return z.object(shape).strict();
 }
 
@@ -117,15 +122,25 @@ export function buildSubmissionValidator(feature: FeatureKey, ctx: ValidatorCont
     }
   }
 
-  return fieldsToObject(COMMON_FIELDS, ctx).extend({
+  const extra = {
     details: details.optional().default({}),
     client: clientContextSchema(ctx).optional().nullable(),
     /** Marks integration/demo submissions so they can be filtered and deleted without touching real feedback. */
     is_test: z.boolean().optional().default(false),
-  });
+  };
+  // Two variants of the same shape: positive feedback relaxes the requiredIf fields (issue_categories, occurred_on);
+  // anything else, including a missing is_positive, gets the strict one so every mandatory field is reported.
+  const strict = fieldsToObject(COMMON_FIELDS, ctx).extend(extra);
+  const lenient = fieldsToObject(COMMON_FIELDS, ctx, true).extend(extra);
+  const pick = (input: unknown) => (input && typeof input === 'object' && (input as { is_positive?: unknown }).is_positive === true ? lenient : strict);
+  return {
+    strict,
+    lenient,
+    safeParse: (input: unknown) => pick(input).safeParse(input) as ReturnType<typeof strict.safeParse>,
+  };
 }
 
-export type SubmissionInput = z.infer<ReturnType<typeof buildSubmissionValidator>>;
+export type SubmissionInput = z.infer<ReturnType<typeof buildSubmissionValidator>['strict']>;
 
 /** Flattens a ZodError into the API's issue list. */
 export function zodIssues(error: z.ZodError): { path: string; message: string }[] {

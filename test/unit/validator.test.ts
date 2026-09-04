@@ -77,6 +77,16 @@ describe('common fields', () => {
     expect(issuesOf('home', { ...base, email: 'not-an-email' })[0]?.path).toBe('email');
   });
 
+  it('makes categories and date optional for positive feedback only', () => {
+    const { issue_categories: _c, occurred_on: _d, ...bare } = { ...base, is_positive: true };
+    expect(issuesOf('home', bare)).toEqual([]);
+    expect(issuesOf('home', { ...bare, issue_categories: [] })).toEqual([]);
+    expect(issuesOf('home', { ...bare, issue_categories: ['nope'] })[0]?.message).toMatch(/unknown category/);
+    const { issue_categories: _c2, occurred_on: _d2, ...neg } = base;
+    expect(issuesOf('home', neg).map((i) => i.path).sort()).toEqual(['issue_categories', 'occurred_on']);
+    expect(issuesOf('home', { ...neg, occurred_on: '2026-09-01', issue_categories: [] })).toEqual([{ path: 'issue_categories', message: 'select at least one' }]);
+  });
+
   it('requires at least one category and rejects unknown/duplicate ones', () => {
     expect(issuesOf('home', { ...base, issue_categories: [] })[0]?.message).toBe('select at least one');
     expect(issuesOf('home', { ...base, issue_categories: ['nope'] })[0]).toEqual({ path: 'issue_categories.0', message: 'unknown category "nope"' });

@@ -12,10 +12,10 @@ export function isFeatureKey(value: string): value is FeatureKey {
 /** Fields every submission carries, regardless of feature. */
 export const COMMON_FIELDS: readonly FieldDef[] = [
   { key: 'is_positive', type: 'boolean', label: 'Was this a positive experience?', required: true },
-  { key: 'occurred_on', type: 'date', format: 'YYYY-MM-DD', label: 'Date the issue occurred', required: true },
+  { key: 'occurred_on', type: 'date', format: 'YYYY-MM-DD', label: 'Date the issue occurred', required: true, requiredIf: { field: 'is_positive', equals: false }, help: 'Required for issues. Optional for positive feedback; defaults to today (IST).' },
   { key: 'user_id', type: 'number', label: 'User ID', required: true, integer: true, min: 1 },
   { key: 'email', type: 'string', format: 'email', label: 'Email', required: true, maxLength: 254 },
-  { key: 'issue_categories', type: 'multi_select', label: 'What went wrong?', required: true, minItems: 1, optionsFrom: 'issue_categories' },
+  { key: 'issue_categories', type: 'multi_select', label: 'What went wrong?', required: true, minItems: 1, optionsFrom: 'issue_categories', requiredIf: { field: 'is_positive', equals: false }, help: 'Required for issues. Omit (or send []) for positive feedback.' },
   { key: 'feedback_text', type: 'text', label: 'Tell us more', required: false, maxLength: 500, multiline: true },
   {
     key: 'device_serial', type: 'string', label: 'Ring or band serial number', required: false, maxLength: 64,
