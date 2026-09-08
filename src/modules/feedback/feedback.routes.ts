@@ -99,6 +99,13 @@ export function registerFeedbackRoutes(
 
   app.get<{ Params: { id: string } }>('/v1/feedback/:id', async (req) => service.get(req.params.id));
 
+  // ---- mark one submission as test / real (admin) ------------------------------
+  app.patch<{ Params: { id: string } }>('/v1/admin/submissions/:id', async (req) => {
+    const parsed = z.object({ is_test: z.boolean() }).strict().safeParse(req.body);
+    if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
+    return service.setTestFlag(req.params.id, parsed.data.is_test);
+  });
+
   // ---- test data housekeeping (admin) ----------------------------------------
   app.get('/v1/admin/test-data', async () => ({ count: await service.countTestData() }));
 

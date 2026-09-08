@@ -94,6 +94,13 @@ export class FeedbackService {
     return this.feedback.stats(filters);
   }
 
+  async setTestFlag(id: string, isTest: boolean): Promise<SubmissionDto> {
+    if (!z.string().uuid().safeParse(id).success) throw AppError.notFound('Submission not found');
+    const row = await this.feedback.setTestFlag(id, isTest);
+    if (!row) throw AppError.notFound('Submission not found');
+    return this.toDto(row);
+  }
+
   async countTestData() {
     return this.feedback.countTestData();
   }

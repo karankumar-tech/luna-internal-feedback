@@ -546,6 +546,7 @@ Not for the app. Listed so the front-end team knows how categories change.
 | `GET` | `/v1/admin/features/{feature}/issue-categories` | includes inactive |
 | `POST` | `/v1/admin/features/{feature}/issue-categories` | `{ "key", "label", "sort_order"? }` · key is a lowercase slug · `409` on duplicate |
 | `PATCH` | `/v1/admin/issue-categories/{id}` | `{ "label"?, "sort_order"?, "is_active"? }` |
+| `PATCH` | `/v1/admin/submissions/{id}` | `{ "is_test": true \| false }` marks one submission as test data or real (also a button in the dashboard) |
 | `GET` | `/v1/admin/test-data` | → `{ "count" }` of rows flagged `is_test` |
 | `DELETE` | `/v1/admin/test-data?confirm=delete` | deletes only `is_test` rows → `{ "deleted" }`; `422` without the confirm parameter |
 

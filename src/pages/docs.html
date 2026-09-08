@@ -599,6 +599,7 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
     <tr><td><span class="method get">GET</span></td><td><code>/v1/admin/features/{feature}/issue-categories</code></td><td>includes inactive</td></tr>
     <tr><td><span class="method post">POST</span></td><td><code>/v1/admin/features/{feature}/issue-categories</code></td><td><code>{ "key", "label", "sort_order"? }</code> · key is a lowercase slug · <code>409</code> on duplicate</td></tr>
     <tr><td><span class="method patch">PATCH</span></td><td><code>/v1/admin/issue-categories/{id}</code></td><td><code>{ "label"?, "sort_order"?, "is_active"? }</code></td></tr>
+    <tr><td><span class="method patch">PATCH</span></td><td><code>/v1/admin/submissions/{id}</code></td><td><code>{ "is_test": true | false }</code> marks one submission as test data or real (also a button in the dashboard)</td></tr>
     <tr><td><span class="method get">GET</span></td><td><code>/v1/admin/test-data</code></td><td>→ <code>{ "count" }</code> of rows flagged <code>is_test</code></td></tr>
     <tr><td><span class="method" style="background:var(--crit)">DELETE</span></td><td><code>/v1/admin/test-data?confirm=delete</code></td><td>deletes only <code>is_test</code> rows → <code>{ "deleted" }</code>; <code>422</code> without the confirm parameter</td></tr>
   </table></div>

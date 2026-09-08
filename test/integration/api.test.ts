@@ -251,6 +251,21 @@ describe('GET /v1/feedback/stats', () => {
   });
 });
 
+describe('admin: mark one submission as test / real', () => {
+  it('flips is_test on a single row and rejects bad input', async () => {
+    const list = (await app.inject({ method: 'GET', url: `/v1/feedback?user_id=900001&limit=1`, headers: appHeaders })).json();
+    const id = list.items[0].id;
+    const real = await app.inject({ method: 'PATCH', url: `/v1/admin/submissions/${id}`, headers: adminHeaders, payload: { is_test: false } });
+    expect(real.statusCode).toBe(200);
+    expect(real.json().is_test).toBe(false);
+    const back = await app.inject({ method: 'PATCH', url: `/v1/admin/submissions/${id}`, headers: adminHeaders, payload: { is_test: true } });
+    expect(back.json().is_test).toBe(true);
+    expect((await app.inject({ method: 'PATCH', url: `/v1/admin/submissions/${id}`, headers: adminHeaders, payload: { is_test: 'yes' } })).statusCode).toBe(422);
+    expect((await app.inject({ method: 'PATCH', url: `/v1/admin/submissions/${id}`, headers: appHeaders, payload: { is_test: true } })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'PATCH', url: `/v1/admin/submissions/00000000-0000-0000-0000-000000000000`, headers: adminHeaders, payload: { is_test: true } })).statusCode).toBe(404);
+  });
+});
+
 describe('admin: test data', () => {
   it('counts flagged rows and refuses to delete without confirmation', async () => {
     const c = await app.inject({ method: 'GET', url: '/v1/admin/test-data', headers: adminHeaders });

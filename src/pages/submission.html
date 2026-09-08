@@ -133,6 +133,7 @@
       <div class="overline" style="margin-top:2px">Luna · Internal feedback · Submission</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn small" id="btnFlag" type="button" hidden>Mark as test</button>
       <button class="btn small" id="btnCopyLink" type="button">Copy link</button>
       <button class="btn primary" id="btnDiagnose" type="button" hidden>Diagnose now</button>
     </div>
@@ -224,6 +225,7 @@
     renderSubmission();
     $('loading').hidden = true; $('page').hidden = false;
     $('btnDiagnose').hidden = false;
+    $('btnFlag').hidden = false;
     await refreshDiagnosis();
     loadFiles();
   }
@@ -233,6 +235,7 @@
 
   function renderSubmission() {
     const r = state.sub; const f = feature();
+    $('btnFlag').textContent = r.is_test ? 'Mark as real' : 'Mark as test';
     document.title = `${f.label} · ${r.is_positive ? 'Working fine' : 'Issue'} · Luna Feedback`;
     $('title').replaceChildren(el('span', null, f.label + ' · '), el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue'), ...(r.is_test ? [el('span', null, ' '), el('span', 'chip test', 'TEST')] : []));
     const meta = $('meta'); meta.replaceChildren();
@@ -380,6 +383,12 @@
     if (target) { target.classList.add('hl'); $('excerptCard').hidden = false; target.scrollIntoView({ block: 'center', behavior: 'smooth' }); } else toast('Line not found in excerpt');
   }
   $('btnCopyExcerpt').addEventListener('click', async () => { try { await navigator.clipboard.writeText(state.diag.log_excerpt || ''); toast('Excerpt copied'); } catch { toast('Copy failed'); } });
+  $('btnFlag').addEventListener('click', async () => {
+    const b = $('btnFlag'); b.disabled = true;
+    try { state.sub = await api(`/v1/admin/submissions/${id}`, { method: 'PATCH', body: JSON.stringify({ is_test: !state.sub.is_test }) }); toast(state.sub.is_test ? 'Marked as test data' : 'Marked as real'); renderSubmission(); }
+    catch (err) { toast(err.status === 401 ? 'Needs the admin key' : 'Could not update: ' + err.message); }
+    finally { b.disabled = false; }
+  });
   $('btnCopyLink').addEventListener('click', async () => { try { await navigator.clipboard.writeText(location.href); toast('Link copied'); } catch { toast('Copy failed'); } });
 
   // ---------- diagnose now ----------

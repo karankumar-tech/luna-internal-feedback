@@ -734,6 +734,13 @@
     const h2 = el('h2'); h2.appendChild(el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue')); if (r.is_test) h2.appendChild(el('span', 'chip test', 'TEST')); hl.appendChild(h2); head.appendChild(hl);
     const actions = el('div'); actions.style.display = 'flex'; actions.style.gap = '6px';
     const open = el('a', 'btn small primary', 'Open detail →'); open.href = '/dashboard/submissions/' + r.id; open.style.textDecoration = 'none'; actions.appendChild(open);
+    const flag = el('button', 'btn small', r.is_test ? 'Mark as real' : 'Mark as test'); flag.type = 'button'; flag.title = r.is_test ? 'Count this row as real tester feedback' : 'Exclude this row from real feedback; it can be deleted with other test data';
+    flag.addEventListener('click', async () => {
+      flag.disabled = true;
+      try { const upd = await api(`/v1/admin/submissions/${r.id}`, { method: 'PATCH', body: JSON.stringify({ is_test: !r.is_test }) }); toast(upd.is_test ? 'Marked as test data' : 'Marked as real'); closeDrawer(); await refresh(); loadTestCount(); }
+      catch (err) { toast(err.status === 401 ? 'Needs the admin key' : 'Could not update: ' + err.message); flag.disabled = false; }
+    });
+    actions.appendChild(flag);
     const close = el('button', 'btn small ghost', 'Close'); close.type = 'button'; close.addEventListener('click', closeDrawer); actions.appendChild(close); head.appendChild(actions); d.appendChild(head);
     if (!r.is_positive) { const ai = el('div', 'aibadge ' + (r.ai_side ? sideOf(r.ai_side) : (r.ai_status || 'none')), r.ai_side ? 'AI: ' + (SIDE_LABEL[r.ai_side] || r.ai_side) + (r.ai_severity ? ' · ' + r.ai_severity : '') : r.ai_status === 'waiting_logs' ? 'AI: waiting for logs' : r.ai_status === 'no_logs' ? 'AI: no logs found' : r.ai_status === 'failed' ? 'AI: failed' : r.ai_status ? 'AI: ' + r.ai_status : 'AI: not checked'); ai.style.marginBottom = '8px'; d.appendChild(ai); }
     if (r.feedback_text) d.appendChild(el('div', 'quote', r.feedback_text));

@@ -160,6 +160,15 @@ export class FeedbackRepo {
     return r.rows[0]!.n;
   }
 
+  /** Flip the test-data flag on one submission. Returns the updated row, or undefined when the id is unknown. */
+  async setTestFlag(id: string, isTest: boolean): Promise<SubmissionRow | undefined> {
+    const r = await this.db.query<SubmissionRow>(
+      `update luna_feedback.submissions set is_test = $2 where id = $1 returning ${COLUMNS}`,
+      [id, isTest],
+    );
+    return r.rows[0];
+  }
+
   async byId(id: string): Promise<SubmissionRow | undefined> {
     const r = await this.db.query<SubmissionRow>(`select ${COLUMNS} from luna_feedback.submissions where id = $1`, [id]);
     return r.rows[0];
