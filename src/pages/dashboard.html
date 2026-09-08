@@ -383,7 +383,7 @@
 
       <section class="card" id="diagOps" style="margin-top:12px">
         <div class="card-head">
-          <div><h2>AI diagnosis</h2><div class="sub" id="diagOpsSub">Every reported issue is diagnosed in the background from the tester's logs. Same-day reports wait for the evening log sync.</div></div>
+          <div><h2>AI diagnosis</h2><div class="sub" id="diagOpsSub">Runs on demand: open a submission and press Diagnose now. Requests made before the evening log sync wait and finish automatically.</div></div>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <span class="mono tertiary" id="diagOpsStats" style="font-size:12px"></span>
             <button class="btn small" id="btnRunPending" type="button">Run pending now</button>
@@ -793,6 +793,9 @@
       if (sweep) { api('/v1/admin/diagnoses/run-pending?limit=3', { method: 'POST' }).then((r) => { if (r.ran) { toast(`Diagnosed ${r.ran} pending`); refresh(); loadDiagOps(false); } }).catch(() => {}); }
       const s = await api('/v1/admin/diagnoses/summary');
       if (!s.enabled) { $('diagOpsStats').textContent = 'disabled: set LUNA_LOGS_APIKEY and OPEN_ROUTER_KEY'; $('btnRunPending').disabled = true; return; }
+      $('diagOpsSub').textContent = s.auto
+        ? 'Every reported issue is diagnosed automatically. Same-day reports wait for the evening log sync.'
+        : 'Runs on demand: open a submission and press Diagnose now. Requests made before the evening log sync wait and finish automatically.';
       const due = s.queued + s.running;
       $('diagOpsStats').textContent = `${fmtN(s.done)} diagnosed · ${fmtN(s.waiting)} waiting for logs · ${fmtN(s.no_logs)} no logs · ${fmtN(s.failed)} failed · queue ${fmtN(due)} · today $${s.spend_today.toFixed(3)} (${s.runs_today} runs) · month $${s.spend_month.toFixed(2)}`;
       $('btnRunPending').disabled = false;

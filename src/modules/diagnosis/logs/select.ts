@@ -27,28 +27,24 @@ export function pickEntry(entries: LogDeviceEntry[], opts: { platform?: string |
 }
 
 /**
- * For one source, pick the files worth downloading for an issue on `occurredOn`:
- * uploads dated occurredOn-1 … occurredOn+2, nearest to occurredOn first, at most `max`.
- * Undated files (no date in path) come last and only if nothing else qualifies.
+ * For one source, pick the single upload most likely to contain the issue: the earliest file dated on or
+ * after the issue day (uploads happen after the day's events; up to +2 days), else the latest file from
+ * the day before. Undated files (no date in the path) are used only when nothing else qualifies.
+ * One file per source keeps downloads and model input small; more files rarely add signal.
  */
-export function pickFiles(files: LogFileRef[], occurredOn: string, max = 3): LogFileRef[] {
-  const dated = files
-    .filter((f) => f.date)
-    .map((f) => ({ f, d: dayDiff(f.date!, occurredOn) }))
-    .filter(({ d }) => d >= -1 && d <= 2)
-    .sort((a, b) => Math.abs(a.d) - Math.abs(b.d) || b.d - a.d);
-  const picked = dated.slice(0, max).map(({ f }) => f);
-  if (picked.length === 0) {
-    const undated = files.filter((f) => !f.date);
-    return undated.slice(0, 1);
-  }
+export function pickFiles(files: LogFileRef[], occurredOn: string, max = 1): LogFileRef[] {
+  const dated = files.filter((f) => f.date).map((f) => ({ f, d: dayDiff(f.date!, occurredOn) }));
+  const after = dated.filter(({ d }) => d >= 0 && d <= 2).sort((a, b) => a.d - b.d);
+  const before = dated.filter(({ d }) => d === -1);
+  const picked = [...after, ...before].slice(0, max).map(({ f }) => f);
+  if (picked.length === 0) return files.filter((f) => !f.date).slice(0, 1);
   return picked;
 }
 
 export function pickAllSources(entry: LogDeviceEntry, occurredOn: string): Record<LogSource, LogFileRef[]> {
   return {
     app: pickFiles(entry.files.app, occurredOn),
-    ring: pickFiles(entry.files.ring, occurredOn, 2),
+    ring: pickFiles(entry.files.ring, occurredOn),
     firmware: pickFiles(entry.files.firmware, occurredOn),
   };
 }

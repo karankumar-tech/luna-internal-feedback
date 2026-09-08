@@ -35,10 +35,11 @@ describe('entry and file selection', () => {
     expect(pickEntry([android, ios], { platform: null, occurredOn: '2026-08-09' })).toBe(android); // closer upload + more files
     expect(pickEntry([], { platform: 'ios', occurredOn: '2026-08-09' })).toBeNull();
   });
-  it('picks files dated -1…+2 days around the issue, nearest first, max 3', () => {
+  it('picks one upload per source: the first dated on/after the issue day, else the day before', () => {
     const files = ['2026-08-04', '2026-08-05', '2026-08-06', '2026-08-07', '2026-08-10'].map((d) => ({ source: 'app' as const, url: U('app_logs', d, 'a.txt'), date: d }));
-    expect(pickFiles(files, '2026-08-06').map((f) => f.date)).toEqual(['2026-08-06', '2026-08-07', '2026-08-05']);
-    expect(pickFiles(files, '2026-08-09').map((f) => f.date)).toEqual(['2026-08-10']);
+    expect(pickFiles(files, '2026-08-06').map((f) => f.date)).toEqual(['2026-08-06']);
+    expect(pickFiles(files, '2026-08-08').map((f) => f.date)).toEqual(['2026-08-10']);   // nearest after, within +2
+    expect(pickFiles(files, '2026-08-11').map((f) => f.date)).toEqual(['2026-08-10']);   // nothing after: day before
     expect(pickFiles(files, '2026-08-20')).toEqual([]);
     expect(pickFiles([{ source: 'app', url: 'https://x/y.txt', date: null }], '2026-08-20')).toHaveLength(1);
   });

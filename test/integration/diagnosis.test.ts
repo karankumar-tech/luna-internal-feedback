@@ -126,7 +126,7 @@ describe('auto diagnosis on negative submission', () => {
     expect(d.log_excerpt_lines).toBeLessThanOrEqual(100);
     expect(d.log_excerpt).toContain('===== [app] app 2.0.3.staging.luna =====');
     expect(d.log_excerpt).toContain('sleep sync timeout');
-    expect(d.log_files.app).toHaveLength(2);
+    expect(d.log_files.app).toHaveLength(1);
     expect(d.log_device).toMatchObject({ platform: 'android', fv: '1.2.6' });
     expect(d.fw_version_seen).toBe('1.2.6');
     expect(d.cost_usd).toBeCloseTo(0.0014, 5);
@@ -230,6 +230,30 @@ describe('auto diagnosis on negative submission', () => {
     expect(real.range.include_test).toBe(false);
     expect((await app.inject({ method: 'GET', url: '/v1/admin/diagnoses/overview?from=2026-09-02&to=2026-09-01', headers: adminHeaders })).statusCode).toBe(422);
     expect((await app.inject({ method: 'GET', url: '/dashboard/diagnosis' })).statusCode).toBe(200);
+  });
+
+  it('on-demand mode: nothing runs at submit time and the sweep does not backfill', async () => {
+    const cfgOff = loadConfig({ NODE_ENV: 'test', LOG_LEVEL: 'silent', DIAGNOSIS_AUTO: 'false' });
+    const appOff = buildApp({ config: cfgOff, logger: false, db: app.db, diagnosis: {
+      logs: new LogsClient({ baseUrl: 'https://stage-app.example.invalid', apiKey: 'k', fetchImpl: fakeLogsFetch }),
+      ai: new OpenRouterClient({ apiKey: 'k', model: 'google/gemini-3.1-flash-lite', fetchImpl: fakeAiFetch }),
+      fetchImpl: fileFetch, now: () => NOW } });
+    await appOff.ready();
+    const before = modelCalls;
+    const r = await appOff.inject({ method: 'POST', url: '/v1/feedback/sleep', headers: appHeaders, payload: body(`ondemand+${run}@${DOMAIN}`, { device_serial: 'R2NTEST0001' }) });
+    expect(r.statusCode).toBe(201);
+    await sleep(400);
+    expect(await appOff.diagnosis.get(r.json().id)).toBeNull();
+    const sweep = (await appOff.inject({ method: 'POST', url: '/v1/admin/diagnoses/run-pending', headers: adminHeaders })).json();
+    expect(sweep.results.map((x: { submission_id: string }) => x.submission_id)).not.toContain(r.json().id);
+    expect(modelCalls).toBe(before);
+    expect((await appOff.inject({ method: 'GET', url: '/v1/admin/diagnoses/summary', headers: adminHeaders })).json().auto).toBe(false);
+    // Diagnose now still works and downloads one file per source
+    const manual = (await appOff.inject({ method: 'POST', url: `/v1/admin/submissions/${r.json().id}/diagnose`, headers: adminHeaders })).json();
+    expect(manual.status).toBe('done');
+    expect(manual.diagnosis.log_files.app).toHaveLength(1);
+    expect(manual.diagnosis.log_files.ring).toHaveLength(1);
+    await appOff.close();
   });
 
   it('cron bearer can call the sweep when CRON_SECRET is set', async () => {

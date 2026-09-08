@@ -122,16 +122,19 @@ them on new submissions; old rows keep their keys.
 
 ## AI diagnosis
 
-Every negative submission is diagnosed in the background: the tester's logs are fetched from the
-Luna logging API (`device_serial` first, `email` fallback), the ≤100 most relevant lines around the
-issue time are extracted and redacted, and an OpenRouter model returns a structured verdict
+Diagnosis runs on demand from a submission's page (Diagnose now), or automatically for every negative
+submission when `DIAGNOSIS_AUTO=true`. The tester's logs are looked up in the Luna logging API
+(`device_serial` first, `email` fallback), one file per source covering the issue day is fetched, the
+≤100 most relevant lines around the issue time are extracted and redacted, and an OpenRouter model
+returns a structured verdict
 (`root_cause_side`, confidence, severity, tags, evidence, suggested fix). Results live in
 `luna_feedback.diagnoses` with `ai_*` columns denormalised onto `submissions`.
 
 - Runs after the HTTP response via `waitUntil` (Vercel) or `setImmediate` (local). Same-day reports
   park as `waiting_logs` until the evening log sync (`DIAGNOSIS_SYNC_HOUR_IST`) and retry.
-- `POST /v1/admin/diagnoses/run-pending` sweeps due jobs and backfills undiagnosed issues; the
-  dashboard calls it on load and `vercel.json` schedules it nightly (needs `CRON_SECRET`).
+- `POST /v1/admin/diagnoses/run-pending` finishes runs that are waiting for logs (and, in automatic
+  mode, backfills undiagnosed issues); the dashboard calls it on load and `vercel.json` schedules it
+  nightly (needs `CRON_SECRET`). A finished diagnosis is never re-run unless someone presses Re-run.
 - Detail page: `/dashboard/submissions/{id}` (verdict, evidence linked to the excerpt, log file links,
   Diagnose now / Re-run, Agree / Disagree review).
 - Env: `LUNA_LOGS_APIKEY`, `OPEN_ROUTER_KEY`, `OPENROUTER_MODEL`, `DIAGNOSIS_AUTO`,

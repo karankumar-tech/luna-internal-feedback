@@ -575,7 +575,7 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
 
   <hr class="ep">
   <div id="ep-diagnosis" class="endpoint"><span class="method get">GET</span><code class="path">/v1/feedback/{id}/diagnosis</code><span class="auth">x-api-key</span></div>
-  <p>The AI diagnosis for a reported issue, produced in the background from the tester's device logs. <code>404</code> until the first run has started. Not needed by the app; useful for tooling.</p>
+  <p>The AI diagnosis for a reported issue, produced on demand from the dashboard (or automatically when the backend runs with DIAGNOSIS_AUTO=true) from the tester's device logs. <code>404</code> until the first run has started. Not needed by the app; useful for tooling.</p>
 <pre><code>{
   "status": "done",                       // pending · running · waiting_logs · done · no_logs · failed
   "root_cause_side": "firmware",          // firmware · sdk · app · backend · user_expectation · not_a_bug · insufficient_logs

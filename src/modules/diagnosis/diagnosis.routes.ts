@@ -50,7 +50,7 @@ export function registerDiagnosisRoutes(app: FastifyInstance, deps: { service: D
   app.post('/v1/admin/diagnoses/run-pending', sweep);
   app.get('/v1/admin/diagnoses/run-pending', sweep);
 
-  app.get('/v1/admin/diagnoses/summary', async () => ({ enabled: service.enabled, ...(await repo.summary()) }));
+  app.get('/v1/admin/diagnoses/summary', async () => ({ enabled: service.enabled, auto: service.auto, ...(await repo.summary()) }));
 
   app.get('/v1/admin/diagnoses/overview', async (req) => {
     const q = req.query as { from?: string; to?: string; include_test?: string };

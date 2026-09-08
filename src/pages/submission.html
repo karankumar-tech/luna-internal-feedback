@@ -263,7 +263,7 @@
     $('btnDiagnose').disabled = !!(d && (d.status === 'running'));
     if (!d) {
       $('diagWhen').textContent = '';
-      body.appendChild(el('div', 'empty', state.sub.is_positive ? 'Positive feedback is not diagnosed automatically. Run it manually if something looks off.' : 'Not diagnosed yet.'));
+      body.appendChild(el('div', 'empty', state.sub.is_positive ? 'Positive feedback is not diagnosed unless you ask. Press Diagnose now if something looks off.' : 'Not diagnosed yet. Press Diagnose now to fetch this tester\'s logs (one file per source around the issue day) and run the AI.'));
       $('excerptCard').hidden = true; return;
     }
     $('diagWhen').textContent = d.updated_at ? 'updated ' + istStamp(d.updated_at) : '';

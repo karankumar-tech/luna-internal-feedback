@@ -75,6 +75,7 @@ export class DiagnosisService {
   constructor(private readonly d: DiagnosisDeps) {}
 
   get enabled(): boolean { return !!(this.d.logs && this.d.ai); }
+  get auto(): boolean { return this.d.config.auto; }
   private now(): Date { return this.d.now ? this.d.now() : new Date(); }
 
   /** Called from the submit path for negative feedback. Queues and starts the run after the response. */
@@ -87,7 +88,8 @@ export class DiagnosisService {
   /** Process due jobs sequentially (each ~5–20 s). Used by the dashboard sweep and the nightly cron. */
   async runPending(limit = 5): Promise<RunOutcome[]> {
     if (!this.enabled) return [];
-    await this.d.repo.enqueueMissing(limit);
+    // Automatic mode queues issues that were never diagnosed; on-demand mode only finishes runs someone asked for.
+    if (this.d.config.auto) await this.d.repo.enqueueMissing(limit);
     const jobs = await this.d.repo.dueJobs(limit, this.d.config.maxAttempts);
     const out: RunOutcome[] = [];
     for (const j of jobs) out.push(await this.run(j.submission_id, 'auto'));

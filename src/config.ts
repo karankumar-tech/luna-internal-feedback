@@ -17,7 +17,7 @@ const EnvSchema = z.object({
   LUNA_LOGS_BASE_URL: z.string().url().default('https://stage-app.gonoise.com'),
   OPEN_ROUTER_KEY: z.string().min(8).optional(),
   OPENROUTER_MODEL: z.string().default('google/gemini-3.1-flash-lite'),
-  DIAGNOSIS_AUTO: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  DIAGNOSIS_AUTO: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   DIAGNOSIS_DAILY_BUDGET_USD: z.coerce.number().nonnegative().default(2),
   DIAGNOSIS_SYNC_HOUR_IST: z.coerce.number().int().min(0).max(23).default(20),
   CRON_SECRET: z.string().min(16).optional(),

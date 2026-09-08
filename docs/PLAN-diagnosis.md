@@ -168,7 +168,10 @@ evidence only, prefer `insufficient_logs` over guessing, cite lines verbatim in
   no separate worker.
 - Hobby cron jobs run at most once a day, so they are not used for the main path.
 
-Flow for a negative submission:
+Update 2026-09-08: automatic runs are off by default (`DIAGNOSIS_AUTO=false`). Diagnosis starts from
+the detail page's Diagnose now button; the sweep only completes requested runs that were waiting for
+logs. One file per source is fetched (the upload covering the issue day). Original automatic flow, kept
+behind the flag:
 
 1. `POST /v1/feedback/{feature}` validates and inserts the row, writes a
    `diagnosis_jobs` row (`queued`), and **responds 201 immediately**.
