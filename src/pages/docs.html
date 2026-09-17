@@ -326,14 +326,15 @@ x-api-key: &lt;APP_API_KEY&gt;
     <tr><td><code>tags</code></td><td><code>luna-feedback</code></td></tr>
     <tr><td><code>transformation</code></td><td>the <code>transformation</code> object from step 1, JSON-encoded, e.g. <code>{"pre":"w-1600,h-1600,c-at_max,q-80"}</code></td></tr>
   </table></div>
-  <p>ImageKit answers with JSON including <code>fileId</code>, <code>url</code>, <code>thumbnailUrl</code>, <code>name</code>, <code>width</code>, <code>height</code>, <code>size</code>. Keep <code>fileId</code> and <code>url</code>.</p>
+  <p>ImageKit answers with JSON including <code>fileId</code>, <code>url</code>, <code>thumbnailUrl</code>, <code>name</code>, <code>width</code>, <code>height</code>, <code>size</code> (these describe the <em>stored</em> file, after the storage cap). Keep <code>fileId</code> and <code>url</code>, and also record the byte size and pixel dimensions of the file you sent as <code>upload_size</code>, <code>original_width</code>, <code>original_height</code>.</p>
   <h3>3. Reference them in the feedback POST</h3>
 <pre><code>{
   "is_positive": false, "occurred_on": "2026-09-17", "user_id": 10482, "email": "tester@luna.app",
   "issue_categories": ["peak_score_not_loaded"],
   "screenshots": [
     { "file_id": "68c9f1e2…", "url": "https://ik.imagekit.io/noisekaranikid/luna-feedback-screenshots/home_2026-09-17_abc123.png",
-      "name": "home_2026-09-17_abc123.png", "width": 1170, "height": 2532, "size": 412873 }
+      "name": "home_2026-09-17_abc123.png", "width": 739, "height": 1600, "size": 73912,
+      "upload_size": 318204, "original_width": 1170, "original_height": 2532 }
   ]
 }</code></pre>
   <p>The response echoes <code>screenshots</code>. The dashboard shows them on the submission page, and the AI diagnosis reads the first two alongside the logs. Screenshots on test submissions are deleted from ImageKit together with the test data.</p>
@@ -508,7 +509,7 @@ x-api-key: &lt;APP_API_KEY&gt;
     <tr><td><code>device_serial</code></td><td>string ≤ 64</td><td><span class="req no">no</span></td><td><strong>send whenever a ring or band is connected</strong>, e.g. <code>"R2N08250600302"</code>. Read it from the SDK; never ask the tester to type it. The backend uses it to fetch that device's logs for AI diagnosis and falls back to <code>email</code> when absent</td></tr>
     <tr><td><code>details</code></td><td>object</td><td><span class="req no">no</span></td><td>feature fields, see <a href="#features">Feature reference</a>. Unknown keys are rejected. Defaults to <code>{}</code></td></tr>
     <tr><td><code>client</code></td><td>object</td><td><span class="req no">no</span></td><td>any subset of the <a href="#client">client context</a> keys. Unknown keys are rejected</td></tr>
-    <tr><td><code>screenshots</code></td><td>object[]</td><td><span class="req no">no</span></td><td>up to 5 images uploaded to ImageKit first; each <code>{ file_id, url, name?, width?, height?, size?, thumbnail_url? }</code> as returned by the upload. Only URLs under our ImageKit account are accepted. See <a href="#screenshots">Screenshots</a></td></tr>
+    <tr><td><code>screenshots</code></td><td>object[]</td><td><span class="req no">no</span></td><td>up to 5 images uploaded to ImageKit first; each <code>{ file_id, url, name?, width?, height?, size?, thumbnail_url?, upload_size?, original_width?, original_height? }</code>: the first seven as returned by the upload, plus the bytes and dimensions the app actually sent so the dashboard can show that on-device downsizing happened. Only URLs under our ImageKit account are accepted. See <a href="#screenshots">Screenshots</a></td></tr>
     <tr><td><code>is_test</code></td><td>boolean</td><td><span class="req no">no</span></td><td>default <code>false</code>. Send <code>true</code> from integration runs and test builds; see <a href="#testing">Test submissions</a></td></tr>
   </table></div>
   <p>Optional fields may be omitted or sent as <code>null</code>. Whitespace is trimmed from strings.</p>

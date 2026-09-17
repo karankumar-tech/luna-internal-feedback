@@ -133,6 +133,10 @@ export function buildSubmissionValidator(feature: FeatureKey, ctx: ValidatorCont
     width: z.number().int().positive().optional().nullable(),
     height: z.number().int().positive().optional().nullable(),
     size: z.number().int().nonnegative().optional().nullable(),
+    /** Bytes the app actually sent (before ImageKit's storage cap). Lets the dashboard show whether the app downsized. */
+    upload_size: z.number().int().nonnegative().optional().nullable(),
+    original_width: z.number().int().positive().optional().nullable(),
+    original_height: z.number().int().positive().optional().nullable(),
   }).strict();
   const extra = {
     details: details.optional().default({}),

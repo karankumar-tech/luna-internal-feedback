@@ -62,7 +62,9 @@
   .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
   .gallery a { display: block; border: 1px solid var(--gray-light); border-radius: var(--r-l); overflow: hidden; background: var(--brief); text-decoration: none; color: inherit; }
   .gallery img { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; display: block; }
-  .gallery .cap { font-family: var(--mono); font-size: 10px; color: var(--gray-dark); padding: 4px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gallery .cap { font-family: var(--mono); font-size: 10px; line-height: 14px; color: var(--gray-dark); padding: 6px 8px; }
+  .gallery .cap div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gallery .cap div:first-child { color: var(--black); }
   .files { font-size: 13px; }
   .files .row { display: grid; grid-template-columns: 78px 1fr auto; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border-ghost); align-items: center; }
   .files .src { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--gray-dark); }
@@ -270,7 +272,12 @@
         const img = el('img'); img.alt = sc.name || 'screenshot'; img.loading = 'lazy';
         try { const u = new URL(sc.url); u.searchParams.set('tr', 'w-480,q-80'); img.src = u.toString(); } catch { img.src = sc.thumbnail_url || sc.url; }
         a.appendChild(img);
-        a.appendChild(el('div', 'cap', [sc.name || 'screenshot', sc.width && sc.height ? `${sc.width}×${sc.height}` : null, sc.size ? Math.round(sc.size / 1024) + ' KB' : null].filter(Boolean).join(' · ')));
+        const kb = (n) => n >= 1024 * 1024 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB';
+        const cap = el('div', 'cap');
+        cap.appendChild(el('div', null, [sc.original_width && sc.original_height ? `sent ${sc.original_width}×${sc.original_height}` : null, sc.upload_size ? (sc.original_width ? '' : 'sent ') + kb(sc.upload_size) : null].filter(Boolean).join(' · ') || (sc.upload_size == null ? 'sent size not reported by app' : '')));
+        cap.appendChild(el('div', null, [sc.width && sc.height ? `stored ${sc.width}×${sc.height}` : null, sc.size ? kb(sc.size) : null].filter(Boolean).join(' · ')));
+        cap.title = sc.name || 'screenshot';
+        a.appendChild(cap);
         g.appendChild(a);
       }
     }

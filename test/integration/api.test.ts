@@ -272,9 +272,9 @@ describe('screenshots', () => {
 
   it('stores screenshots on a submission and rejects foreign URLs or too many', async () => {
     const ok = await app.inject({ method: 'POST', url: '/v1/feedback/home', headers: appHeaders,
-      payload: validBody({ screenshots: [{ file_id: 'f_1', url: SHOT, name: 'home.png', width: 1170, height: 2532, size: 240000 }] }) });
+      payload: validBody({ screenshots: [{ file_id: 'f_1', url: SHOT, name: 'home.png', width: 739, height: 1600, size: 74000, upload_size: 320000, original_width: 1170, original_height: 2532 }] }) });
     expect(ok.statusCode).toBe(201);
-    expect(ok.json().screenshots).toEqual([{ file_id: 'f_1', url: SHOT, thumbnail_url: null, name: 'home.png', width: 1170, height: 2532, size: 240000 }]);
+    expect(ok.json().screenshots).toEqual([{ file_id: 'f_1', url: SHOT, thumbnail_url: null, name: 'home.png', width: 739, height: 1600, size: 74000, upload_size: 320000, original_width: 1170, original_height: 2532 }]);
     const one = (await app.inject({ method: 'GET', url: `/v1/feedback/${ok.json().id}`, headers: appHeaders })).json();
     expect(one.screenshots).toHaveLength(1);
 

@@ -46,6 +46,10 @@
   .status .pill { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; padding: 3px 8px; border-radius: var(--r-s); border: 1px solid var(--gray-light); background: var(--white); }
   .status .pill.on { background: var(--ok-bg); border-color: var(--ok); color: #00583A; }
   .status .pill.off { background: var(--crit-bg); border-color: var(--crit); color: #8A1010; }
+  #freshness.stale { color: #7A5A00; }
+  #btnRefresh svg { transition: transform .6s; } #btnRefresh.spinning svg { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { #btnRefresh.spinning svg { animation: none; } }
 
   /* ---- buttons / inputs ---- */
   .btn { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-l); padding: 7px 12px; line-height: 18px; cursor: pointer; font-weight: 500; }
@@ -218,6 +222,8 @@
     <div class="status">
       <span id="conn" class="pill">not connected</span>
       <span id="rangeLabel" class="tertiary"></span>
+      <span id="freshness" class="tertiary" title="When this data was last fetched from the server"></span>
+      <button class="btn small" id="btnRefresh" type="button" title="Reload data without leaving the page"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px;margin-right:5px"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3h-3"/></svg>Refresh</button>
       <a class="btn small" href="/dashboard/diagnosis" style="text-decoration:none">Diagnosis overview →</a>
       <button class="btn small ghost" id="btnKey" type="button">Sign out</button>
     </div>
@@ -544,6 +550,7 @@
       ]);
       if (my !== inflight) return;
       state.stats = stats; state.rows = list.items; state.cursor = list.next_cursor;
+      state.loadedAt = Date.now(); renderFreshness();
       renderKpis(); renderCharts(); renderTable(false);
       $('rangeLabel').textContent = `${shortDate(stats.range.from)} – ${shortDate(stats.range.to)}`;
     } catch (err) {
@@ -551,6 +558,21 @@
       toast('Could not load data: ' + err.message);
     } finally { if (my === inflight) $('content').classList.remove('loading'); }
   }
+
+  // ---------- freshness / manual refresh ----------
+  function renderFreshness() {
+    const f = $('freshness'); if (!state.loadedAt) { f.textContent = ''; return; }
+    const age = Math.round((Date.now() - state.loadedAt) / 1000);
+    const txt = age < 10 ? 'updated just now' : age < 60 ? `updated ${age}s ago` : age < 3600 ? `updated ${Math.round(age / 60)} min ago` : `updated ${(age / 3600).toFixed(1)} h ago`;
+    f.textContent = txt + ' · ' + new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(state.loadedAt)) + ' IST';
+    f.classList.toggle('stale', age >= 10 * 60);
+  }
+  setInterval(renderFreshness, 15_000);
+  $('btnRefresh').addEventListener('click', async () => {
+    const b = $('btnRefresh'); b.disabled = true; b.classList.add('spinning');
+    try { await refresh(); loadDiagOps(false); loadTestCount(); }
+    finally { b.disabled = false; b.classList.remove('spinning'); }
+  });
 
   // ---------- KPIs ----------
   function renderKpis() {

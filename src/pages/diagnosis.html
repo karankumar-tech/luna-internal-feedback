@@ -81,7 +81,11 @@
       <div class="overline" style="margin-top:2px">Luna · Internal feedback</div>
       <h1>Diagnosis overview</h1>
     </div>
-    <span class="tertiary" id="rangeLabel" style="font-size:12px"></span>
+    <span style="display:flex;align-items:center;gap:10px">
+      <span class="tertiary" id="rangeLabel" style="font-size:12px"></span>
+      <span class="tertiary" id="freshness" style="font-size:12px"></span>
+      <button class="btn small" id="btnRefresh" type="button">Refresh</button>
+    </span>
   </div>
 </header>
 <main class="wrap">
@@ -183,6 +187,12 @@
   for (const id of ['fFrom', 'fTo']) $(id).addEventListener('change', () => { for (const b of $('presets').querySelectorAll('button')) b.classList.remove('on'); load(); });
   $('fTest').addEventListener('change', load);
 
+  // ---------- freshness ----------
+  let loadedAt = 0;
+  function renderFreshness() { if (!loadedAt) return; const age = Math.round((Date.now() - loadedAt) / 1000); $('freshness').textContent = age < 60 ? 'updated just now' : age < 3600 ? `updated ${Math.round(age / 60)} min ago` : `updated ${(age / 3600).toFixed(1)} h ago`; }
+  setInterval(renderFreshness, 15_000);
+  $('btnRefresh').addEventListener('click', async () => { const b = $('btnRefresh'); b.disabled = true; try { await load(); } finally { b.disabled = false; } });
+
   // ---------- load ----------
   let inflight = 0;
   async function load() {
@@ -191,6 +201,7 @@
       const o = await api(`/v1/admin/diagnoses/overview?from=${$('fFrom').value}&to=${$('fTo').value}&include_test=${$('fTest').value}`);
       if (my !== inflight) return;
       render(o);
+      loadedAt = Date.now(); renderFreshness();
       $('rangeLabel').textContent = `${shortDate(o.range.from)} – ${shortDate(o.range.to)}${o.range.include_test ? ' · incl. test data' : ''}`;
     } catch (err) {
       if (err.status === 401) { location.replace('/dashboard?next=/dashboard/diagnosis'); return; }

@@ -8,6 +8,9 @@ export interface Screenshot {
   width?: number | null;
   height?: number | null;
   size?: number | null;
+  upload_size?: number | null;
+  original_width?: number | null;
+  original_height?: number | null;
 }
 
 export interface SubmissionRow {

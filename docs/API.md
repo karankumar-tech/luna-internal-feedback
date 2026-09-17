@@ -217,7 +217,7 @@ x-api-key: <APP_API_KEY>
 
 The schema response advertises the same under `uploads.screenshots` (`enabled: false` when the server has no ImageKit keys).
 
-**2. Upload to ImageKit.** Multipart POST to `upload_url` with form fields `file` (bytes, ≤ 8 MB, resized on device), `fileName`, `publicKey`, `token`, `expire`, `signature`, `folder`, `useUniqueFileName=true`, `tags=luna-feedback`, and `transformation` (the object from step 1, JSON-encoded). ImageKit returns JSON with `fileId`, `url`, `thumbnailUrl`, `name`, `width`, `height`, `size`.
+**2. Upload to ImageKit.** Multipart POST to `upload_url` with form fields `file` (bytes, ≤ 8 MB, resized on device), `fileName`, `publicKey`, `token`, `expire`, `signature`, `folder`, `useUniqueFileName=true`, `tags=luna-feedback`, and `transformation` (the object from step 1, JSON-encoded). ImageKit returns JSON with `fileId`, `url`, `thumbnailUrl`, `name`, `width`, `height`, `size` (describing the *stored* file, after the storage cap). Also record the byte size and pixel dimensions of the file you sent as `upload_size`, `original_width`, `original_height`.
 
 **3. Reference them in the feedback POST:**
 
@@ -227,7 +227,8 @@ The schema response advertises the same under `uploads.screenshots` (`enabled: f
   "issue_categories": ["peak_score_not_loaded"],
   "screenshots": [
     { "file_id": "68c9f1e2…", "url": "https://ik.imagekit.io/noisekaranikid/luna-feedback-screenshots/home_2026-09-17_abc123.png",
-      "name": "home_2026-09-17_abc123.png", "width": 1170, "height": 2532, "size": 412873 }
+      "name": "home_2026-09-17_abc123.png", "width": 739, "height": 1600, "size": 73912,
+      "upload_size": 318204, "original_width": 1170, "original_height": 2532 }
   ]
 }
 ```
@@ -434,7 +435,7 @@ Create a submission. `{feature}` is one of `home`, `sleep`, `activity`, `workout
 | `device_serial` | string ≤ 64 | no | **send whenever a ring or band is connected**, e.g. `"R2N08250600302"`. Read from the SDK; never typed by the tester. Used to fetch that device's logs for AI diagnosis; `email` is the fallback |
 | `details` | object | no | feature fields, see §6. Unknown keys are rejected. Defaults to `{}` |
 | `client` | object | no | any subset of the client context keys, see §7. Unknown keys are rejected |
-| `screenshots` | object[] | no | up to 5 images uploaded to ImageKit first; each `{ file_id, url, name?, width?, height?, size?, thumbnail_url? }` as returned by the upload. Only URLs under our ImageKit account are accepted. See §3c |
+| `screenshots` | object[] | no | up to 5 images uploaded to ImageKit first; each `{ file_id, url, name?, width?, height?, size?, thumbnail_url?, upload_size?, original_width?, original_height? }`: the first seven as returned by the upload, plus the bytes and dimensions the app actually sent so the dashboard can show that on-device downsizing happened. Only URLs under our ImageKit account are accepted. See §3c |
 | `is_test` | boolean | no | default `false`. Send `true` from integration runs and test builds; see §3b |
 
 Optional or nullable fields may be omitted or sent as `null`. Whitespace is trimmed from strings.

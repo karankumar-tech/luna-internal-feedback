@@ -74,6 +74,7 @@ export class FeedbackService {
       device_serial: (v.device_serial as string | null | undefined) || null,
       screenshots: ((v.screenshots as Screenshot[] | null | undefined) ?? []).map((x) => ({
         file_id: x.file_id, url: x.url, thumbnail_url: x.thumbnail_url ?? null, name: x.name ?? null, width: x.width ?? null, height: x.height ?? null, size: x.size ?? null,
+        upload_size: x.upload_size ?? null, original_width: x.original_width ?? null, original_height: x.original_height ?? null,
       })),
       details,
       client,
