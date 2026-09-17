@@ -13,6 +13,7 @@ import { DiagnosisService } from './modules/diagnosis/diagnosis.service.js';
 import { registerDiagnosisRoutes } from './modules/diagnosis/diagnosis.routes.js';
 import { LogsClient } from './modules/diagnosis/logs/client.js';
 import { OpenRouterClient } from './modules/diagnosis/ai/openrouter.js';
+import { ImageKitClient } from './modules/uploads/imagekit.js';
 import { CategoriesRepo } from './modules/categories/categories.repo.js';
 import { FeedbackRepo } from './modules/feedback/feedback.repo.js';
 import { FeedbackService } from './modules/feedback/feedback.service.js';
@@ -87,7 +88,15 @@ export function buildApp(opts: BuildOptions = {}): App {
   const sessionSecret = sessionSecretFrom(config.DASHBOARD_KEY);
   registerAuth(app, { app: config.APP_API_KEY, admin: config.ADMIN_API_KEY, sessionSecret, cronSecret: config.CRON_SECRET });
   registerHealthRoutes(app, { db });
-  registerFeedbackRoutes(app, { service, categories, timeZone: config.APP_TIMEZONE });
+  const imagekit = config.IMAGEKIT_PUB_KEY && config.IMAGEKIT_PRI_KEY
+    ? new ImageKitClient({ publicKey: config.IMAGEKIT_PUB_KEY, privateKey: config.IMAGEKIT_PRI_KEY, urlEndpoint: config.IMAGEKIT_URL_ENDPOINT, folder: config.IMAGEKIT_FOLDER })
+    : null;
+  if (imagekit) service.setScreenshotSupport({ isOurUrl: (u) => imagekit.isOurUrl(u), maxCount: config.SCREENSHOT_MAX_COUNT, deleteFile: (id) => imagekit.deleteFile(id) });
+  else app.log.warn('Screenshot uploads disabled: set IMAGEKIT_PUB_KEY and IMAGEKIT_PRI_KEY to enable');
+  registerFeedbackRoutes(app, {
+    service, categories, timeZone: config.APP_TIMEZONE,
+    uploads: imagekit ? { publicKey: imagekit.publicKey, urlEndpoint: imagekit.urlEndpoint, folder: imagekit.folder, maxBytes: config.SCREENSHOT_MAX_BYTES, maxCount: config.SCREENSHOT_MAX_COUNT, authParams: () => imagekit.authParams() } : null,
+  });
   registerPageRoutes(app, { dashboardKey: config.DASHBOARD_KEY, sessionSecret, sessionDays: config.DASHBOARD_SESSION_DAYS });
   registerAdminRoutes(app, { categories });
   registerDiagnosisRoutes(app, { service: diagnosis, repo: diagnosisRepo });

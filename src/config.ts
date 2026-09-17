@@ -21,6 +21,13 @@ const EnvSchema = z.object({
   DIAGNOSIS_DAILY_BUDGET_USD: z.coerce.number().nonnegative().default(2),
   DIAGNOSIS_SYNC_HOUR_IST: z.coerce.number().int().min(0).max(23).default(20),
   CRON_SECRET: z.string().min(16).optional(),
+  // --- Screenshots on ImageKit (optional: when keys are missing, screenshots are refused with a clear error) ---
+  IMAGEKIT_PUB_KEY: z.string().min(8).optional(),
+  IMAGEKIT_PRI_KEY: z.string().min(8).optional(),
+  IMAGEKIT_URL_ENDPOINT: z.string().url().default('https://ik.imagekit.io/noisekaranikid'),
+  IMAGEKIT_FOLDER: z.string().default('/luna-feedback-screenshots'),
+  SCREENSHOT_MAX_BYTES: z.coerce.number().int().positive().default(8 * 1024 * 1024),
+  SCREENSHOT_MAX_COUNT: z.coerce.number().int().min(1).max(10).default(5),
   CATEGORY_CACHE_TTL_MS: z.coerce.number().int().nonnegative().default(30_000),
 });
 

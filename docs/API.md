@@ -190,6 +190,52 @@ Omit it, or send `false`, in the build that real testers use. It defaults to `fa
 
 ---
 
+## 3c. Screenshots
+
+A submission can carry up to five screenshots. Images are hosted on ImageKit; the app uploads them **directly to ImageKit** with a short-lived signature from this API, then references them in the feedback POST. Files never pass through this server.
+
+**1. Get upload credentials** (one call per image; each token is single use):
+
+```
+GET /v1/uploads/screenshot-auth
+x-api-key: <APP_API_KEY>
+```
+```json
+{
+  "upload_url": "https://upload.imagekit.io/api/v1/files/upload",
+  "public_key": "public_…", "token": "3b0f…", "expire": 1789124567, "signature": "a94a8f…",
+  "folder": "/luna-feedback-screenshots", "use_unique_file_name": true, "tags": ["luna-feedback"],
+  "transformation": { "pre": "w-1600,h-1600,c-at_max,q-80" },
+  "max_bytes": 8388608, "max_count": 5,
+  "accepted_types": ["image/jpeg", "image/png", "image/heic", "image/webp"],
+  "client_resize": { "max_dimension": 1600, "jpeg_quality": 0.8, "target_bytes": 512000, "note": "…" },
+  "url_endpoint": "https://ik.imagekit.io/noisekaranikid"
+}
+```
+
+**Resize on the phone first.** Upload speed on mobile networks is dominated by file size: downscale so the longest side is ≤ 1600 px and encode as JPEG at quality ~0.8 (typically 150–500 KB). Convert HEIC and camera photos to JPEG on device (`UIImage.jpegData(compressionQuality: 0.8)` after resizing; `Bitmap.compress(JPEG, 80)` on Android). The `transformation.pre` value is forwarded as-is and makes ImageKit cap what it stores; it is a safety net, not a substitute, since the original still travels over the network.
+
+The schema response advertises the same under `uploads.screenshots` (`enabled: false` when the server has no ImageKit keys).
+
+**2. Upload to ImageKit.** Multipart POST to `upload_url` with form fields `file` (bytes, ≤ 8 MB, resized on device), `fileName`, `publicKey`, `token`, `expire`, `signature`, `folder`, `useUniqueFileName=true`, `tags=luna-feedback`, and `transformation` (the object from step 1, JSON-encoded). ImageKit returns JSON with `fileId`, `url`, `thumbnailUrl`, `name`, `width`, `height`, `size`.
+
+**3. Reference them in the feedback POST:**
+
+```json
+{
+  "is_positive": false, "occurred_on": "2026-09-17", "user_id": 10482, "email": "tester@luna.app",
+  "issue_categories": ["peak_score_not_loaded"],
+  "screenshots": [
+    { "file_id": "68c9f1e2…", "url": "https://ik.imagekit.io/noisekaranikid/luna-feedback-screenshots/home_2026-09-17_abc123.png",
+      "name": "home_2026-09-17_abc123.png", "width": 1170, "height": 2532, "size": 412873 }
+  ]
+}
+```
+
+The response echoes `screenshots`. The dashboard shows them on the submission page, and the AI diagnosis reads the first two alongside the logs. Screenshots on test submissions are deleted from ImageKit together with the test data. Base64 images in the body and URLs from other hosts are rejected with `422`.
+
+---
+
 ## 4. Rendering a form from the schema
 
 The schema is a list of **field definitions**. Each has:
@@ -388,6 +434,7 @@ Create a submission. `{feature}` is one of `home`, `sleep`, `activity`, `workout
 | `device_serial` | string ≤ 64 | no | **send whenever a ring or band is connected**, e.g. `"R2N08250600302"`. Read from the SDK; never typed by the tester. Used to fetch that device's logs for AI diagnosis; `email` is the fallback |
 | `details` | object | no | feature fields, see §6. Unknown keys are rejected. Defaults to `{}` |
 | `client` | object | no | any subset of the client context keys, see §7. Unknown keys are rejected |
+| `screenshots` | object[] | no | up to 5 images uploaded to ImageKit first; each `{ file_id, url, name?, width?, height?, size?, thumbnail_url? }` as returned by the upload. Only URLs under our ImageKit account are accepted. See §3c |
 | `is_test` | boolean | no | default `false`. Send `true` from integration runs and test builds; see §3b |
 
 Optional or nullable fields may be omitted or sent as `null`. Whitespace is trimmed from strings.

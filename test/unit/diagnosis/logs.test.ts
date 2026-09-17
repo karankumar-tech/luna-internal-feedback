@@ -83,6 +83,11 @@ describe('parsers', () => {
     const rep = collapseRepeats([{ source: 'ring', channel: 'r', ts: 1, approx: false, text: 'tick' }, { source: 'ring', channel: 'r', ts: 2, approx: false, text: 'tick' }, { source: 'ring', channel: 'r', ts: 3, approx: false, text: 'tick' }, { source: 'ring', channel: 'r', ts: 4, approx: false, text: 'other' }]);
     expect(rep.map((x) => x.text)).toEqual(['tick  (×3)', 'other']);
   });
+  it('strips NUL bytes that Postgres would reject', () => {
+    const l = parseFirmware('9-1 06:41:10:100 cmd: 113,\u000017\u0000\n', { source: 'firmware', url: 'x', date: '2026-09-01' });
+    expect(l[0]!.text).toBe('cmd: 113,17');
+    expect(l[0]!.text.includes('\u0000')).toBe(false);
+  });
   it('drops BLE data-bean dumps', () => {
     const t = '2026-08-10 17:36:09:000 ----> fitnessparsing ---------> parsingFitness dailyData = DailyBean{stepsFrequency=60, stepsData=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}\n2026-08-10 17:36:10:000 ----> bluetoothservice ---------> connection lost\n';
     const l = parseRingAndroid(t, 'BLE_2026-08-10.log');

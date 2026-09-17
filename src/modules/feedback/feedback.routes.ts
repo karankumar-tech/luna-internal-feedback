@@ -46,11 +46,48 @@ function shiftDate(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+export interface ScreenshotUploads {
+  publicKey: string;
+  urlEndpoint: string;
+  folder: string;
+  maxBytes: number;
+  maxCount: number;
+  authParams: () => { token: string; expire: number; signature: string };
+}
+
+export const SCREENSHOT_TYPES = ['image/jpeg', 'image/png', 'image/heic', 'image/webp'] as const;
+/** Applied by ImageKit before storing: longest side 1600 px, JPEG quality 80. Keeps storage and delivery small even if the app skips resizing. */
+export const SCREENSHOT_PRE_TRANSFORMATION = 'w-1600,h-1600,c-at_max,q-80';
+/** What the app should do before uploading so uploads are fast on mobile networks. */
+export const SCREENSHOT_CLIENT_RESIZE = { max_dimension: 1600, jpeg_quality: 0.8, target_bytes: 500 * 1024, note: 'Downscale so the longest side is ≤ 1600 px and encode as JPEG (quality ~0.8) before uploading. Convert HEIC/camera photos to JPEG on device. Typical result: 150–500 KB.' } as const;
+
 export function registerFeedbackRoutes(
   app: FastifyInstance,
-  deps: { service: FeedbackService; categories: CategoriesRepo; timeZone: string },
+  deps: { service: FeedbackService; categories: CategoriesRepo; timeZone: string; uploads: ScreenshotUploads | null },
 ) {
-  const { service, categories, timeZone } = deps;
+  const { service, categories, timeZone, uploads } = deps;
+  const uploadsDescriptor = () => ({
+    screenshots: uploads
+      ? { enabled: true, auth_endpoint: '/v1/uploads/screenshot-auth', upload_url: 'https://upload.imagekit.io/api/v1/files/upload', max_count: uploads.maxCount, max_bytes: uploads.maxBytes, accepted_types: [...SCREENSHOT_TYPES], url_endpoint: uploads.urlEndpoint, client_resize: SCREENSHOT_CLIENT_RESIZE }
+      : { enabled: false },
+  });
+
+  // ---- short-lived ImageKit upload credentials (app uploads directly to ImageKit) ----
+  app.get('/v1/uploads/screenshot-auth', async () => {
+    if (!uploads) throw AppError.validation([{ path: 'screenshots', message: 'screenshot uploads are not configured on the server' }], 'Uploads unavailable');
+    const a = uploads.authParams();
+    return {
+      upload_url: 'https://upload.imagekit.io/api/v1/files/upload',
+      public_key: uploads.publicKey,
+      token: a.token, expire: a.expire, signature: a.signature,
+      folder: uploads.folder, use_unique_file_name: true, tags: ['luna-feedback'],
+      /** Send verbatim as the `transformation` form field (JSON string). ImageKit resizes before storing. */
+      transformation: { pre: SCREENSHOT_PRE_TRANSFORMATION },
+      max_bytes: uploads.maxBytes, max_count: uploads.maxCount, accepted_types: [...SCREENSHOT_TYPES],
+      client_resize: SCREENSHOT_CLIENT_RESIZE,
+      url_endpoint: uploads.urlEndpoint,
+    };
+  });
 
   // ---- aggregates for the dashboard -----------------------------------------
   app.get('/v1/feedback/stats', async (req) => {
@@ -66,7 +103,7 @@ export function registerFeedbackRoutes(
   // ---- schema for form building -------------------------------------------
   app.get('/v1/feedback/schema', async (req, reply) => {
     const [features, options] = await Promise.all([categories.allFeatures(), categories.activeOptionsByFeature()]);
-    const payload = buildSchemaResponse(features, options);
+    const payload = { ...buildSchemaResponse(features, options), uploads: uploadsDescriptor() };
     const etag = etagFor(payload);
     if (req.headers['if-none-match'] === etag) return reply.code(304).send();
     return reply.header('ETag', etag).header('Cache-Control', 'no-cache').send(payload);

@@ -59,6 +59,10 @@
   dl { display: grid; grid-template-columns: 140px 1fr; gap: 6px 12px; margin: 0; font-size: 13px; line-height: 18px; }
   dt { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--gray-dark); padding-top: 2px; }
   dd { margin: 0; word-break: break-word; } dd.mono { font-family: var(--mono); font-size: 12px; }
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .gallery a { display: block; border: 1px solid var(--gray-light); border-radius: var(--r-l); overflow: hidden; background: var(--brief); text-decoration: none; color: inherit; }
+  .gallery img { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; display: block; }
+  .gallery .cap { font-family: var(--mono); font-size: 10px; color: var(--gray-dark); padding: 4px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .files { font-size: 13px; }
   .files .row { display: grid; grid-template-columns: 78px 1fr auto; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border-ghost); align-items: center; }
   .files .src { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--gray-dark); }
@@ -163,6 +167,13 @@
           <h3>Client</h3>
           <dl id="client"></dl>
         </section>
+        <section class="card" id="shotsCard" hidden>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+            <h2>Screenshots</h2>
+            <span class="tertiary" style="font-size:12px" id="shotsSub"></span>
+          </div>
+          <div class="gallery" id="gallery"></div>
+        </section>
         <section class="card">
           <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
             <h2>Log files</h2>
@@ -249,6 +260,20 @@
     const det = Object.entries(r.details || {}).sort(([a], [b]) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999));
     dl($('details'), det.length ? det.map(([k, v]) => [((f.fields.find((x) => x.key === k) || { label: k }).label), v, true]) : [['—', 'none entered']]);
     dl($('reporter'), [['User ID', r.user_id, true], ['Email', r.email], ['Device serial', r.device_serial, true], ['Occurred on', r.occurred_on, true], ['Submitted (IST)', r.created_at_ist, true], ['Record', r.id, true]]);
+    const shots = r.screenshots || [];
+    $('shotsCard').hidden = shots.length === 0;
+    if (shots.length) {
+      $('shotsSub').textContent = `${shots.length} attached by the tester · click to open full size`;
+      const g = $('gallery'); g.replaceChildren();
+      for (const sc of shots) {
+        const a = el('a'); a.href = sc.url; a.target = '_blank'; a.rel = 'noopener';
+        const img = el('img'); img.alt = sc.name || 'screenshot'; img.loading = 'lazy';
+        try { const u = new URL(sc.url); u.searchParams.set('tr', 'w-480,q-80'); img.src = u.toString(); } catch { img.src = sc.thumbnail_url || sc.url; }
+        a.appendChild(img);
+        a.appendChild(el('div', 'cap', [sc.name || 'screenshot', sc.width && sc.height ? `${sc.width}×${sc.height}` : null, sc.size ? Math.round(sc.size / 1024) + ' KB' : null].filter(Boolean).join(' · ')));
+        g.appendChild(a);
+      }
+    }
     dl($('client'), [['Platform', r.platform], ['App version', r.app_version, true], ['Build', r.build_number, true], ['Channel', r.build_channel, true], ['Firmware', r.firmware_version, true], ['OS', r.os_version], ['Device ID', r.device_id, true], ['Session', r.session_id, true]]);
   }
 

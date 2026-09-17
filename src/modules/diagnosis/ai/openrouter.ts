@@ -1,4 +1,5 @@
-export interface ChatMessage { role: 'system' | 'user'; content: string }
+export type ContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
+export interface ChatMessage { role: 'system' | 'user'; content: string | ContentPart[] }
 
 export interface CompletionResult {
   text: string;
@@ -47,7 +48,7 @@ export class OpenRouterClient {
           model: this.opts.model,
           messages,
           temperature: params.temperature ?? 0.2,
-          max_tokens: params.maxTokens ?? 1500,
+          max_tokens: params.maxTokens ?? 3000,
           response_format: { type: 'json_schema', json_schema: jsonSchema },
           usage: { include: true },
         }),

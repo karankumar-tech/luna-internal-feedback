@@ -13,7 +13,8 @@ export function epochToIst(ts: number): string {
 }
 
 const MAX_LINE = 400;
-const clip = (s: string) => (s.length > MAX_LINE ? s.slice(0, MAX_LINE - 1) + '…' : s);
+/** Trim to MAX_LINE and drop NUL bytes: Postgres text columns reject \u0000 and it carries no signal. */
+const clip = (s: string) => { const c = s.replace(/\u0000/g, ''); return c.length > MAX_LINE ? c.slice(0, MAX_LINE - 1) + '…' : c; };
 
 // ---------------------------------------------------------------------------
 // App logs: JSON API dumps separated by a line of '=' characters, each with "time": "<epoch ms>"

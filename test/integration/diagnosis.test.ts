@@ -57,10 +57,13 @@ const fileFetch: typeof fetch = async (input) => {
 // --- fake OpenRouter -----------------------------------------------------------
 let modelCalls = 0;
 let lastPrompt = '';
+let lastImageUrls: string[] = [];
 const fakeAiFetch: typeof fetch = async (_input, init) => {
   modelCalls += 1;
   const body = JSON.parse(String(init?.body));
-  lastPrompt = body.messages[1].content;
+  const content = body.messages[1].content;
+  lastPrompt = typeof content === 'string' ? content : content.filter((p: { type: string }) => p.type === 'text').map((p: { text: string }) => p.text).join('\n');
+  lastImageUrls = typeof content === 'string' ? [] : content.filter((p: { type: string }) => p.type === 'image_url').map((p: { image_url: { url: string } }) => p.image_url.url);
   const verdict = {
     root_cause_side: 'backend', confidence: 0.8, severity: 'high', tags: ['sync_timeout', 'api_error_5xx'], reproducible: 'likely',
     summary: 'The sleep sync request timed out (504) while the ring had disconnected shortly before; data never reached the app.',
@@ -73,7 +76,7 @@ const fakeAiFetch: typeof fetch = async (_input, init) => {
 };
 
 let app: App;
-const cfg = loadConfig({ NODE_ENV: 'test', CATEGORY_CACHE_TTL_MS: '0', LOG_LEVEL: 'silent', DIAGNOSIS_AUTO: 'true' });
+const cfg = loadConfig({ NODE_ENV: 'test', CATEGORY_CACHE_TTL_MS: '0', LOG_LEVEL: 'silent', DIAGNOSIS_AUTO: 'true', IMAGEKIT_PUB_KEY: 'public_test_key', IMAGEKIT_PRI_KEY: 'private_test_key', IMAGEKIT_URL_ENDPOINT: 'https://ik.imagekit.io/testacct' });
 const adminHeaders = { 'x-admin-key': cfg.ADMIN_API_KEY, 'content-type': 'application/json' };
 const appHeaders = { 'x-api-key': cfg.APP_API_KEY, 'content-type': 'application/json' };
 // "now" is 2026-09-01 22:00 IST: after the sync hour, so same-day logs are expected to exist.
@@ -105,10 +108,12 @@ beforeAll(async () => {
 afterAll(async () => { await cleanup(); await app.close(); });
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-async function waitFor<T>(fn: () => Promise<T | null | undefined>, ms = 8000): Promise<T> {
+// Generous: a run is ~15 sequential queries and the hosted DB has been seen at ~600 ms/query.
+async function waitFor<T>(fn: () => Promise<T | null | undefined>, ms = 45_000, debug?: () => Promise<unknown>): Promise<T> {
   const until = Date.now() + ms;
   while (Date.now() < until) { const v = await fn(); if (v) return v; await sleep(150); }
-  throw new Error('timed out waiting');
+  const state = debug ? JSON.stringify(await debug()).slice(0, 600) : '';
+  throw new Error('timed out waiting' + (state ? ' — last state: ' + state : ''));
 }
 
 describe('auto diagnosis on negative submission', () => {
@@ -116,7 +121,7 @@ describe('auto diagnosis on negative submission', () => {
     const r = await app.inject({ method: 'POST', url: '/v1/feedback/sleep', headers: appHeaders, payload: body(`diag+${run}@${DOMAIN}`, { device_serial: 'R2NTEST0001' }) });
     expect(r.statusCode).toBe(201);
     const id = r.json().id;
-    const d = await waitFor(async () => { const x = await app.diagnosis.get(id); return x && x.status === 'done' ? x : null; });
+    const d = await waitFor(async () => { const x = await app.diagnosis.get(id); return x && x.status === 'done' ? x : null; }, 45_000, async () => { const x = await app.diagnosis.get(id); return x && { status: x.status, error: x.error, trigger: x.trigger }; });
     expect(d.root_cause_side).toBe('backend');
     expect(d.confidence).toBe(0.8);
     expect(d.severity).toBe('high');
@@ -204,18 +209,24 @@ describe('auto diagnosis on negative submission', () => {
     expect(lookup.items[0].files.app).toHaveLength(2);
   });
 
-  it('the sweep backfills negative submissions that were never diagnosed', async () => {
+  it('the backfill queues negative submissions that were never diagnosed (automatic mode)', async () => {
     // Insert directly, bypassing the hook, as if it arrived before diagnosis existed.
     const ins = await app.db.query(
       `insert into luna_feedback.submissions (feature_key, is_positive, occurred_on, user_id, email, issue_categories, is_test, platform)
        values ('home', false, '2026-08-20', 900010, $1, '{wrong_peak_score}', true, 'android') returning id`, [`backfill+${run}@${DOMAIN}`]);
     const id = ins.rows[0].id;
     expect(await app.diagnosis.get(id)).toBeNull();
-    const sweep = (await app.inject({ method: 'POST', url: '/v1/admin/diagnoses/run-pending?limit=5', headers: adminHeaders })).json();
-    expect(sweep.results.map((r: { submission_id: string }) => r.submission_id)).toContain(id);
-    const d = await app.diagnosis.get(id);
-    expect(d).not.toBeNull();
-    expect(['no_logs', 'waiting_logs', 'done']).toContain(d!.status);
+    // Exercise the backfill query itself rather than a full sweep, which would also process unrelated
+    // jobs that share this database.
+    const { DiagnosisRepo } = await import('../../src/modules/diagnosis/diagnosis.repo.js');
+    const repo = new DiagnosisRepo(app.db);
+    const queued = await repo.enqueueMissing(50);
+    expect(queued).toBeGreaterThanOrEqual(1);
+    const job = await app.db.query(`select state from luna_feedback.diagnosis_jobs where submission_id = $1`, [id]);
+    expect(job.rows[0].state).toBe('queued');
+    expect((await app.diagnosis.get(id))!.status).toBe('pending');
+    const out = await app.diagnosis.run(id, 'auto');
+    expect(['no_logs', 'waiting_logs', 'done']).toContain(out.status);
   });
 
   it('overview aggregates cover the diagnosed rows', async () => {
@@ -233,7 +244,7 @@ describe('auto diagnosis on negative submission', () => {
   });
 
   it('on-demand mode: nothing runs at submit time and the sweep does not backfill', async () => {
-    const cfgOff = loadConfig({ NODE_ENV: 'test', LOG_LEVEL: 'silent', DIAGNOSIS_AUTO: 'false' });
+    const cfgOff = loadConfig({ NODE_ENV: 'test', LOG_LEVEL: 'silent', DIAGNOSIS_AUTO: 'false', IMAGEKIT_PUB_KEY: 'public_test_key', IMAGEKIT_PRI_KEY: 'private_test_key', IMAGEKIT_URL_ENDPOINT: 'https://ik.imagekit.io/testacct' });
     const appOff = buildApp({ config: cfgOff, logger: false, db: app.db, diagnosis: {
       logs: new LogsClient({ baseUrl: 'https://stage-app.example.invalid', apiKey: 'k', fetchImpl: fakeLogsFetch }),
       ai: new OpenRouterClient({ apiKey: 'k', model: 'google/gemini-3.1-flash-lite', fetchImpl: fakeAiFetch }),
@@ -251,6 +262,18 @@ describe('auto diagnosis on negative submission', () => {
     // Diagnose now still works and downloads one file per source
     const manual = (await appOff.inject({ method: 'POST', url: `/v1/admin/submissions/${r.json().id}/diagnose`, headers: adminHeaders })).json();
     expect(manual.status).toBe('done');
+    expect(lastImageUrls).toEqual([]);
+
+    // with screenshots attached, the model receives them as sized image parts (max two)
+    const shot = (n: number) => ({ file_id: 'f' + n, url: `https://ik.imagekit.io/testacct/luna-feedback-screenshots/s${n}.png` });
+    const withShots = await appOff.inject({ method: 'POST', url: '/v1/feedback/sleep', headers: appHeaders, payload: body(`shots+${run}@${DOMAIN}`, { device_serial: 'R2NTEST0001', screenshots: [shot(1), shot(2), shot(3)] }) });
+    const out = (await appOff.inject({ method: 'POST', url: `/v1/admin/submissions/${withShots.json().id}/diagnose`, headers: adminHeaders })).json();
+    expect(out.status).toBe('done');
+    expect(lastImageUrls).toEqual([
+      'https://ik.imagekit.io/testacct/luna-feedback-screenshots/s1.png?tr=w-1024%2Cq-80',
+      'https://ik.imagekit.io/testacct/luna-feedback-screenshots/s2.png?tr=w-1024%2Cq-80',
+    ]);
+    expect(lastPrompt).toContain('# Screenshots');
     expect(manual.diagnosis.log_files.app).toHaveLength(1);
     expect(manual.diagnosis.log_files.ring).toHaveLength(1);
     await appOff.close();

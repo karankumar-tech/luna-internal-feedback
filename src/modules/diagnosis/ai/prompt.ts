@@ -20,6 +20,8 @@ export interface PromptInput {
   excerpt: string;
   windowLabel: string;
   coverage: 'full' | 'partial' | 'none';
+  /** Screenshot URLs (already sized for the model); at most two are sent. */
+  screenshots?: string[];
 }
 
 export const SYSTEM_PROMPT = `You are a senior engineer triaging internal tester feedback for Luna, a smart-ring health app.
@@ -37,10 +39,11 @@ Rules:
 2. Quote evidence lines verbatim from the excerpt; never invent lines. Prefer 2-5 lines that a colleague could grep for.
 3. Tags come only from the allowed list.
 4. Times in the excerpt are IST (UTC+05:30). "~" after a time means it was inferred, not logged.
-5. Write for an engineer: specific, short, no filler. Summary is one paragraph.
+5. Write for an engineer: specific, short, no filler. Summary is one paragraph under 600 characters; keep evidence lines under 300 characters and at most 5 of them; the whole JSON must stay well under 2000 tokens.
 6. suggested_fix names the next concrete check or change and which team owns it.
 7. If the tester gave times (sleep, workout), compare them with what the logs show around those times.
 8. A positive report with no anomaly is not_a_bug.
+9. If screenshots are attached, read what the tester saw (values, empty states, error text) and reconcile it with the logs; quote on-screen text in the summary when it matters.
 
 Allowed root_cause_side: ${ROOT_CAUSE_SIDES.join(', ')}.
 Allowed tags: ${TAGS.join(', ')}.`;
@@ -77,8 +80,13 @@ ${input.excerpt}
 
 # Task
 Return the diagnosis as JSON matching the schema.`;
+  const shots = (input.screenshots ?? []).slice(0, 2);
+  if (shots.length === 0) return [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: user }];
   return [
     { role: 'system', content: SYSTEM_PROMPT },
-    { role: 'user', content: user },
+    { role: 'user', content: [
+      { type: 'text', text: user + `\n\n# Screenshots\n${shots.length} screenshot(s) the tester attached follow.` },
+      ...shots.map((url) => ({ type: 'image_url' as const, image_url: { url } })),
+    ] },
   ];
 }

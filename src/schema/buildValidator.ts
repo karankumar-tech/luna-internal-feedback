@@ -6,6 +6,9 @@ import { isValidCalendarDate, isValidTime12h, normalizeTime12h, todayInZone } fr
 export interface ValidatorContext {
   /** Active category keys for the feature being validated. */
   categoryKeys: readonly string[];
+  /** Accept only screenshot URLs for which this returns true (our ImageKit endpoint). Absent = screenshots refused. */
+  isScreenshotUrl?: (url: string) => boolean;
+  maxScreenshots?: number;
   /** IANA zone used to decide "today" for the occurred_on future check. */
   timeZone: string;
   now?: Date;
@@ -122,9 +125,20 @@ export function buildSubmissionValidator(feature: FeatureKey, ctx: ValidatorCont
     }
   }
 
+  const screenshot = z.object({
+    file_id: z.string().trim().min(1).max(120),
+    url: z.string().trim().url().max(1000).refine((u) => (ctx.isScreenshotUrl ? ctx.isScreenshotUrl(u) : false), 'must be an ImageKit URL from the screenshot upload flow'),
+    thumbnail_url: z.string().trim().url().max(1000).optional().nullable(),
+    name: z.string().trim().max(200).optional().nullable(),
+    width: z.number().int().positive().optional().nullable(),
+    height: z.number().int().positive().optional().nullable(),
+    size: z.number().int().nonnegative().optional().nullable(),
+  }).strict();
   const extra = {
     details: details.optional().default({}),
     client: clientContextSchema(ctx).optional().nullable(),
+    /** Images uploaded to ImageKit via GET /v1/uploads/screenshot-auth, then referenced here. */
+    screenshots: z.array(screenshot).max(ctx.maxScreenshots ?? 5, `at most ${ctx.maxScreenshots ?? 5} screenshots`).optional().nullable(),
     /** Marks integration/demo submissions so they can be filtered and deleted without touching real feedback. */
     is_test: z.boolean().optional().default(false),
   };

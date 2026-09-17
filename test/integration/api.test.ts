@@ -7,7 +7,7 @@ const TEST_CATEGORY = 'zz_test_category';
 const run = `${Date.now()}`;
 
 let app: App;
-const cfg = loadConfig({ NODE_ENV: 'test', CATEGORY_CACHE_TTL_MS: '0', LOG_LEVEL: 'silent' });
+const cfg = loadConfig({ NODE_ENV: 'test', CATEGORY_CACHE_TTL_MS: '0', LOG_LEVEL: 'silent', IMAGEKIT_PUB_KEY: 'public_test_key', IMAGEKIT_PRI_KEY: 'private_test_key', IMAGEKIT_URL_ENDPOINT: 'https://ik.imagekit.io/testacct' });
 const appHeaders = { 'x-api-key': cfg.APP_API_KEY, 'content-type': 'application/json' };
 const adminHeaders = { 'x-admin-key': cfg.ADMIN_API_KEY, 'content-type': 'application/json' };
 
@@ -248,6 +248,45 @@ describe('GET /v1/feedback/stats', () => {
     const { from, to } = r.json().range;
     expect(to >= from).toBe(true);
     expect((await app.inject({ method: 'GET', url: '/v1/feedback/stats?from=2026-09-02&to=2026-09-01', headers: appHeaders })).statusCode).toBe(422);
+  });
+});
+
+describe('screenshots', () => {
+  const SHOT = 'https://ik.imagekit.io/testacct/luna-feedback-screenshots/home_abc123.png';
+  it('issues short-lived upload credentials and advertises limits in the schema', async () => {
+    const r = await app.inject({ method: 'GET', url: '/v1/uploads/screenshot-auth', headers: appHeaders });
+    expect(r.statusCode).toBe(200);
+    const b = r.json();
+    expect(b.upload_url).toBe('https://upload.imagekit.io/api/v1/files/upload');
+    expect(b.public_key).toBe('public_test_key');
+    expect(b.token).toMatch(/^[0-9a-f-]{36}$/);
+    expect(b.signature).toMatch(/^[0-9a-f]{40}$/);
+    expect(b.expire).toBeGreaterThan(Math.floor(Date.now() / 1000));
+    expect(b.folder).toBe('/luna-feedback-screenshots');
+    expect(b.transformation).toEqual({ pre: 'w-1600,h-1600,c-at_max,q-80' });
+    expect(b.client_resize.max_dimension).toBe(1600);
+    expect((await app.inject({ method: 'GET', url: '/v1/uploads/screenshot-auth' })).statusCode).toBe(401);
+    const schema = (await app.inject({ method: 'GET', url: '/v1/feedback/schema', headers: appHeaders })).json();
+    expect(schema.uploads.screenshots).toMatchObject({ enabled: true, auth_endpoint: '/v1/uploads/screenshot-auth', max_count: 5 });
+  });
+
+  it('stores screenshots on a submission and rejects foreign URLs or too many', async () => {
+    const ok = await app.inject({ method: 'POST', url: '/v1/feedback/home', headers: appHeaders,
+      payload: validBody({ screenshots: [{ file_id: 'f_1', url: SHOT, name: 'home.png', width: 1170, height: 2532, size: 240000 }] }) });
+    expect(ok.statusCode).toBe(201);
+    expect(ok.json().screenshots).toEqual([{ file_id: 'f_1', url: SHOT, thumbnail_url: null, name: 'home.png', width: 1170, height: 2532, size: 240000 }]);
+    const one = (await app.inject({ method: 'GET', url: `/v1/feedback/${ok.json().id}`, headers: appHeaders })).json();
+    expect(one.screenshots).toHaveLength(1);
+
+    const foreign = await app.inject({ method: 'POST', url: '/v1/feedback/home', headers: appHeaders,
+      payload: validBody({ screenshots: [{ file_id: 'f_2', url: 'https://evil.example.com/x.png' }] }) });
+    expect(foreign.statusCode).toBe(422);
+    expect(foreign.json().error.issues[0].path).toBe('screenshots.0.url');
+
+    const many = await app.inject({ method: 'POST', url: '/v1/feedback/home', headers: appHeaders,
+      payload: validBody({ screenshots: Array.from({ length: 6 }, (_, i) => ({ file_id: 'f_' + i, url: SHOT })) }) });
+    expect(many.statusCode).toBe(422);
+    expect(many.json().error.issues[0].path).toBe('screenshots');
   });
 });
 

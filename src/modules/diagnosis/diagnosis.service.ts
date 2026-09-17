@@ -15,6 +15,7 @@ import { FEATURE_DEFINITIONS, type FeatureKey } from '../../schema/registry.js';
 import { AppError } from '../../lib/errors.js';
 import { todayInZone } from '../../lib/time.js';
 import { runInBackground } from './background.js';
+import { withTransformation } from '../uploads/imagekit.js';
 
 export interface DiagnosisConfig {
   model: string;
@@ -237,6 +238,7 @@ export class DiagnosisService {
       },
       device: entry, excerpt: excerpt.excerpt, windowLabel: `${excerpt.window.label} (${new Date(excerpt.window.from + IST_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ')} → ${new Date(excerpt.window.to + IST_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ')} IST)`,
       coverage: excerpt.coverage,
+      screenshots: (sub.screenshots ?? []).map((x) => withTransformation(x.url, 'w-1024,q-80')),
     });
     const completion = await ai.completeJson(messages, VERDICT_JSON_SCHEMA);
     let verdict: Verdict;
@@ -263,7 +265,7 @@ export class DiagnosisService {
     };
     await repo.addRun({ submission_id: sub.id, status: 'done', trigger, model: completion.model, prompt_tokens: completion.promptTokens, completion_tokens: completion.completionTokens, cost_usd: cost, duration_ms: durationMs, error: null, verdict_snapshot: verdict });
     await repo.finishJob(sub.id, 'done');
-    await repo.setStatus(sub.id, 'done', donePatch);
+    await repo.setStatus(sub.id, 'done', stripNul(donePatch));
     const row = await repo.get(sub.id);
     return { submission_id: sub.id, status: 'done', diagnosis: row ? toDiagnosisDto(row) : undefined };
   }
@@ -286,6 +288,18 @@ export class DiagnosisService {
     if (params.email) return this.d.logs.listByEmail(params.email);
     throw AppError.validation([{ path: 'serial_no', message: 'serial_no or email is required' }]);
   }
+}
+
+/** Postgres rejects NUL bytes in text/jsonb; remove them from every string in a patch. */
+function stripNul<T>(value: T): T {
+  if (typeof value === 'string') return value.replace(/\u0000/g, '') as T;
+  if (Array.isArray(value)) return value.map(stripNul) as T;
+  if (value && typeof value === 'object' && !(value instanceof Date)) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = stripNul(v);
+    return out as T;
+  }
+  return value;
 }
 
 function shiftDay(iso: string, days: number): string {

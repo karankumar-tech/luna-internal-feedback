@@ -4,7 +4,7 @@ import { formatInZone, todayInZone } from '../../lib/time.js';
 import { buildSubmissionValidator, zodIssues } from '../../schema/buildValidator.js';
 import { SCHEMA_VERSION, isFeatureKey } from '../../schema/registry.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
-import type { FeedbackRepo, SubmissionRow, ListFilters, StatsFilters } from './feedback.repo.js';
+import type { FeedbackRepo, SubmissionRow, ListFilters, StatsFilters, Screenshot } from './feedback.repo.js';
 import type { FastifyBaseLogger } from 'fastify';
 
 /** Minimal hook so the feedback module does not depend on the diagnosis module directly. */
@@ -19,6 +19,8 @@ export interface SubmissionDto extends Omit<SubmissionRow, 'created_at' | 'user_
 
 export class FeedbackService {
   private diagnosis: DiagnosisHook | null = null;
+  /** Screenshot URL validator + cleanup, wired when ImageKit is configured. */
+  private screenshots: { isOurUrl: (u: string) => boolean; maxCount: number; deleteFile: (id: string) => Promise<boolean> } | null = null;
 
   constructor(
     private readonly feedback: FeedbackRepo,
@@ -27,6 +29,7 @@ export class FeedbackService {
   ) {}
 
   setDiagnosisHook(hook: DiagnosisHook | null) { this.diagnosis = hook; }
+  setScreenshotSupport(s: { isOurUrl: (u: string) => boolean; maxCount: number; deleteFile: (id: string) => Promise<boolean> } | null) { this.screenshots = s; }
 
   toDto(row: SubmissionRow): SubmissionDto {
     const { idempotency_key: _omit, ...rest } = row;
@@ -45,7 +48,11 @@ export class FeedbackService {
     if (!feature || !feature.is_active) throw AppError.notFound(`Feature "${featureKey}" is not accepting feedback`);
 
     const categoryKeys = await this.categories.activeKeysFor(featureKey);
-    const validator = buildSubmissionValidator(featureKey, { categoryKeys, timeZone: this.timeZone });
+    const validator = buildSubmissionValidator(featureKey, {
+      categoryKeys, timeZone: this.timeZone,
+      isScreenshotUrl: this.screenshots ? this.screenshots.isOurUrl : undefined,
+      maxScreenshots: this.screenshots?.maxCount,
+    });
     const parsed = validator.safeParse(body);
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
     const v = parsed.data;
@@ -65,6 +72,9 @@ export class FeedbackService {
       issue_categories: (v.issue_categories as string[] | null | undefined) ?? [],
       feedback_text: (v.feedback_text as string | null | undefined) ?? null,
       device_serial: (v.device_serial as string | null | undefined) || null,
+      screenshots: ((v.screenshots as Screenshot[] | null | undefined) ?? []).map((x) => ({
+        file_id: x.file_id, url: x.url, thumbnail_url: x.thumbnail_url ?? null, name: x.name ?? null, width: x.width ?? null, height: x.height ?? null, size: x.size ?? null,
+      })),
       details,
       client,
       idempotency_key: idempotencyKey,
@@ -106,6 +116,11 @@ export class FeedbackService {
   }
 
   async deleteTestData() {
-    return this.feedback.deleteTestData();
+    const { deleted, screenshotFileIds } = await this.feedback.deleteTestData();
+    if (this.screenshots && screenshotFileIds.length) {
+      // Best effort, sequential to respect ImageKit rate limits; failures are ignored.
+      for (const id of screenshotFileIds) await this.screenshots.deleteFile(id);
+    }
+    return deleted;
   }
 }

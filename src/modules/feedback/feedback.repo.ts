@@ -1,5 +1,15 @@
 import type { Db } from '../../db/pool.js';
 
+export interface Screenshot {
+  file_id: string;
+  url: string;
+  thumbnail_url?: string | null;
+  name?: string | null;
+  width?: number | null;
+  height?: number | null;
+  size?: number | null;
+}
+
 export interface SubmissionRow {
   id: string;
   feature_key: string;
@@ -12,6 +22,7 @@ export interface SubmissionRow {
   feedback_text: string | null;
   device_serial: string | null;
   details: Record<string, unknown>;
+  screenshots: Screenshot[];
   platform: string | null;
   app_version: string | null;
   build_number: string | null;
@@ -39,6 +50,7 @@ export interface NewSubmission {
   feedback_text: string | null;
   device_serial: string | null;
   details: Record<string, unknown>;
+  screenshots: Screenshot[];
   client: Partial<Record<'platform' | 'app_version' | 'build_number' | 'build_channel' | 'firmware_version' | 'os_version' | 'device_id' | 'session_id', string | null>>;
   idempotency_key: string | null;
   schema_version: number;
@@ -113,7 +125,7 @@ function buildWhere(f: Partial<StatsFilters>, alias = 's'): { where: string; val
 }
 
 const COLUMNS = `id, feature_key, is_positive, occurred_on::text as occurred_on, user_id, email, issue_categories,
-  created_at, feedback_text, device_serial, details, platform, app_version, build_number, build_channel, firmware_version, os_version,
+  created_at, feedback_text, device_serial, details, screenshots, platform, app_version, build_number, build_channel, firmware_version, os_version,
   device_id, session_id, idempotency_key, schema_version, is_test, ai_status, ai_side, ai_severity, ai_checked_at`;
 
 export class FeedbackRepo {
@@ -125,17 +137,17 @@ export class FeedbackRepo {
   async insert(s: NewSubmission): Promise<{ row: SubmissionRow; created: boolean }> {
     const params = [
       s.feature_key, s.is_positive, s.occurred_on, s.user_id, s.email, s.issue_categories, s.feedback_text, s.device_serial,
-      JSON.stringify(s.details),
+      JSON.stringify(s.details), JSON.stringify(s.screenshots),
       s.client.platform ?? null, s.client.app_version ?? null, s.client.build_number ?? null, s.client.build_channel ?? null,
       s.client.firmware_version ?? null, s.client.os_version ?? null, s.client.device_id ?? null,
       s.client.session_id ?? null, s.idempotency_key, s.schema_version, s.is_test,
     ];
     const inserted = await this.db.query<SubmissionRow>(
       `insert into luna_feedback.submissions
-         (feature_key, is_positive, occurred_on, user_id, email, issue_categories, feedback_text, device_serial, details,
+         (feature_key, is_positive, occurred_on, user_id, email, issue_categories, feedback_text, device_serial, details, screenshots,
           platform, app_version, build_number, build_channel, firmware_version, os_version, device_id, session_id,
           idempotency_key, schema_version, is_test)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
        on conflict (idempotency_key) where idempotency_key is not null do nothing
        returning ${COLUMNS}`,
       params,
@@ -150,9 +162,10 @@ export class FeedbackRepo {
   }
 
   /** Deletes every submission flagged as test data. Real rows are never touched. */
-  async deleteTestData(): Promise<number> {
-    const r = await this.db.query('delete from luna_feedback.submissions where is_test');
-    return r.rowCount ?? 0;
+  async deleteTestData(): Promise<{ deleted: number; screenshotFileIds: string[] }> {
+    const r = await this.db.query<{ screenshots: Screenshot[] }>('delete from luna_feedback.submissions where is_test returning screenshots');
+    const ids = r.rows.flatMap((row) => (row.screenshots ?? []).map((x) => x.file_id)).filter(Boolean);
+    return { deleted: r.rowCount ?? 0, screenshotFileIds: ids };
   }
 
   async countTestData(): Promise<number> {

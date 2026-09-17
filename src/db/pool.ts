@@ -14,7 +14,7 @@ export function createPool(config: Config): Db {
     ssl: { rejectUnauthorized: false },
     max: config.DB_POOL_MAX,
     idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 20_000, // the Supabase pooler has been seen taking 5–7 s to hand out a connection
     application_name: 'luna-feedback-api',
   });
   if (process.env.VERCEL) {
