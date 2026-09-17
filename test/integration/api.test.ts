@@ -290,6 +290,26 @@ describe('screenshots', () => {
   });
 });
 
+describe('deleting test data removes their ImageKit files', () => {
+  it('calls the ImageKit delete API once per attached screenshot', async () => {
+    const { ImageKitClient } = await import('../../src/modules/uploads/imagekit.js');
+    const deleted: string[] = [];
+    const fakeFetch: typeof fetch = async (input, init) => { if (init?.method === 'DELETE') deleted.push(String(input).split('/').pop()!); return new Response('', { status: 204 }); };
+    const ik = new ImageKitClient({ publicKey: 'public_test_key', privateKey: 'private_test_key', urlEndpoint: 'https://ik.imagekit.io/testacct', folder: '/luna-feedback-screenshots', fetchImpl: fakeFetch });
+    const app2 = buildApp({ config: cfg, logger: false, db: app.db, diagnosis: { logs: null, ai: null }, imagekit: ik });
+    await app2.ready();
+    const SHOT = (n: string) => `https://ik.imagekit.io/testacct/luna-feedback-screenshots/${n}.png`;
+    const mk = (files: string[]) => app2.inject({ method: 'POST', url: '/v1/feedback/home', headers: appHeaders, payload: validBody({ screenshots: files.map((f) => ({ file_id: f, url: SHOT(f) })) }) });
+    expect((await mk(['del_a', 'del_b'])).statusCode).toBe(201);
+    expect((await mk(['del_c'])).statusCode).toBe(201);
+    const r = await app2.inject({ method: 'DELETE', url: '/v1/admin/test-data?confirm=delete', headers: { 'x-admin-key': cfg.ADMIN_API_KEY } });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().deleted).toBeGreaterThanOrEqual(2);
+    expect(deleted.sort()).toEqual(expect.arrayContaining(['del_a', 'del_b', 'del_c']));
+    await app2.close();
+  });
+});
+
 describe('admin: mark one submission as test / real', () => {
   it('flips is_test on a single row and rejects bad input', async () => {
     const list = (await app.inject({ method: 'GET', url: `/v1/feedback?user_id=900001&limit=1`, headers: appHeaders })).json();

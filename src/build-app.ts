@@ -24,6 +24,8 @@ export interface BuildOptions {
   logger?: boolean | object;
   /** Test seams for the diagnosis pipeline. */
   diagnosis?: { logs?: LogsClient | null; ai?: OpenRouterClient | null; fetchImpl?: typeof fetch; now?: () => Date };
+  /** Test seam: replaces the ImageKit client built from config. */
+  imagekit?: ImageKitClient | null;
   /** Fastify factory. server.ts passes the real import so Vercel's entrypoint detector sees `fastify` imported there. */
   fastify?: typeof Fastify;
 }
@@ -88,7 +90,7 @@ export function buildApp(opts: BuildOptions = {}): App {
   const sessionSecret = sessionSecretFrom(config.DASHBOARD_KEY);
   registerAuth(app, { app: config.APP_API_KEY, admin: config.ADMIN_API_KEY, sessionSecret, cronSecret: config.CRON_SECRET });
   registerHealthRoutes(app, { db });
-  const imagekit = config.IMAGEKIT_PUB_KEY && config.IMAGEKIT_PRI_KEY
+  const imagekit = opts.imagekit !== undefined ? opts.imagekit : config.IMAGEKIT_PUB_KEY && config.IMAGEKIT_PRI_KEY
     ? new ImageKitClient({ publicKey: config.IMAGEKIT_PUB_KEY, privateKey: config.IMAGEKIT_PRI_KEY, urlEndpoint: config.IMAGEKIT_URL_ENDPOINT, folder: config.IMAGEKIT_FOLDER })
     : null;
   if (imagekit) service.setScreenshotSupport({ isOurUrl: (u) => imagekit.isOurUrl(u), maxCount: config.SCREENSHOT_MAX_COUNT, deleteFile: (id) => imagekit.deleteFile(id) });

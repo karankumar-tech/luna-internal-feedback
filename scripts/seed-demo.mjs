@@ -6,7 +6,14 @@ import pg from 'pg';
 const c = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
 await c.connect();
 if (process.argv.includes('--clean')) {
-  const r = await c.query('delete from luna_feedback.submissions where is_test');
+  const r = await c.query('delete from luna_feedback.submissions where is_test returning screenshots');
+  const ids = r.rows.flatMap((row) => (row.screenshots || []).map((x) => x.file_id)).filter(Boolean);
+  if (ids.length && process.env.IMAGEKIT_PRI_KEY) {
+    const { ImageKitClient } = await import('../dist/modules/uploads/imagekit.js');
+    const ik = new ImageKitClient({ publicKey: process.env.IMAGEKIT_PUB_KEY, privateKey: process.env.IMAGEKIT_PRI_KEY, urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT || 'https://ik.imagekit.io/noisekaranikid', folder: process.env.IMAGEKIT_FOLDER || '/luna-feedback-screenshots' });
+    let ok = 0; for (const id of ids) if (await ik.deleteFile(id)) ok++;
+    console.log(`deleted ${ok}/${ids.length} screenshot files from ImageKit`);
+  }
   console.log('removed', r.rowCount); await c.end(); process.exit(0);
 }
 const n = Number(process.argv[2] || 60);
