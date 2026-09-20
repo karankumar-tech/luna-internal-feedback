@@ -18,10 +18,12 @@
     "db:check": "node scripts/db-check.mjs",
     "db:verify": "node scripts/db-verify.mjs",
     "pages:embed": "node scripts/embed-pages.mjs",
-    "predev": "npm run pages:embed",
-    "prebuild": "npm run pages:embed",
-    "pretypecheck": "npm run pages:embed",
-    "pretest": "npm run pages:embed"
+    "catalog:build": "node scripts/build-event-catalog.mjs",
+    "generate": "npm run pages:embed && npm run catalog:build",
+    "predev": "npm run generate",
+    "prebuild": "npm run generate",
+    "pretypecheck": "npm run generate",
+    "pretest": "npm run generate"
   },
   "dependencies": {
     "@vercel/functions": "^3.9.5",

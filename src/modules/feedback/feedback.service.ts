@@ -4,17 +4,19 @@ import { formatInZone, todayInZone } from '../../lib/time.js';
 import { buildSubmissionValidator, zodIssues } from '../../schema/buildValidator.js';
 import { SCHEMA_VERSION, isFeatureKey } from '../../schema/registry.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
-import type { FeedbackRepo, SubmissionRow, ListFilters, StatsFilters, Screenshot } from './feedback.repo.js';
+import type { FeedbackRepo, SubmissionRow, ListFilters, StatsFilters, Screenshot, SubmissionStatus } from './feedback.repo.js';
 import type { FastifyBaseLogger } from 'fastify';
 
 /** Minimal hook so the feedback module does not depend on the diagnosis module directly. */
 export interface DiagnosisHook { onNegativeSubmission(submissionId: string, log: FastifyBaseLogger): Promise<void> }
 
-export interface SubmissionDto extends Omit<SubmissionRow, 'created_at' | 'user_id' | 'idempotency_key' | 'ai_checked_at'> {
+export interface SubmissionDto extends Omit<SubmissionRow, 'created_at' | 'user_id' | 'idempotency_key' | 'ai_checked_at' | 'status_changed_at' | 'jira_synced_at'> {
   user_id: number;
   created_at: string;      // ISO 8601 UTC
   created_at_ist: string;  // "YYYY-MM-DD HH:mm:ss +05:30"
   ai_checked_at: string | null;
+  status_changed_at: string | null;
+  jira_synced_at: string | null;
 }
 
 export class FeedbackService {
@@ -37,6 +39,8 @@ export class FeedbackService {
       ...rest,
       user_id: Number(row.user_id),
       ai_checked_at: row.ai_checked_at ? new Date(row.ai_checked_at).toISOString() : null,
+      status_changed_at: row.status_changed_at ? new Date(row.status_changed_at).toISOString() : null,
+      jira_synced_at: row.jira_synced_at ? new Date(row.jira_synced_at).toISOString() : null,
       created_at: row.created_at.toISOString(),
       created_at_ist: formatInZone(row.created_at, this.timeZone),
     };
@@ -108,6 +112,13 @@ export class FeedbackService {
   async setTestFlag(id: string, isTest: boolean): Promise<SubmissionDto> {
     if (!z.string().uuid().safeParse(id).success) throw AppError.notFound('Submission not found');
     const row = await this.feedback.setTestFlag(id, isTest);
+    if (!row) throw AppError.notFound('Submission not found');
+    return this.toDto(row);
+  }
+
+  async setStatus(id: string, status: SubmissionStatus, note: string | null, by: string | null): Promise<SubmissionDto> {
+    if (!z.string().uuid().safeParse(id).success) throw AppError.notFound('Submission not found');
+    const row = await this.feedback.setStatus(id, status, note, by);
     if (!row) throw AppError.notFound('Submission not found');
     return this.toDto(row);
   }

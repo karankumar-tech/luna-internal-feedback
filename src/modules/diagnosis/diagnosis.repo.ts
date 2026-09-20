@@ -15,6 +15,8 @@ export interface DiagnosisRow {
   evidence: unknown[];
   suggested_fix: string | null;
   questions_for_tester: string[];
+  /** Catalog ids the verdict cited, already validated against the built catalog. */
+  event_codes: string[];
   log_device: Record<string, unknown> | null;
   log_files: Record<string, string[]>;
   log_window_from: Date | null;
@@ -55,7 +57,7 @@ export interface RunRow {
 }
 
 const D_COLS = `id, submission_id, status, root_cause_side, confidence, severity, tags, reproducible, summary, evidence,
-  suggested_fix, questions_for_tester, log_device, log_files, log_window_from, log_window_to, log_excerpt, log_excerpt_lines,
+  suggested_fix, questions_for_tester, event_codes, log_device, log_files, log_window_from, log_window_to, log_excerpt, log_excerpt_lines,
   log_coverage, fw_version_seen, app_version_seen, model, prompt_tokens, completion_tokens, cost_usd, duration_ms, trigger,
   error, review_verdict, review_note, reviewed_by, reviewed_at, created_at, updated_at`;
 
@@ -154,9 +156,15 @@ export class DiagnosisRepo {
           set ai_status = $2,
               ai_side = case when $3 then coalesce($4, ai_side) else ai_side end,
               ai_severity = case when $3 then coalesce($5, ai_severity) else ai_severity end,
+              ai_event_codes = case when $3 then coalesce($6::text[], ai_event_codes) else ai_event_codes end,
               ai_checked_at = case when $3 then now() else ai_checked_at end
         where id = $1`,
-      [submissionId, status, done, (patch.root_cause_side as string | undefined) ?? null, (patch.severity as string | undefined) ?? null],
+      [
+        submissionId, status, done,
+        (patch.root_cause_side as string | undefined) ?? null,
+        (patch.severity as string | undefined) ?? null,
+        (patch.event_codes as string[] | undefined) ?? null,
+      ],
     );
   }
 

@@ -84,8 +84,18 @@ export const FEATURE_DEFINITIONS: Record<FeatureKey, FeatureDefinition> = {
 export const PLATFORMS = ['ios', 'android'] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
+/**
+ * Which ring of the release train the report came from.
+ * Stage is the default because that is the only build testing today; the field exists so
+ * UAT and production reports can be told apart the day those users are let in.
+ */
+export const ENVIRONMENTS = ['stage', 'uat', 'production'] as const;
+export type Environment = (typeof ENVIRONMENTS)[number];
+export const DEFAULT_ENVIRONMENT: Environment = 'stage';
+
 /** Optional client context the app attaches; stored as columns for dashboard slicing. */
 export const CLIENT_CONTEXT_KEYS = [
+  'environment',
   'platform',
   'app_version',
   'build_number',
@@ -99,6 +109,10 @@ export type ClientContextKey = (typeof CLIENT_CONTEXT_KEYS)[number];
 
 /** Client context field definitions, exposed in the schema so the app knows the allowed values. */
 export const CLIENT_CONTEXT_FIELDS: readonly FieldDef[] = [
+  {
+    key: 'environment', type: 'string', label: 'Environment', required: false, options: [...ENVIRONMENTS],
+    help: `Which backend the app is pointed at. Omit it and the server records "${DEFAULT_ENVIRONMENT}".`,
+  },
   { key: 'platform', type: 'string', label: 'Platform', required: false, options: [...PLATFORMS] },
   { key: 'app_version', type: 'string', label: 'App version', required: false, maxLength: 200 },
   { key: 'build_number', type: 'string', label: 'Build number', required: false, maxLength: 200 },

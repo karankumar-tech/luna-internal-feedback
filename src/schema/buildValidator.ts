@@ -94,11 +94,13 @@ function fieldsToObject(fields: readonly FieldDef[], ctx: ValidatorContext, leni
   return z.object(shape).strict();
 }
 
+/** Enumerated context fields are matched case-insensitively ("iOS" -> "ios", "Production" -> "production"). */
+const CASE_INSENSITIVE_CONTEXT = new Set(['platform', 'environment']);
+
 function clientContextSchema(ctx: ValidatorContext) {
   const shape: Record<string, ZodTypeAny> = {};
   for (const f of CLIENT_CONTEXT_FIELDS) {
-    // platform is matched case-insensitively ("iOS" -> "ios")
-    shape[f.key] = f.key === 'platform'
+    shape[f.key] = CASE_INSENSITIVE_CONTEXT.has(f.key)
       ? optionalize(z.string().trim().toLowerCase().pipe(fieldToZod({ ...f, required: true }, ctx)), false)
       : fieldToZod(f, ctx);
   }

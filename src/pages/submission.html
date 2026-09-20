@@ -127,6 +127,39 @@
   details.runs td, details.runs th { text-align: left; padding: 4px 6px; border-top: 1px solid var(--border-ghost); white-space: nowrap; }
   details.runs th { font-weight: 400; color: var(--gray-dark); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
   .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--black); color: var(--white); padding: 8px 14px; border-radius: var(--r-l); font-size: 13px; z-index: 40; display: none; }
+
+  /* triage, environment and Jira */
+  select { font: inherit; color: inherit; border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-s); padding: 4px 8px; line-height: 16px; font-size: 12px; }
+  select:focus-visible { outline: none; border-color: var(--black); box-shadow: 0 0 0 1px var(--black); }
+  .env { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 7px; border-radius: var(--r-xs); border: 1px solid; }
+  .env.stage { border-color: var(--gray-light); background: var(--brief); color: var(--gray-dark); }
+  .env.uat { border-color: var(--blue); background: var(--blue-50); color: #0C3AAA; }
+  .env.production { border-color: var(--magenta); background: var(--magenta-50); color: #8A0044; }
+  .jira-link { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; text-decoration: none; border: 1px solid var(--blue); background: var(--blue-50); color: #0C3AAA; padding: 3px 9px; border-radius: var(--r-s); }
+  .jira-link:hover { background: #DCE7FC; }
+
+  /* issue kinds */
+  .kinds { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .kind { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border-warm); background: var(--bg); border-radius: var(--r-s); padding: 3px 4px 3px 9px; font-size: 12px; }
+  .kind a { text-decoration: none; font-weight: 500; }
+  .kind a:hover { text-decoration: underline; }
+  .kind .by { font-family: var(--mono); font-size: 10px; color: var(--gray-mid); letter-spacing: .06em; text-transform: uppercase; }
+  .kind .x { border: none; background: transparent; cursor: pointer; color: var(--gray-mid); padding: 0 4px; line-height: 16px; border-radius: var(--r-xs); }
+  .kind .x:hover { background: var(--crit-bg); color: #8A1010; }
+  .kind-add { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .kind-add select { flex: 1 1 200px; min-width: 0; }
+
+  /* follow-up chat */
+  .chat-log { display: flex; flex-direction: column; gap: 10px; margin: 10px 0; max-height: 460px; overflow-y: auto; }
+  .msg { border-radius: var(--r-l); padding: 9px 12px; font-size: 13px; line-height: 20px; white-space: pre-wrap; word-break: break-word; }
+  .msg.user { background: var(--hero); color: #E6E4DC; margin-left: 32px; }
+  .msg.assistant { background: var(--brief); margin-right: 32px; }
+  .msg .who { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; opacity: .7; display: block; margin-bottom: 3px; }
+  .chat-form { display: flex; gap: 8px; align-items: flex-end; }
+  .chat-form textarea { flex: 1; border: 1px solid var(--gray-light); border-radius: var(--r-m); padding: 8px 10px; min-height: 40px; max-height: 140px; resize: vertical; }
+  .chat-meta { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 12px; color: var(--gray-dark); margin-top: 6px; }
+  .chat-meta .left { min-width: 0; }
+
   @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
   @media (prefers-reduced-motion: reduce) { .meter .fill { transition: none; } }
 </style>
@@ -138,7 +171,11 @@
       <a class="crumb" href="/dashboard">← Dashboard</a>
       <div class="overline" style="margin-top:2px">Luna · Internal feedback · Submission</div>
     </div>
-    <div style="display:flex;gap:8px;align-items:center">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <label class="overline" for="statusSel" style="letter-spacing:.1em">Status</label>
+      <select id="statusSel" title="Move this ticket through triage"></select>
+      <a class="jira-link" id="jiraLink" href="#" target="_blank" rel="noopener" hidden></a>
+      <button class="btn small" id="btnJira" type="button" hidden>Create Jira ticket</button>
       <button class="btn small" id="btnFlag" type="button" hidden>Mark as test</button>
       <button class="btn small" id="btnCopyLink" type="button">Copy link</button>
       <button class="btn primary" id="btnDiagnose" type="button" hidden>Diagnose now</button>
@@ -162,6 +199,13 @@
           <h2>Feedback</h2>
           <div class="quote" id="quote"></div>
           <div class="chips" id="cats"></div>
+          <h3>Issue kinds</h3>
+          <div class="kinds" id="kinds"></div>
+          <div class="kind-add">
+            <select id="kindSel"><option value="">Link to an existing kind…</option></select>
+            <button class="btn small" id="btnLinkKind" type="button">Link</button>
+            <button class="btn small" id="btnNewKind" type="button">New kind…</button>
+          </div>
           <h3>Feature details</h3>
           <dl id="details"></dl>
           <h3>Reporter</h3>
@@ -193,6 +237,23 @@
           </div>
           <div id="diagBody"></div>
         </section>
+        <section class="card" id="chatCard" hidden>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px">
+            <h2>Ask about this diagnosis</h2>
+            <span class="tertiary" style="font-size:12px" id="chatLeft"></span>
+          </div>
+          <p class="tertiary" style="font-size:12px;margin:0">
+            Push back on the verdict, or add something the logs do not show. The model sees this ticket, its verdict and the same log excerpt.
+          </p>
+          <div class="chat-log" id="chatLog"></div>
+          <div class="chat-form">
+            <textarea id="chatInput" rows="2" placeholder="e.g. The tester says the ring was charging at 11pm — does that change the sleep gap?"></textarea>
+            <button class="btn primary" id="btnChat" type="button">Send</button>
+          </div>
+          <div class="chat-meta">
+            <span class="left" id="chatHint">Press ⌘/Ctrl + Enter to send.</span>
+          </div>
+        </section>
       </div>
     </div>
 
@@ -213,7 +274,7 @@
   const $ = (id) => document.getElementById(id);
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; };
   const id = location.pathname.split('/').filter(Boolean).pop();
-  const state = { sub: null, diag: null, schema: null, files: null, pollTimer: null };
+  const state = { sub: null, diag: null, schema: null, files: null, pollTimer: null, kinds: [], allKinds: [], chat: null, jira: null };
   let toastT; const toast = (m) => { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', 2400); };
 
   async function api(path, opts = {}) {
@@ -228,6 +289,7 @@
   const istStamp = (iso) => { if (!iso) return '—'; const d = new Date(iso); return new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).format(d) + ' IST'; };
   const SIDE_LABEL = { firmware: 'Firmware', sdk: 'Ring SDK', app: 'App', backend: 'Backend', user_expectation: 'User expectation', not_a_bug: 'Not a bug', insufficient_logs: 'Insufficient logs' };
   const STATUS_TEXT = { pending: 'Queued', running: 'Diagnosing…', waiting_logs: 'Waiting for logs', done: 'Done', no_logs: 'No logs', failed: 'Failed' };
+  const TRIAGE = [['open', 'Open'], ['triaged', 'Triaged'], ['in_progress', 'In progress'], ['resolved', 'Resolved'], ['closed', 'Closed'], ['wont_fix', "Won't fix"]];
 
   // ---------- load ----------
   async function load() {
@@ -239,6 +301,10 @@
     $('loading').hidden = true; $('page').hidden = false;
     $('btnDiagnose').hidden = false;
     $('btnFlag').hidden = false;
+    // Independent of each other and of the diagnosis; none of them should hold up the page.
+    loadKinds();
+    loadJiraStatus();
+    loadCatalog();
     await refreshDiagnosis();
     loadFiles();
   }
@@ -255,6 +321,10 @@
     const m = (k, v) => { const s = el('span'); s.appendChild(el('span', null, k + ' ')); s.appendChild(el('b', null, v)); meta.appendChild(s); };
     m('occurred', shortDate(r.occurred_on)); m('submitted', istStamp(r.created_at)); m('tester', String(r.user_id));
     m('platform', r.platform === 'ios' ? 'iOS' : r.platform === 'android' ? 'Android' : '—'); m('app', r.app_version || '—'); m('fw', r.firmware_version || '—');
+    const envWrap = el('span'); envWrap.appendChild(el('span', 'env ' + (r.environment || 'stage'), r.environment || 'stage')); meta.appendChild(envWrap);
+    if (r.status_changed_at) { const s = el('span', 'tertiary'); s.textContent = `${(TRIAGE.find((t) => t[0] === r.status) || [, r.status])[1]} by ${r.status_changed_by || 'someone'} · ${istStamp(r.status_changed_at)}`; meta.appendChild(s); }
+    renderStatusSelect();
+    renderJira();
     $('quote').textContent = r.feedback_text || '(no text)';
     const cats = $('cats'); cats.replaceChildren(); for (const c of r.issue_categories) cats.appendChild(el('span', 'chip', catLabel(c)));
     const dl = (host, pairs) => { host.replaceChildren(); for (const [k, v, mono] of pairs) { host.appendChild(el('dt', null, k)); host.appendChild(el('dd', mono ? 'mono' : null, v == null || v === '' ? '—' : v)); } };
@@ -284,12 +354,159 @@
     dl($('client'), [['Platform', r.platform], ['App version', r.app_version, true], ['Build', r.build_number, true], ['Channel', r.build_channel, true], ['Firmware', r.firmware_version, true], ['OS', r.os_version], ['Device ID', r.device_id, true], ['Session', r.session_id, true]]);
   }
 
+  // ---------- event catalog (for naming the codes a verdict cites) ----------
+  async function loadCatalog() {
+    try {
+      const { items } = await api('/v1/catalog/events');
+      state.catalog = Object.fromEntries(items.map((e) => [e.id, e]));
+      if (state.diag) renderDiagnosis();
+    } catch { state.catalog = {}; }
+  }
+
+  // ---------- triage status ----------
+  function renderStatusSelect() {
+    const sel = $('statusSel');
+    if (!sel.options.length) for (const [value, label] of TRIAGE) { const o = el('option', null, label); o.value = value; sel.appendChild(o); }
+    sel.value = state.sub.status || 'open';
+  }
+  $('statusSel').addEventListener('change', async (ev) => {
+    const sel = ev.target; const next = sel.value; const previous = state.sub.status || 'open';
+    if (next === previous) return;
+    sel.disabled = true;
+    try {
+      state.sub = await api(`/v1/admin/submissions/${id}`, { method: 'PATCH', body: JSON.stringify({ status: next }) });
+      toast('Status set to ' + (TRIAGE.find((t) => t[0] === next) || [, next])[1]);
+      renderSubmission();
+    } catch (err) { sel.value = previous; toast('Could not update status: ' + err.message); }
+    finally { sel.disabled = false; }
+  });
+
+  // ---------- Jira ----------
+  async function loadJiraStatus() {
+    try { state.jira = await api('/v1/admin/jira/status'); } catch { state.jira = { configured: false, missing_env: [] }; }
+    renderJira();
+  }
+  function renderJira() {
+    const link = $('jiraLink'); const btn = $('btnJira'); const r = state.sub;
+    if (!r) return;
+    if (r.jira_key) {
+      link.hidden = false; link.href = r.jira_url || '#';
+      link.replaceChildren(el('span', null, r.jira_key), ...(r.jira_status ? [el('span', 'tertiary', '· ' + r.jira_status)] : []));
+      btn.hidden = true;
+      return;
+    }
+    link.hidden = true;
+    // Shown even before Jira has credentials; pressing it says so rather than failing oddly.
+    const pending = state.jira && !state.jira.configured;
+    btn.hidden = false;
+    btn.textContent = 'Create Jira ticket';
+    btn.title = pending ? state.jira.message || 'Jira integration pending' : 'File this report as a Jira issue';
+  }
+  $('btnJira').addEventListener('click', async () => {
+    if (state.jira && !state.jira.configured) {
+      toast(state.jira.message || 'Jira integration pending');
+      return;
+    }
+    const b = $('btnJira'); b.disabled = true; const old = b.textContent; b.textContent = 'Creating…';
+    try {
+      const issue = await api(`/v1/admin/submissions/${id}/jira`, { method: 'POST' });
+      state.sub = await api('/v1/feedback/' + id);
+      toast(issue.created ? 'Created ' + issue.key : 'Already linked to ' + issue.key);
+      renderSubmission();
+    } catch (err) { toast('Could not create the ticket: ' + err.message); }
+    finally { b.disabled = false; b.textContent = old; }
+  });
+
+  // ---------- issue kinds ----------
+  async function loadKinds() {
+    try {
+      const [mine, all] = await Promise.all([
+        api(`/v1/feedback/${id}/kinds`),
+        api('/v1/kinds?from=2020-01-01&is_test=' + (state.sub.is_test ? 'true' : 'false')),
+      ]);
+      state.kinds = mine.items || []; state.allKinds = all.items || [];
+    } catch { state.kinds = []; state.allKinds = []; }
+    renderKinds();
+  }
+  function renderKinds() {
+    const host = $('kinds'); host.replaceChildren();
+    if (!state.kinds.length) host.appendChild(el('span', 'tertiary', 'Not linked to any recurring issue yet.'));
+    for (const k of state.kinds) {
+      const chip = el('span', 'kind');
+      const a = el('a', null, k.title); a.href = '/dashboard/kinds/' + k.kind_id; chip.appendChild(a);
+      if (k.source === 'ai') chip.appendChild(el('span', 'by', 'ai'));
+      const x = el('button', 'x', '×'); x.type = 'button'; x.title = 'Unlink';
+      x.addEventListener('click', async () => {
+        try { const out = await api(`/v1/admin/submissions/${id}/kinds/${k.kind_id}`, { method: 'DELETE' }); state.kinds = out.items || []; renderKinds(); toast('Unlinked'); }
+        catch (err) { toast('Could not unlink: ' + err.message); }
+      });
+      chip.appendChild(x);
+      host.appendChild(chip);
+    }
+    const sel = $('kindSel'); const linked = new Set(state.kinds.map((k) => k.kind_id));
+    sel.replaceChildren(el('option', null, 'Link to an existing kind…'));
+    for (const k of state.allKinds) {
+      if (linked.has(k.id)) continue;
+      const o = el('option', null, `${k.title}${k.count ? ` (${k.count})` : ''}`); o.value = k.id; sel.appendChild(o);
+    }
+  }
+  async function linkKind(body) {
+    try { const out = await api(`/v1/admin/submissions/${id}/kinds`, { method: 'POST', body: JSON.stringify(body) }); state.kinds = out.items || []; await loadKinds(); toast('Linked'); }
+    catch (err) { toast('Could not link: ' + err.message); }
+  }
+  $('btnLinkKind').addEventListener('click', () => { const v = $('kindSel').value; if (!v) { toast('Pick a kind first'); return; } linkKind({ kind_id: v }); });
+  $('btnNewKind').addEventListener('click', () => {
+    const title = prompt('Name the recurring problem, not this one report.\ne.g. "Sleep start recorded hours late"');
+    if (title && title.trim().length >= 4) linkKind({ title: title.trim() });
+    else if (title !== null) toast('Give it at least 4 characters');
+  });
+
+  // ---------- follow-up chat ----------
+  async function loadChat() {
+    try { state.chat = await api(`/v1/feedback/${id}/diagnosis/chat`); } catch { state.chat = null; }
+    renderChat();
+  }
+  function renderChat() {
+    const card = $('chatCard'); const c = state.chat;
+    // Only worth offering once there is a verdict to argue with.
+    const ready = !!(state.diag && (state.diag.status === 'done' || state.diag.status === 'no_logs'));
+    card.hidden = !c || !ready;
+    if (card.hidden) return;
+    $('chatLeft').textContent = c.enabled ? `${c.remaining} of ${c.limit} questions left` : 'chat unavailable';
+    const log = $('chatLog'); log.replaceChildren();
+    if (!c.messages.length) log.appendChild(el('div', 'empty', 'No questions yet.'));
+    for (const m of c.messages) {
+      const d = el('div', 'msg ' + m.role);
+      d.appendChild(el('span', 'who', m.role === 'user' ? (m.author || 'you') : 'model'));
+      d.appendChild(document.createTextNode(m.content));
+      log.appendChild(d);
+    }
+    log.scrollTop = log.scrollHeight;
+    const spent = c.remaining <= 0;
+    $('btnChat').disabled = spent || !c.enabled;
+    $('chatInput').disabled = spent || !c.enabled;
+    $('chatHint').textContent = spent
+      ? `All ${c.limit} questions used on this ticket. Re-run the diagnosis for a fresh look.`
+      : 'Press ⌘/Ctrl + Enter to send.';
+  }
+  async function sendChat() {
+    const input = $('chatInput'); const message = input.value.trim();
+    if (!message) return;
+    const btn = $('btnChat'); btn.disabled = true; input.disabled = true; const old = btn.textContent; btn.textContent = 'Thinking…';
+    try { state.chat = await api(`/v1/admin/submissions/${id}/diagnosis/chat`, { method: 'POST', body: JSON.stringify({ message }) }); input.value = ''; renderChat(); }
+    catch (err) { toast(err.message); }
+    finally { btn.textContent = old; btn.disabled = false; input.disabled = false; renderChat(); input.focus(); }
+  }
+  $('btnChat').addEventListener('click', sendChat);
+  $('chatInput').addEventListener('keydown', (ev) => { if ((ev.metaKey || ev.ctrlKey) && ev.key === 'Enter') { ev.preventDefault(); sendChat(); } });
+
   // ---------- diagnosis ----------
   async function refreshDiagnosis() {
     try { state.diag = await api('/v1/feedback/' + id + '/diagnosis'); } catch (err) { if (err.status === 404) state.diag = null; else { toast(err.message); return; } }
     renderDiagnosis();
     clearTimeout(state.pollTimer);
     if (state.diag && (state.diag.status === 'pending' || state.diag.status === 'running')) state.pollTimer = setTimeout(refreshDiagnosis, 3000);
+    else loadChat();
   }
 
   function renderDiagnosis() {
@@ -329,6 +546,17 @@
       if (d.reproducible) row.appendChild(el('span', 'chip', 'reproducible: ' + d.reproducible));
       for (const t of d.tags || []) row.appendChild(el('span', 'chip', t));
       body.appendChild(row);
+    }
+    if (d.event_codes && d.event_codes.length) {
+      body.appendChild(el('h3', null, 'Known events matched'));
+      const ul = el('div', 'chips');
+      for (const code of d.event_codes) {
+        const meta = (state.catalog || {})[code];
+        const chip = el('span', 'chip', meta ? `${code} · ${meta.event}` : code);
+        if (meta) chip.title = [meta.area, meta.severity, meta.means].filter(Boolean).join(' · ');
+        ul.appendChild(chip);
+      }
+      body.appendChild(ul);
     }
     if (d.summary) body.appendChild(el('p', 'summary', d.summary));
     if (d.suggested_fix) { body.appendChild(el('h3', null, 'Suggested next step')); body.appendChild(el('div', 'fix', d.suggested_fix)); }

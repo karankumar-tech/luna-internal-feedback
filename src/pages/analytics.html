@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Luna Feedback Analytics</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&display=swap">
+<style>
+  :root {
+    --black: #000000; --white: #FFFFFF;
+    --gray-dark: #737373; --gray-mid: #9E9E9E; --gray-light: #D9D9D9;
+    --bg: #F0EFEA; --brief: #E8E6E0; --border-warm: #E2E0D9; --border-ghost: #F0F0F0;
+    --hero: #1A1A18; --hero-muted: #8A887F;
+    --yellow: #F5F85D; --yellow-50: #FEFFD6; --yellow-700: #545500;
+    --blue: #2E64E4; --blue-50: #EAF0FD; --orange: #EF7432; --orange-50: #FFF3EC; --magenta: #E0237A; --magenta-50: #FFE8F4;
+    --ok: #00C37A; --ok-bg: #E6F8F0; --crit: #FF3B3B; --crit-bg: #FFECEC; --warn: #F0B429;
+    --sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --r-xs: 2px; --r-s: 4px; --r-m: 6px; --r-l: 8px; --r-xl: 12px;
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: light; }
+  body { margin: 0; background: var(--bg); color: var(--black); font-family: var(--sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased; }
+  button, input, select { font: inherit; color: inherit; }
+  a { color: inherit; }
+  .mono { font-family: var(--mono); }
+  .overline { font-family: var(--mono); font-size: 11px; line-height: 16px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); }
+  h1 { font-size: 24px; line-height: 28px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 16px; line-height: 20px; font-weight: 600; margin: 0; }
+  .muted { color: var(--gray-dark); } .tertiary { color: var(--gray-mid); }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px 64px; }
+
+  .top { background: var(--white); border-bottom: 1px solid var(--gray-light); }
+  .top-inner { max-width: 1240px; margin: 0 auto; padding: 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: baseline; gap: 12px; }
+  .brand .dot { width: 10px; height: 10px; background: var(--yellow); border: 1px solid var(--black); border-radius: var(--r-xs); display: inline-block; transform: translateY(-1px); }
+  .status { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--gray-dark); flex-wrap: wrap; }
+
+  .btn { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-l); padding: 7px 12px; line-height: 18px; cursor: pointer; font-weight: 500; text-decoration: none; display: inline-block; }
+  .btn:hover { border-color: var(--gray-mid); }
+  .btn.small { padding: 4px 10px; font-size: 12px; line-height: 16px; border-radius: var(--r-s); }
+  .btn.ghost { border-color: transparent; background: transparent; } .btn.ghost:hover { background: var(--brief); }
+  .btn:focus-visible, input:focus-visible, select:focus-visible { outline: none; border-color: var(--black); box-shadow: 0 0 0 1px var(--black); }
+  input[type=date], input[type=number], select { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-m); padding: 7px 10px; line-height: 18px; min-width: 0; }
+  select { appearance: none; -webkit-appearance: none; padding-right: 28px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5l3.5 3.5 3.5-3.5' fill='none' stroke='%23737373' stroke-width='1.2'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; }
+  label.field { display: flex; flex-direction: column; gap: 4px; }
+  label.field > span { font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); }
+  .filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; margin: 20px 0 16px; }
+  .seg { display: inline-flex; border: 1px solid var(--gray-light); border-radius: var(--r-l); overflow: hidden; background: var(--white); }
+  .seg button { border: 0; background: transparent; padding: 7px 12px; line-height: 18px; cursor: pointer; font-weight: 500; color: var(--gray-dark); }
+  .seg button + button { border-left: 1px solid var(--border-ghost); }
+  .seg button.on { background: var(--black); color: var(--white); }
+  .filters input[type=date] { width: 150px; }
+
+  .card { background: var(--white); border: 1px solid var(--gray-light); border-radius: var(--r-xl); padding: 16px 20px; }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .card-head .sub { font-size: 12px; line-height: 18px; color: var(--gray-dark); }
+
+  .kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .kpi { background: var(--white); border: 1px solid var(--gray-light); border-radius: var(--r-l); padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .kpi .v { font-family: var(--mono); font-size: 28px; line-height: 32px; letter-spacing: -0.01em; }
+  .kpi .l { font-size: 12px; line-height: 16px; color: var(--gray-dark); display: flex; align-items: center; gap: 6px; }
+  .kpi .l .sw { width: 8px; height: 8px; border-radius: var(--r-xs); display: inline-block; }
+  .kpi.hero { background: var(--hero); border-color: var(--hero); color: var(--white); } .kpi.hero .l { color: var(--hero-muted); }
+  .kpi .d { font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--gray-mid); }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .grid1 { display: grid; gap: 12px; margin-bottom: 12px; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--gray-dark); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: var(--r-xs); margin-right: 6px; vertical-align: -1px; }
+  .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .chart text { font-family: var(--mono); font-size: 11px; fill: var(--gray-dark); }
+  .chart .grid line { stroke: var(--border-ghost); stroke-width: 1; }
+  .chart .axis line { stroke: var(--gray-light); stroke-width: 1; }
+  .chart .lbl.strong { fill: var(--black); }
+  .chart .cat { font-family: var(--sans); font-size: 12px; fill: var(--black); }
+  .chart rect.hit { fill: transparent; }
+  .chart g.bar:hover rect.mark { opacity: .8; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 18px; }
+  th { text-align: left; font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); font-weight: 400; padding: 8px 10px; border-bottom: 1px solid var(--gray-light); white-space: nowrap; }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--border-ghost); vertical-align: top; }
+  td.num { font-family: var(--mono); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.code { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+  tbody tr:hover td { background: #FAFAF7; }
+  .bar-cell { position: relative; min-width: 120px; }
+  .bar-cell .fill { position: absolute; inset: 4px auto 4px 0; background: var(--blue-50); border-radius: var(--r-xs); z-index: 0; }
+  .bar-cell span { position: relative; z-index: 1; }
+  .chip { font-family: var(--mono); font-size: 11px; line-height: 16px; padding: 1px 6px; border-radius: var(--r-xs); background: var(--brief); white-space: nowrap; display: inline-block; }
+  .env { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 7px; border-radius: var(--r-xs); border: 1px solid; }
+  .env.stage { border-color: var(--gray-light); background: var(--brief); color: var(--gray-dark); }
+  .env.uat { border-color: var(--blue); background: var(--blue-50); color: #0C3AAA; }
+  .env.production { border-color: var(--magenta); background: var(--magenta-50); color: #8A0044; }
+  .sev { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 1px 6px; border-radius: var(--r-xs); border: 1px solid; }
+  .sev.low { border-color: var(--gray-light); color: var(--gray-dark); } .sev.medium, .sev.warning { border-color: var(--warn); color: #7A5A00; background: #FFF8E1; }
+  .sev.high, .sev.error { border-color: var(--orange); color: #A03600; background: var(--orange-50); } .sev.critical { border-color: var(--crit); color: #8A1010; background: var(--crit-bg); }
+  .sev.info { border-color: var(--blue); color: #0C3AAA; background: var(--blue-50); }
+  .empty { padding: 28px 0; text-align: center; color: var(--gray-mid); font-size: 13px; }
+  .loading { opacity: .45; transition: opacity .15s; pointer-events: none; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--black); color: var(--white); padding: 8px 14px; border-radius: var(--r-l); font-size: 13px; z-index: 40; display: none; }
+  a.row-link { text-decoration: none; font-weight: 500; } a.row-link:hover { text-decoration: underline; }
+
+  @media (max-width: 1100px) { .kpis { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 980px) { .grid2 { grid-template-columns: 1fr; } }
+  @media (max-width: 600px) { .kpis { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body data-palette="#00C37A,#FF3B3B">
+
+<header class="top">
+  <div class="top-inner">
+    <div class="brand">
+      <span class="dot" aria-hidden="true"></span>
+      <div>
+        <div class="overline">Luna · Internal feedback</div>
+        <h1>Analytics</h1>
+      </div>
+    </div>
+    <div class="status">
+      <span id="rangeLabel" class="tertiary"></span>
+      <a class="btn small" href="/dashboard">← Dashboard</a>
+      <a class="btn small" href="/dashboard/kinds">Issue kinds →</a>
+      <a class="btn small" href="/dashboard/diagnosis">Diagnosis →</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="filters" aria-label="Filters">
+    <label class="field"><span>Range</span>
+      <div class="seg" id="presets" role="group" aria-label="Date presets">
+        <button type="button" data-days="7">7d</button>
+        <button type="button" data-days="30" class="on">30d</button>
+        <button type="button" data-days="90">90d</button>
+        <button type="button" data-days="all">All</button>
+      </div>
+    </label>
+    <label class="field"><span>From</span><input type="date" id="fFrom"></label>
+    <label class="field"><span>To</span><input type="date" id="fTo"></label>
+    <label class="field"><span>Environment</span>
+      <select id="fEnv">
+        <option value="">All environments</option>
+        <option value="stage">Stage</option>
+        <option value="uat">UAT</option>
+        <option value="production">Production</option>
+      </select>
+    </label>
+    <label class="field"><span>Feature</span><select id="fFeature"><option value="">All features</option></select></label>
+    <label class="field"><span>Platform</span>
+      <select id="fPlatform"><option value="">iOS + Android</option><option value="ios">iOS</option><option value="android">Android</option></select>
+    </label>
+    <label class="field"><span>Data</span>
+      <select id="fTest"><option value="false">Real only</option><option value="">Real + test</option><option value="true">Test only</option></select>
+    </label>
+    <button class="btn ghost" id="btnReset" type="button">Reset</button>
+  </section>
+
+  <div id="content">
+    <section class="kpis" aria-label="Summary">
+      <div class="kpi hero"><div class="v" id="kIssues">–</div><div class="l">Reported issues</div><div class="d" id="kIssuesD"></div></div>
+      <div class="kpi"><div class="v" id="kOpen">–</div><div class="l"><span class="sw" style="background:var(--crit)"></span>Still open</div><div class="d">open, triaged or in progress</div></div>
+      <div class="kpi"><div class="v" id="kClosed">–</div><div class="l"><span class="sw" style="background:var(--ok)"></span>Closed out</div><div class="d">resolved, closed or won't fix</div></div>
+      <div class="kpi"><div class="v" id="kKinds">–</div><div class="l">Recurring kinds</div><div class="d" id="kKindsD">distinct problems seen</div></div>
+      <div class="kpi"><div class="v" id="kUsers">–</div><div class="l">Testers reporting</div><div class="d">distinct user IDs</div></div>
+      <div class="kpi"><div class="v" id="kJira">–</div><div class="l">In Jira</div><div class="d" id="kJiraD"></div></div>
+    </section>
+
+    <div class="grid1">
+      <div class="card">
+        <div class="card-head">
+          <div><h2>Reports per day</h2><div class="sub">By the date the tester said it happened</div></div>
+          <div class="legend"><span><i style="background:var(--crit)"></i>Issues</span><span><i style="background:var(--ok)"></i>Working fine</span></div>
+        </div>
+        <div class="chart" id="cDay"></div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-head"><div><h2>What kind of issue</h2><div class="sub">Recurring problems, most reported first</div></div></div>
+        <div id="tKinds"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div><h2>Reported categories</h2><div class="sub">What testers picked on the form</div></div></div>
+        <div class="chart" id="cCategory"></div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-head"><div><h2>Known events in the logs</h2><div class="sub">From the firmware, SDK and app critical-event catalog</div></div></div>
+        <div id="tEvents"></div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div><h2>Where the fault sits</h2><div class="sub">AI verdict across diagnosed issues</div></div>
+        </div>
+        <div class="chart" id="cSide"></div>
+        <div class="card-head" style="margin:16px 0 8px"><div><h2 style="font-size:14px">Environment</h2></div></div>
+        <div class="chart" id="cEnv"></div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-head"><div><h2>Triage</h2><div class="sub">Where reported issues sit right now</div></div></div>
+        <div class="chart" id="cStatus"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div><h2>Who is reporting</h2><div class="sub">Most active testers in this window</div></div></div>
+        <div id="tReporters"></div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-head"><div><h2>Firmware versions</h2><div class="sub">Issues seen per firmware build</div></div></div>
+        <div id="tFw"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div><h2>App versions</h2><div class="sub">Issues seen per app build</div></div></div>
+        <div id="tApp"></div>
+      </div>
+    </div>
+  </div>
+</main>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const OK = '#00C37A', CRIT = '#FF3B3B', BLUE = '#2E64E4';
+  const SIDES = [
+    { key: 'firmware', label: 'Firmware', color: '#EF7432' },
+    { key: 'sdk', label: 'Ring SDK', color: '#2E64E4' },
+    { key: 'app', label: 'App', color: '#000000' },
+    { key: 'backend', label: 'Backend', color: '#E0237A' },
+    { key: 'user_expectation', label: 'User expectation', color: '#9E9E9E' },
+    { key: 'not_a_bug', label: 'Not a bug', color: '#C9C7C0' },
+    { key: 'insufficient_logs', label: 'Insufficient logs', color: '#F5F85D' },
+  ];
+  const STATUS_LABEL = { open: 'Open', triaged: 'Triaged', in_progress: 'In progress', resolved: 'Resolved', closed: 'Closed', wont_fix: "Won't fix" };
+  const state = { data: null, filters: null };
+
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; };
+  const svgEl = (tag, attrs) => { const e = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+  const fmtN = (n) => new Intl.NumberFormat('en-IN').format(n || 0);
+  const pct = (a, b) => (b ? Math.round((a / b) * 100) + '%' : '–');
+  const istToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const shift = (iso, days) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); };
+  const shortDate = (iso) => { const [, m, d] = iso.split('-'); return `${d} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m - 1]}`; };
+  const niceScale = (v, ticks) => { const raw = Math.max(1, v) / ticks; const p = Math.pow(10, Math.floor(Math.log10(raw))); const m = raw / p; const step = Math.max(1, Math.ceil((m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p)); return { step, top: step * ticks }; };
+  let toastT; const toast = (m) => { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', 2400); };
+
+  async function api(path) {
+    const r = await fetch(path, { credentials: 'same-origin', headers: { 'x-requested-with': 'dashboard' } });
+    const text = await r.text(); let body = null; try { body = text ? JSON.parse(text) : null; } catch {}
+    if (!r.ok) { const e = new Error((body && body.error && body.error.message) || `HTTP ${r.status}`); e.status = r.status; throw e; }
+    return body;
+  }
+  const qs = (o) => Object.entries(o).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+
+  function applyPreset(days) {
+    const to = istToday();
+    $('fTo').value = to;
+    $('fFrom').value = days === 'all' ? '2024-01-01' : shift(to, -(days - 1));
+    for (const b of $('presets').querySelectorAll('button')) b.classList.toggle('on', b.dataset.days === String(days));
+  }
+  function readFilters() {
+    const f = { from: $('fFrom').value, to: $('fTo').value };
+    if ($('fEnv').value) f.environment = $('fEnv').value;
+    if ($('fFeature').value) f.feature = $('fFeature').value;
+    if ($('fPlatform').value) f.platform = $('fPlatform').value;
+    if ($('fTest').value) f.is_test = $('fTest').value;
+    return f;
+  }
+
+  // ---------- charts ----------
+  function barRows(host, rows, opts) {
+    host.replaceChildren();
+    if (!rows.length) { host.appendChild(el('div', 'empty', opts.empty || 'Nothing in this window.')); return; }
+    const W = 640, rowH = opts.rowH || 30, padL = opts.padL || 150, padR = 56, padT = 6;
+    const H = padT + rows.length * rowH + 6;
+    const max = Math.max(...rows.map((r) => r.value), 1);
+    const plotW = W - padL - padR;
+    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': opts.label });
+    rows.forEach((r, i) => {
+      const y0 = padT + i * rowH;
+      const g = svgEl('g', { class: 'bar' });
+      const lbl = svgEl('text', { x: padL - 12, y: y0 + rowH / 2 + 4, 'text-anchor': 'end', class: 'cat' });
+      lbl.textContent = r.label.length > 26 ? r.label.slice(0, 25) + '…' : r.label;
+      g.appendChild(lbl);
+      if (r.sub) { const s = svgEl('text', { x: padL - 12, y: y0 + rowH / 2 + 15, 'text-anchor': 'end', style: 'font-size:9px;letter-spacing:.1em' }); s.textContent = r.sub.toUpperCase(); g.appendChild(s); }
+      const w = Math.max((r.value / max) * plotW, r.value ? 3 : 0);
+      g.appendChild(svgEl('rect', { class: 'mark', x: padL, y: y0 + rowH / 2 - 7, width: w, height: 14, fill: r.color || BLUE, rx: 4 }));
+      const t = svgEl('text', { x: padL + w + 6, y: y0 + rowH / 2 + 4, class: 'lbl strong' });
+      t.textContent = opts.valueText ? opts.valueText(r) : fmtN(r.value);
+      g.appendChild(t);
+      if (r.title) { const ti = svgEl('title'); ti.textContent = r.title; g.appendChild(ti); }
+      svg.appendChild(g);
+    });
+    host.appendChild(svg);
+  }
+
+  function renderByDay(days) {
+    const host = $('cDay'); host.replaceChildren();
+    if (!days.length) { host.appendChild(el('div', 'empty', 'No reports in this window.')); return; }
+    const W = 1100, H = 240, padL = 42, padR = 12, padT = 12, padB = 28;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const ticks = 4;
+    const scale = niceScale(Math.max(...days.map((d) => d.positive + d.negative)), ticks);
+    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Reports per day' });
+    const grid = svgEl('g', { class: 'grid' });
+    for (let i = 0; i <= ticks; i++) {
+      const y = padT + plotH - (plotH * i) / ticks;
+      grid.appendChild(svgEl('line', { x1: padL, x2: W - padR, y1: y, y2: y }));
+      const t = svgEl('text', { x: padL - 8, y: y + 4, 'text-anchor': 'end' }); t.textContent = fmtN(scale.step * i); grid.appendChild(t);
+    }
+    svg.appendChild(grid);
+    const band = plotW / days.length, bw = Math.max(2, Math.min(band - 3, 26));
+    days.forEach((d, i) => {
+      const g = svgEl('g', { class: 'bar' });
+      const x = padL + band * i + (band - bw) / 2;
+      let y = padT + plotH;
+      const hNeg = (d.negative / scale.top) * plotH, hPos = (d.positive / scale.top) * plotH;
+      if (d.negative) { y -= hNeg; g.appendChild(svgEl('rect', { class: 'mark', x, y, width: bw, height: Math.max(0, hNeg - (d.positive ? 1 : 0)), fill: CRIT, rx: d.positive ? 0 : 4 })); }
+      if (d.positive) { y -= hPos; g.appendChild(svgEl('rect', { class: 'mark', x, y, width: bw, height: hPos, fill: OK, rx: 4 })); }
+      const ti = svgEl('title'); ti.textContent = `${d.date}: ${d.negative} issue${d.negative === 1 ? '' : 's'}, ${d.positive} working fine`; g.appendChild(ti);
+      svg.appendChild(g);
+    });
+    const axis = svgEl('g', { class: 'axis' });
+    axis.appendChild(svgEl('line', { x1: padL, x2: W - padR, y1: padT + plotH, y2: padT + plotH }));
+    svg.appendChild(axis);
+    const step = Math.max(1, Math.ceil(days.length / 12));
+    days.forEach((d, i) => { if (i % step === 0 || i === days.length - 1) { const t = svgEl('text', { x: padL + band * i + band / 2, y: H - 8, 'text-anchor': 'middle' }); t.textContent = shortDate(d.date); svg.appendChild(t); } });
+    host.appendChild(svg);
+  }
+
+  // ---------- tables ----------
+  function table(host, cols, rows, opts = {}) {
+    host.replaceChildren();
+    if (!rows.length) { host.appendChild(el('div', 'empty', opts.empty || 'Nothing in this window.')); return; }
+    const t = el('table'); const head = el('tr');
+    for (const c of cols) head.appendChild(el('th', null, c.label));
+    t.appendChild(head);
+    const body = document.createElement('tbody');
+    for (const r of rows) {
+      const tr = el('tr');
+      for (const c of cols) {
+        const td = el('td', c.cls || null);
+        const v = c.render(r, td);
+        if (v !== undefined && v !== null) td.appendChild(typeof v === 'string' || typeof v === 'number' ? document.createTextNode(String(v)) : v);
+        tr.appendChild(td);
+      }
+      body.appendChild(tr);
+    }
+    t.appendChild(body); host.appendChild(t);
+  }
+
+  function render() {
+    const d = state.data; if (!d) return;
+    const t = d.totals;
+    $('rangeLabel').textContent = `${d.range.from} → ${d.range.to}`;
+    $('kIssues').textContent = fmtN(t.issues);
+    $('kIssuesD').textContent = `${fmtN(t.submissions)} reports · ${pct(t.issues, t.submissions)} were issues`;
+    $('kOpen').textContent = fmtN(t.open_issues);
+    $('kClosed').textContent = fmtN(t.closed_issues);
+    $('kKinds').textContent = fmtN(d.by_kind.length);
+    $('kKindsD').textContent = d.by_kind.length ? `top one covers ${pct(d.by_kind[0].count, t.issues)} of issues` : 'nothing grouped yet';
+    $('kUsers').textContent = fmtN(t.users);
+    $('kJira').textContent = fmtN(t.with_jira);
+    $('kJiraD').textContent = t.issues ? `${pct(t.with_jira, t.issues)} of issues have a ticket` : '';
+
+    renderByDay(d.by_day);
+
+    // What kind of issue — the headline "how much of this is happening" table.
+    table($('tKinds'), [
+      { label: 'Issue kind', render: (r) => { const a = el('a', 'row-link', r.title); a.href = '/dashboard/kinds/' + r.id; return a; } },
+      { label: 'Reports', cls: 'num', render: (r) => fmtN(r.count) },
+      { label: 'Share', cls: 'bar-cell num', render: (r, td) => { const f = el('div', 'fill'); f.style.width = Math.round(r.share * 100) + '%'; td.appendChild(f); return el('span', null, pct(r.count, state.data.totals.issues)); } },
+      { label: 'Testers', cls: 'num', render: (r) => fmtN(r.users) },
+      { label: 'Last seen', cls: 'code', render: (r) => r.last_seen || '—' },
+      { label: 'Jira', cls: 'code', render: (r) => r.jira_key || '—' },
+    ], d.by_kind, { empty: 'No issues grouped into kinds yet. Diagnose a few tickets, or group them by hand from a ticket page.' });
+
+    barRows($('cCategory'), d.by_category.slice(0, 10).map((c) => ({ label: c.label, sub: c.feature_key, value: c.count, title: `${c.count} report(s) from ${c.users} tester(s)` })), { label: 'Reported categories', rowH: 34 });
+
+    table($('tEvents'), [
+      { label: 'Event', cls: 'code', render: (r) => r.code },
+      { label: 'What it is', render: (r) => r.event || '(not in catalog)' },
+      { label: 'Layer', render: (r) => r.domain ? el('span', 'chip', r.domain) : '—' },
+      { label: 'Grade', render: (r) => r.severity ? el('span', 'sev ' + r.severity, r.severity) : '—' },
+      { label: 'Tickets', cls: 'num', render: (r) => fmtN(r.count) },
+    ], d.by_event, { empty: 'No catalog events cited yet. They appear once diagnoses run against logs containing known events.' });
+
+    const sideRows = d.by_side.map((s) => {
+      const meta = SIDES.find((x) => x.key === s.side) || { label: s.side, color: '#9E9E9E' };
+      return { label: meta.label, value: s.count, color: meta.color };
+    });
+    barRows($('cSide'), sideRows, { label: 'Root cause side', padL: 130, empty: 'Nothing diagnosed in this window.' });
+
+    barRows($('cEnv'), d.by_environment.map((e) => ({ label: e.environment, value: e.issues, color: e.environment === 'production' ? '#E0237A' : e.environment === 'uat' ? BLUE : '#9E9E9E', title: `${e.issues} issue(s), ${e.positive} working fine, ${e.users} tester(s)` })), { label: 'Issues by environment', padL: 110, rowH: 28 });
+
+    barRows($('cStatus'), d.by_status.map((s) => ({
+      label: STATUS_LABEL[s.status] || s.status, value: s.count,
+      color: s.status === 'open' ? CRIT : s.status === 'triaged' || s.status === 'in_progress' ? '#EF7432' : OK,
+    })), { label: 'Triage status', padL: 120, rowH: 28, empty: 'No issues in this window.' });
+
+    table($('tReporters'), [
+      { label: 'Tester', cls: 'code', render: (r) => String(r.user_id) },
+      { label: 'Email', render: (r) => r.email },
+      { label: 'Issues', cls: 'num', render: (r) => fmtN(r.issues) },
+      { label: 'Features', cls: 'num', render: (r) => fmtN(r.features) },
+    ], d.top_reporters);
+
+    table($('tFw'), [
+      { label: 'Firmware', cls: 'code', render: (r) => r.version },
+      { label: 'Issues', cls: 'num', render: (r) => fmtN(r.issues) },
+      { label: 'Blamed on firmware', cls: 'num', render: (r) => fmtN(r.firmware_side) },
+    ], d.firmware_versions);
+
+    table($('tApp'), [
+      { label: 'App', cls: 'code', render: (r) => r.version },
+      { label: 'Platform', render: (r) => r.platform || '—' },
+      { label: 'Issues', cls: 'num', render: (r) => fmtN(r.issues) },
+      { label: 'Blamed on app/SDK', cls: 'num', render: (r) => fmtN(r.app_side) },
+    ], d.app_versions);
+  }
+
+  let inflight = 0;
+  async function refresh() {
+    state.filters = readFilters();
+    const my = ++inflight;
+    $('content').classList.add('loading');
+    try {
+      const data = await api('/v1/analytics/overview?' + qs(state.filters));
+      if (my !== inflight) return;
+      state.data = data;
+      render();
+    } catch (err) {
+      if (err.status === 401) { location.replace('/dashboard?next=' + encodeURIComponent(location.pathname)); return; }
+      toast('Could not load analytics: ' + err.message);
+    } finally { if (my === inflight) $('content').classList.remove('loading'); }
+  }
+
+  $('presets').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; applyPreset(b.dataset.days === 'all' ? 'all' : +b.dataset.days); refresh(); });
+  for (const id of ['fFrom', 'fTo']) $(id).addEventListener('change', () => { for (const b of $('presets').querySelectorAll('button')) b.classList.remove('on'); refresh(); });
+  for (const id of ['fEnv', 'fFeature', 'fPlatform', 'fTest']) $(id).addEventListener('change', refresh);
+  $('btnReset').addEventListener('click', () => { for (const id of ['fEnv', 'fFeature', 'fPlatform']) $(id).value = ''; $('fTest').value = 'false'; applyPreset(30); refresh(); });
+
+  async function boot() {
+    const s = await api('/dashboard/session').catch(() => ({ authenticated: false }));
+    if (!s.authenticated) { location.replace('/dashboard?next=' + encodeURIComponent(location.pathname)); return; }
+    try {
+      const schema = await api('/v1/feedback/schema');
+      const sel = $('fFeature');
+      for (const f of schema.features) { const o = el('option', null, f.label); o.value = f.key; sel.appendChild(o); }
+    } catch { /* the feature filter stays on "all" */ }
+    applyPreset(30);
+    await refresh();
+  }
+  boot().catch((err) => toast('Could not start: ' + err.message));
+})();
+</script>
+</body>
+</html>

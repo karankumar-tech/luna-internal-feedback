@@ -11,6 +11,8 @@ const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   APP_TIMEZONE: z.string().default('Asia/Kolkata'),
+  /** Used to build links that leave the app (Jira ticket bodies). */
+  PUBLIC_BASE_URL: z.string().url().default('https://luna-feedback.buildsage.tech'),
   DB_POOL_MAX: z.coerce.number().int().positive().default(5),
   // --- AI diagnosis (optional: when either key is missing, diagnosis is disabled and submissions still work) ---
   LUNA_LOGS_APIKEY: z.string().min(8).optional(),
@@ -28,6 +30,16 @@ const EnvSchema = z.object({
   IMAGEKIT_FOLDER: z.string().default('/luna-feedback-screenshots'),
   SCREENSHOT_MAX_BYTES: z.coerce.number().int().positive().default(8 * 1024 * 1024),
   SCREENSHOT_MAX_COUNT: z.coerce.number().int().min(1).max(10).default(5),
+  // --- Per-ticket follow-up chat with the model (optional: needs OPEN_ROUTER_KEY) ---
+  DIAGNOSIS_CHAT_MAX_MESSAGES: z.coerce.number().int().min(1).max(50).default(10),
+  DIAGNOSIS_CHAT_MODEL: z.string().optional(),
+  // --- Jira (optional: when any of the four is missing, the Jira buttons explain what to add) ---
+  JIRA_BASE_URL: z.string().url().optional().describe('https://your-team.atlassian.net'),
+  JIRA_EMAIL: z.string().email().optional().describe('Atlassian account the API token belongs to'),
+  JIRA_API_TOKEN: z.string().min(8).optional(),
+  JIRA_PROJECT_KEY: z.string().min(1).max(20).optional().describe('e.g. LUNA'),
+  JIRA_ISSUE_TYPE: z.string().default('Bug'),
+  JIRA_LABELS: z.string().default('luna-feedback').describe('Comma-separated labels added to every created issue'),
   CATEGORY_CACHE_TTL_MS: z.coerce.number().int().nonnegative().default(30_000),
 });
 

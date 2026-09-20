@@ -22,6 +22,10 @@ export interface PromptInput {
   coverage: 'full' | 'partial' | 'none';
   /** Screenshot URLs (already sized for the model); at most two are sent. */
   screenshots?: string[];
+  /** Catalog entries whose log lines appear in this excerpt. Rendered by renderCatalogBrief. */
+  catalogBrief?: string;
+  /** Issue kinds already in use, so the model reuses one instead of inventing a synonym. */
+  existingKinds?: { key: string; title: string }[];
 }
 
 export const SYSTEM_PROMPT = `You are a senior engineer triaging internal tester feedback for Luna, a smart-ring health app.
@@ -44,6 +48,8 @@ Rules:
 7. If the tester gave times (sleep, workout), compare them with what the logs show around those times.
 8. A positive report with no anomaly is not_a_bug.
 9. If screenshots are attached, read what the tester saw (values, empty states, error text) and reconcile it with the logs; quote on-screen text in the summary when it matters.
+10. A "Known critical events" section lists catalog entries whose log lines were found in this excerpt. Being listed means the line is present, not that it explains the report — a disconnect during a sleep complaint is often just noise. Cite an id in event_codes only when that event is part of the story you are telling, and prefer the catalog's own wording for what a line means over your own reading of it.
+11. issue_kind names the recurring problem this ticket is an instance of, so that similar tickets group together. Reuse an existing kind verbatim when one fits; only name a new one when none do. Describe the problem, not this report: "Sleep start recorded hours late", not "Tester says sleep was wrong on Tuesday".
 
 Allowed root_cause_side: ${ROOT_CAUSE_SIDES.join(', ')}.
 Allowed tags: ${TAGS.join(', ')}.`;
@@ -77,7 +83,11 @@ Search window: ${input.windowLabel}. Coverage: ${input.coverage}${input.coverage
 Sections are tagged "===== [source] =====". ${input.excerpt.split('\n').length} lines.
 
 ${input.excerpt}
-
+${input.catalogBrief ? `\n# Reference\n${input.catalogBrief}\n` : ''}${
+  input.existingKinds?.length
+    ? `\n# Issue kinds already in use\nReuse one of these titles verbatim if this ticket is another instance of it:\n${input.existingKinds.map((k) => `- ${k.title}`).join('\n')}\n`
+    : ''
+}
 # Task
 Return the diagnosis as JSON matching the schema.`;
   const shots = (input.screenshots ?? []).slice(0, 2);

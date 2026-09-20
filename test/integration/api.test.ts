@@ -312,8 +312,8 @@ describe('deleting test data removes their ImageKit files', () => {
 
 describe('admin: mark one submission as test / real', () => {
   it('flips is_test on a single row and rejects bad input', async () => {
-    const list = (await app.inject({ method: 'GET', url: `/v1/feedback?user_id=900001&limit=1`, headers: appHeaders })).json();
-    const id = list.items[0].id;
+    // Its own row: an earlier describe deletes every is_test submission in the project.
+    const id = (await app.inject({ method: 'POST', url: '/v1/feedback/home', headers: appHeaders, payload: validBody() })).json().id;
     const real = await app.inject({ method: 'PATCH', url: `/v1/admin/submissions/${id}`, headers: adminHeaders, payload: { is_test: false } });
     expect(real.statusCode).toBe(200);
     expect(real.json().is_test).toBe(false);
@@ -327,6 +327,10 @@ describe('admin: mark one submission as test / real', () => {
 
 describe('admin: test data', () => {
   it('counts flagged rows and refuses to delete without confirmation', async () => {
+    // Seed its own, for the same reason as above.
+    for (let n = 0; n < 4; n += 1) {
+      await app.inject({ method: 'POST', url: '/v1/feedback/home', headers: appHeaders, payload: validBody() });
+    }
     const c = await app.inject({ method: 'GET', url: '/v1/admin/test-data', headers: adminHeaders });
     expect(c.statusCode).toBe(200);
     expect(c.json().count).toBeGreaterThanOrEqual(4);

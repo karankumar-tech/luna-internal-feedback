@@ -16,6 +16,8 @@ import { AppError } from '../../lib/errors.js';
 import { todayInZone } from '../../lib/time.js';
 import { runInBackground } from './background.js';
 import { withTransformation } from '../uploads/imagekit.js';
+import { isKnownEventCode, matchCatalog, renderCatalogBrief } from './knowledge/catalog.js';
+import type { KindsService } from '../kinds/kinds.service.js';
 
 export interface DiagnosisConfig {
   model: string;
@@ -33,6 +35,8 @@ export interface DiagnosisDeps {
   categories: CategoriesRepo;
   logs: LogsClient | null;
   ai: OpenRouterClient | null;
+  /** Optional: when present, the model's suggested issue kind is created and linked. */
+  kinds?: KindsService | null;
   config: DiagnosisConfig;
   log: FastifyBaseLogger;
   fetchImpl?: typeof fetch;
@@ -227,6 +231,9 @@ export class DiagnosisService {
     // 5. model
     const catLabels = new Map((await this.d.categories.listAll(sub.feature_key)).map((c) => [c.key, c.label]));
     const featureRow = await this.d.categories.feature(sub.feature_key);
+    // Ground the model in the vendor event catalog, but only in the parts this excerpt actually contains.
+    const catalogBrief = renderCatalogBrief(matchCatalog(excerpt.excerpt));
+    const existingKinds = this.d.kinds ? await this.d.kinds.list({ is_test: sub.is_test }).then((rows) => rows.slice(0, 25).map((k) => ({ key: k.key, title: k.title }))) : [];
     const messages = buildMessages({
       feature: { key: sub.feature_key, label: featureRow?.label ?? sub.feature_key },
       submission: {
@@ -239,6 +246,7 @@ export class DiagnosisService {
       device: entry, excerpt: excerpt.excerpt, windowLabel: `${excerpt.window.label} (${new Date(excerpt.window.from + IST_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ')} → ${new Date(excerpt.window.to + IST_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ')} IST)`,
       coverage: excerpt.coverage,
       screenshots: (sub.screenshots ?? []).map((x) => withTransformation(x.url, 'w-1024,q-80')),
+      catalogBrief, existingKinds,
     });
     const completion = await ai.completeJson(messages, VERDICT_JSON_SCHEMA);
     let verdict: Verdict;
@@ -253,6 +261,9 @@ export class DiagnosisService {
     const cost = completion.costUsd ?? estimateCost(completion.model, completion.promptTokens, completion.completionTokens);
     const durationMs = Date.now() - started;
 
+    // A model can name an event that does not exist; only ids from the catalog are stored.
+    const eventCodes = [...new Set(verdict.event_codes.map((c) => c.trim().toUpperCase()))].filter(isKnownEventCode);
+
     // 6. persist (status flips last so readers never see 'done' with an unfinished job)
     const donePatch = {
       ...windowPatch,
@@ -260,12 +271,29 @@ export class DiagnosisService {
       reproducible: verdict.reproducible, summary: verdict.summary, evidence: JSON.stringify(verdict.evidence), suggested_fix: verdict.suggested_fix,
       questions_for_tester: verdict.questions_for_tester, log_excerpt: excerpt.excerpt.slice(0, 32_000), log_excerpt_lines: excerpt.lineCount,
       fw_version_seen: verdict.fw_version_seen ?? entry.fv, app_version_seen: verdict.app_version_seen ?? entry.version_name,
+      event_codes: eventCodes,
       model: completion.model, prompt_tokens: completion.promptTokens, completion_tokens: completion.completionTokens, cost_usd: cost,
       duration_ms: durationMs, trigger, error: null,
     };
+    // Linked before the status flips, so anything that reacts to 'done' already sees the kind.
+    // Clustering is a convenience, never a reason to fail a diagnosis that otherwise succeeded.
+    if (this.d.kinds && verdict.issue_kind) {
+      try {
+        await this.d.kinds.applySuggestion(sub.id, verdict.issue_kind, {
+          feature_key: sub.feature_key,
+          tags: verdict.tags,
+          event_codes: eventCodes,
+          severity: verdict.severity,
+        });
+      } catch (err) {
+        this.d.log.warn({ err, submissionId: sub.id }, 'could not link the suggested issue kind');
+      }
+    }
+
     await repo.addRun({ submission_id: sub.id, status: 'done', trigger, model: completion.model, prompt_tokens: completion.promptTokens, completion_tokens: completion.completionTokens, cost_usd: cost, duration_ms: durationMs, error: null, verdict_snapshot: verdict });
     await repo.finishJob(sub.id, 'done');
     await repo.setStatus(sub.id, 'done', stripNul(donePatch));
+
     const row = await repo.get(sub.id);
     return { submission_id: sub.id, status: 'done', diagnosis: row ? toDiagnosisDto(row) : undefined };
   }

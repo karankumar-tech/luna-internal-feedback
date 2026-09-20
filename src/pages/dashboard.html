@@ -224,7 +224,9 @@
       <span id="rangeLabel" class="tertiary"></span>
       <span id="freshness" class="tertiary" title="When this data was last fetched from the server"></span>
       <button class="btn small" id="btnRefresh" type="button" title="Reload data without leaving the page"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px;margin-right:5px"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3h-3"/></svg>Refresh</button>
-      <a class="btn small" href="/dashboard/diagnosis" style="text-decoration:none">Diagnosis overview →</a>
+      <a class="btn small" href="/dashboard/analytics" style="text-decoration:none">Analytics →</a>
+      <a class="btn small" href="/dashboard/kinds" style="text-decoration:none">Issue kinds →</a>
+      <a class="btn small" href="/dashboard/diagnosis" style="text-decoration:none">Diagnosis →</a>
       <button class="btn small ghost" id="btnKey" type="button">Sign out</button>
     </div>
   </div>
@@ -259,12 +261,41 @@
       <label class="field"><span>Feature</span>
         <select id="fFeature"><option value="">All features</option></select>
       </label>
+      <label class="field"><span>Environment</span>
+        <select id="fEnv">
+          <option value="">All environments</option>
+          <option value="stage">Stage</option>
+          <option value="uat">UAT</option>
+          <option value="production">Production</option>
+        </select>
+      </label>
       <label class="field"><span>Platform</span>
         <select id="fPlatform">
           <option value="">iOS + Android</option>
           <option value="ios">iOS</option>
           <option value="android">Android</option>
         </select>
+      </label>
+      <label class="field"><span>Triage</span>
+        <select id="fStatus">
+          <option value="">Any status</option>
+          <option value="open">Open</option>
+          <option value="triaged">Triaged</option>
+          <option value="in_progress">In progress</option>
+          <option value="resolved">Resolved</option>
+          <option value="closed">Closed</option>
+          <option value="wont_fix">Won't fix</option>
+        </select>
+      </label>
+      <label class="field"><span>Jira</span>
+        <select id="fJira">
+          <option value="">Any</option>
+          <option value="any">Has a ticket</option>
+          <option value="none">No ticket</option>
+        </select>
+      </label>
+      <label class="field"><span>Issue kind</span>
+        <select id="fKind"><option value="">Any kind</option></select>
       </label>
       <label class="field"><span>Result</span>
         <select id="fResult">
@@ -477,7 +508,7 @@
     $('conn').className = 'pill on'; $('conn').textContent = 'connected';
     $('btnKey').hidden = false;
     $('gate').hidden = true; $('app').hidden = false;
-    fillFeatureSelect(); fillCategorySelect();
+    fillFeatureSelect(); fillCategorySelect(); fillKindSelect();
     if (!state.filters) applyPreset(30);
     await refresh();
     loadManage();
@@ -514,6 +545,10 @@
   function readFilters() {
     const f = { from: $('fFrom').value, to: $('fTo').value };
     if ($('fFeature').value) f.feature = $('fFeature').value;
+    if ($('fEnv').value) f.environment = $('fEnv').value;
+    if ($('fStatus').value) f.status = $('fStatus').value;
+    if ($('fJira').value) f.jira = $('fJira').value;
+    if ($('fKind').value) f.kind_id = $('fKind').value;
     if ($('fPlatform').value) f.platform = $('fPlatform').value;
     if ($('fTest').value) f.is_test = $('fTest').value;
     if ($('fAi').value) f.ai_status = $('fAi').value;
@@ -532,10 +567,24 @@
   $('fResult').addEventListener('change', refresh);
   $('fPlatform').addEventListener('change', refresh);
   $('fTest').addEventListener('change', refresh);
-  for (const fid of ['fAi', 'fSide', 'fSev']) $(fid).addEventListener('change', refresh);
+  for (const fid of ['fAi', 'fSide', 'fSev', 'fEnv', 'fStatus', 'fJira', 'fKind']) $(fid).addEventListener('change', refresh);
   $('fCategory').addEventListener('change', refresh);
   let userT; $('fUser').addEventListener('input', () => { clearTimeout(userT); userT = setTimeout(refresh, 400); });
-  $('btnReset').addEventListener('click', () => { $('fFeature').value = ''; $('fPlatform').value = ''; $('fTest').value = ''; $('fAi').value = ''; $('fSide').value = ''; $('fSev').value = ''; $('fResult').value = ''; $('fUser').value = ''; fillCategorySelect(); applyPreset(30); refresh(); });
+  $('btnReset').addEventListener('click', () => {
+    for (const fid of ['fFeature', 'fPlatform', 'fTest', 'fAi', 'fSide', 'fSev', 'fResult', 'fUser', 'fEnv', 'fStatus', 'fJira', 'fKind']) $(fid).value = '';
+    fillCategorySelect(); applyPreset(30); refresh();
+  });
+
+  /** Kinds change as tickets are linked, so the filter list is refilled on every load. */
+  async function fillKindSelect() {
+    try {
+      const { items } = await api('/v1/kinds?from=2020-01-01');
+      const sel = $('fKind'); const current = sel.value;
+      while (sel.options.length > 1) sel.remove(1);
+      for (const k of items) { const o = document.createElement('option'); o.value = k.id; o.textContent = `${k.title} (${k.count})`; sel.appendChild(o); }
+      sel.value = current;
+    } catch { /* the filter simply stays empty */ }
+  }
 
   // ---------- refresh ----------
   let inflight = 0;

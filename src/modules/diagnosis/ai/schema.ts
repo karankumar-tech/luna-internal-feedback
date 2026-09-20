@@ -29,6 +29,15 @@ export const VerdictSchema = z.object({
   questions_for_tester: z.array(z.string().max(200)).max(5),
   fw_version_seen: z.string().nullable(),
   app_version_seen: z.string().nullable(),
+  // Both are asked for as required fields in VERDICT_JSON_SCHEMA, but tolerated when absent:
+  // a model that drops them should not cost us an otherwise good verdict.
+  /** Catalog ids (FW-01, RL-07, APP-22). Unknown ids are dropped before they are stored. */
+  event_codes: z.array(z.string().max(20)).max(6).nullish().transform((v) => v ?? []),
+  /** Free text: the recurring problem this ticket is an instance of, for clustering. */
+  issue_kind: z.object({
+    title: z.string().max(80),
+    rationale: z.string().max(240),
+  }).nullish().transform((v) => v ?? null),
 });
 export type Verdict = z.infer<typeof VerdictSchema>;
 
@@ -39,7 +48,7 @@ export const VERDICT_JSON_SCHEMA = {
   schema: {
     type: 'object',
     additionalProperties: false,
-    required: ['root_cause_side', 'confidence', 'severity', 'tags', 'reproducible', 'summary', 'evidence', 'suggested_fix', 'questions_for_tester', 'fw_version_seen', 'app_version_seen'],
+    required: ['root_cause_side', 'confidence', 'severity', 'tags', 'reproducible', 'summary', 'evidence', 'suggested_fix', 'questions_for_tester', 'fw_version_seen', 'app_version_seen', 'event_codes', 'issue_kind'],
     properties: {
       root_cause_side: { type: 'string', enum: [...ROOT_CAUSE_SIDES], description: 'Which layer most likely caused the issue. Use insufficient_logs when the logs cannot support a call.' },
       confidence: { type: 'number', minimum: 0, maximum: 1, description: 'How sure you are about root_cause_side.' },
@@ -63,6 +72,18 @@ export const VERDICT_JSON_SCHEMA = {
       questions_for_tester: { type: 'array', items: { type: 'string' }, maxItems: 5 },
       fw_version_seen: { type: ['string', 'null'], description: 'Firmware version visible in the logs, else null.' },
       app_version_seen: { type: ['string', 'null'], description: 'App version visible in the logs, else null.' },
+      event_codes: {
+        type: 'array', items: { type: 'string' }, maxItems: 6,
+        description: 'Ids of matched catalog events (e.g. FW-01, RL-07, APP-22), only from the list given in the prompt and only when the excerpt really shows them. Empty if none fit.',
+      },
+      issue_kind: {
+        type: ['object', 'null'], additionalProperties: false, required: ['title', 'rationale'],
+        description: 'The recurring problem this ticket is an instance of, so tickets can be grouped. Reuse one of the existing kinds listed in the prompt when it fits; otherwise name a new one.',
+        properties: {
+          title: { type: 'string', description: 'Short, specific and reusable, e.g. "Sleep start recorded hours late". Not a restatement of this one ticket.' },
+          rationale: { type: 'string', description: 'One sentence: why this ticket belongs to that kind.' },
+        },
+      },
     },
   },
 } as const;

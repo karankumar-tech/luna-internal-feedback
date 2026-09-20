@@ -1,11 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { AppError } from '../../lib/errors.js';
+import { actorOf } from '../../lib/actor.js';
 import { buildFeatureSchema, buildSchemaResponse, etagFor } from '../../schema/buildSchemaResponse.js';
 import { zodIssues } from '../../schema/buildValidator.js';
 import { isValidCalendarDate, todayInZone } from '../../lib/time.js';
-import { PLATFORMS } from '../../schema/registry.js';
+import { ENVIRONMENTS, PLATFORMS } from '../../schema/registry.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
+import { SUBMISSION_STATUSES } from './feedback.repo.js';
 import type { FeedbackService } from './feedback.service.js';
 
 const IsTest = z.enum(['true', 'false']).transform((v) => v === 'true').optional();
@@ -14,31 +16,35 @@ const AiStatus = z.enum(['none', 'pending', 'running', 'waiting_logs', 'done', '
 const AiSide = z.enum(['firmware', 'sdk', 'app', 'backend', 'user_expectation', 'not_a_bug', 'insufficient_logs']).optional();
 const AiSeverity = z.enum(['low', 'medium', 'high', 'critical']).optional();
 
-const ListQuery = z.object({
+/** Filters shared by the list, stats and analytics endpoints. */
+export const CommonQuery = z.object({
   feature: z.string().optional(),
+  environment: z.enum(ENVIRONMENTS).optional(),
   platform: z.enum(PLATFORMS).optional(),
   is_test: IsTest,
+  status: z.enum(SUBMISSION_STATUSES).optional(),
+  jira: z.enum(['any', 'none']).optional(),
   ai_status: AiStatus, ai_side: AiSide, ai_severity: AiSeverity,
+  ai_tag: z.string().max(60).optional(),
+  event_code: z.string().max(20).optional(),
+  kind_id: z.string().uuid().optional(),
   user_id: z.coerce.number().int().positive().optional(),
-  from: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
-  to: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
   is_positive: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
   category: z.string().optional(),
+});
+
+const DateRange = {
+  from: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
+  to: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
+};
+
+const ListQuery = CommonQuery.extend({
+  ...DateRange,
   limit: z.coerce.number().int().min(1).max(200).default(50),
   cursor: z.string().regex(/^[^|]+\|[0-9a-f-]{36}$/, 'invalid cursor').optional(),
 });
 
-const StatsQuery = z.object({
-  feature: z.string().optional(),
-  platform: z.enum(PLATFORMS).optional(),
-  is_test: IsTest,
-  ai_status: AiStatus, ai_side: AiSide, ai_severity: AiSeverity,
-  user_id: z.coerce.number().int().positive().optional(),
-  from: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
-  to: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
-  is_positive: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
-  category: z.string().optional(),
-});
+const StatsQuery = CommonQuery.extend(DateRange);
 
 function shiftDate(iso: string, days: number): string {
   const d = new Date(iso + 'T00:00:00Z');
@@ -136,11 +142,21 @@ export function registerFeedbackRoutes(
 
   app.get<{ Params: { id: string } }>('/v1/feedback/:id', async (req) => service.get(req.params.id));
 
-  // ---- mark one submission as test / real (admin) ------------------------------
+  // ---- mark one submission as test / real, or move it through triage (admin) ----
   app.patch<{ Params: { id: string } }>('/v1/admin/submissions/:id', async (req) => {
-    const parsed = z.object({ is_test: z.boolean() }).strict().safeParse(req.body);
+    const parsed = z.object({
+      is_test: z.boolean().optional(),
+      status: z.enum(SUBMISSION_STATUSES).optional(),
+      status_note: z.string().trim().max(500).nullish(),
+    }).strict().refine((b) => b.is_test !== undefined || b.status !== undefined, {
+      message: 'send is_test, status, or both',
+    }).safeParse(req.body);
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
-    return service.setTestFlag(req.params.id, parsed.data.is_test);
+    const { is_test, status, status_note } = parsed.data;
+
+    let dto = is_test === undefined ? null : await service.setTestFlag(req.params.id, is_test);
+    if (status !== undefined) dto = await service.setStatus(req.params.id, status, status_note ?? null, actorOf(req));
+    return dto ?? service.get(req.params.id);
   });
 
   // ---- test data housekeeping (admin) ----------------------------------------

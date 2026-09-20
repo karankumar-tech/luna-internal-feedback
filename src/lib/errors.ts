@@ -4,6 +4,8 @@ export type ErrorCode =
   | 'NOT_FOUND'
   | 'VALIDATION_FAILED'
   | 'CONFLICT'
+  /** A service we depend on (Jira, OpenRouter, the logging API) failed or refused us. */
+  | 'UPSTREAM_ERROR'
   | 'INTERNAL';
 
 export interface ErrorIssue {
@@ -29,4 +31,5 @@ export class AppError extends Error {
   static validation(issues: ErrorIssue[], msg = 'Request failed validation') {
     return new AppError(422, 'VALIDATION_FAILED', msg, issues);
   }
+  static upstream(msg: string) { return new AppError(502, 'UPSTREAM_ERROR', msg); }
 }

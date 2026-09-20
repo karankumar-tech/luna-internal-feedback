@@ -71,6 +71,9 @@ const fakeAiFetch: typeof fetch = async (_input, init) => {
     suggested_fix: 'Check the sleep sync endpoint latency on the backend; add retry in the app.',
     questions_for_tester: ['Was the ring connected when you opened the app?'],
     fw_version_seen: '1.2.6', app_version_seen: '2.0.3.staging.luna',
+    // One real catalog id and one the model invented: only the real one may survive.
+    event_codes: ['APP-01', 'FW-9999'],
+    issue_kind: { title: 'Sleep sync times out and the night is lost', rationale: 'Sync request returned 504 and no sleep data landed.' },
   };
   return new Response(JSON.stringify({ model: 'google/gemini-3.1-flash-lite', choices: [{ message: { content: JSON.stringify(verdict) } }], usage: { prompt_tokens: 3200, completion_tokens: 420, cost: 0.0014 } }), { status: 200, headers: { 'content-type': 'application/json' } });
 };
@@ -139,6 +142,15 @@ describe('auto diagnosis on negative submission', () => {
     expect(listCalls.some((q) => q.includes('serial_no=R2NTEST0001'))).toBe(true);
     expect(lastPrompt).toContain('Sleep showed 4h');
     expect(lastPrompt).toContain('Actual sleep start: 11:30 PM');
+
+    // Only catalog ids the model could have cited are kept; the invented one is dropped.
+    expect(d.event_codes).toEqual(['APP-01']);
+
+    // The suggested issue kind is created and linked, so tickets group without anyone filing them.
+    const kinds = (await app.inject({ method: 'GET', url: `/v1/feedback/${id}/kinds`, headers: appHeaders })).json();
+    expect(kinds.items).toHaveLength(1);
+    expect(kinds.items[0].title).toBe('Sleep sync times out and the night is lost');
+    expect(kinds.items[0].source).toBe('ai');
 
     // denormalised columns + list filter
     const list = (await app.inject({ method: 'GET', url: `/v1/feedback?user_id=900010&ai_side=backend`, headers: appHeaders })).json();

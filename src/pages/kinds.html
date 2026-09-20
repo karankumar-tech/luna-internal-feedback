@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Luna Feedback · Issue kinds</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&display=swap">
+<style>
+  :root {
+    --black: #000000; --white: #FFFFFF;
+    --gray-dark: #737373; --gray-mid: #9E9E9E; --gray-light: #D9D9D9;
+    --bg: #F0EFEA; --brief: #E8E6E0; --border-warm: #E2E0D9; --border-ghost: #F0F0F0;
+    --hero: #1A1A18; --hero-muted: #8A887F;
+    --yellow: #F5F85D; --yellow-50: #FEFFD6;
+    --blue: #2E64E4; --blue-50: #EAF0FD; --orange: #EF7432; --orange-50: #FFF3EC; --magenta: #E0237A; --magenta-50: #FFE8F4;
+    --ok: #00C37A; --ok-bg: #E6F8F0; --crit: #FF3B3B; --crit-bg: #FFECEC; --warn: #F0B429;
+    --sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --r-xs: 2px; --r-s: 4px; --r-m: 6px; --r-l: 8px; --r-xl: 12px;
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: light; }
+  body { margin: 0; background: var(--bg); color: var(--black); font-family: var(--sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  a { color: inherit; }
+  .mono { font-family: var(--mono); }
+  .overline { font-family: var(--mono); font-size: 11px; line-height: 16px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); }
+  h1 { font-size: 24px; line-height: 28px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 16px; line-height: 20px; font-weight: 600; margin: 0; }
+  h3 { font-size: 12px; line-height: 16px; font-weight: 600; margin: 16px 0 6px; color: var(--gray-dark); text-transform: uppercase; letter-spacing: .08em; font-family: var(--mono); }
+  .muted { color: var(--gray-dark); } .tertiary { color: var(--gray-mid); }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px 64px; }
+
+  .top { background: var(--white); border-bottom: 1px solid var(--gray-light); }
+  .top-inner { max-width: 1240px; margin: 0 auto; padding: 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: baseline; gap: 12px; }
+  .brand .dot { width: 10px; height: 10px; background: var(--yellow); border: 1px solid var(--black); border-radius: var(--r-xs); display: inline-block; transform: translateY(-1px); }
+  .status { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--gray-dark); flex-wrap: wrap; }
+  .crumb { font-size: 13px; color: var(--gray-dark); text-decoration: none; } .crumb:hover { color: var(--black); }
+
+  .btn { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-l); padding: 7px 12px; line-height: 18px; cursor: pointer; font-weight: 500; text-decoration: none; display: inline-block; }
+  .btn:hover { border-color: var(--gray-mid); }
+  .btn.primary { background: var(--black); color: var(--white); border-color: var(--black); }
+  .btn.small { padding: 4px 10px; font-size: 12px; line-height: 16px; border-radius: var(--r-s); }
+  .btn.ghost { border-color: transparent; background: transparent; } .btn.ghost:hover { background: var(--brief); }
+  .btn[disabled] { opacity: .5; cursor: default; }
+  .btn:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; border-color: var(--black); box-shadow: 0 0 0 1px var(--black); }
+  input[type=text], input[type=date], select, textarea { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-m); padding: 7px 10px; line-height: 18px; min-width: 0; }
+  select { appearance: none; -webkit-appearance: none; padding-right: 28px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5l3.5 3.5 3.5-3.5' fill='none' stroke='%23737373' stroke-width='1.2'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; }
+  label.field { display: flex; flex-direction: column; gap: 4px; }
+  label.field > span { font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); }
+  .filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; margin: 20px 0 16px; }
+
+  .card { background: var(--white); border: 1px solid var(--gray-light); border-radius: var(--r-xl); padding: 16px 20px; }
+  .card + .card { margin-top: 12px; }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .card-head .sub { font-size: 12px; line-height: 18px; color: var(--gray-dark); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 18px; }
+  th { text-align: left; font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); font-weight: 400; padding: 8px 10px; border-bottom: 1px solid var(--gray-light); white-space: nowrap; }
+  td { padding: 10px; border-bottom: 1px solid var(--border-ghost); vertical-align: top; }
+  tbody tr:hover td { background: #FAFAF7; }
+  td.num { font-family: var(--mono); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.code { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+  a.row-link { text-decoration: none; font-weight: 500; } a.row-link:hover { text-decoration: underline; }
+  .bar-cell { position: relative; min-width: 110px; }
+  .bar-cell .fill { position: absolute; inset: 5px auto 5px 0; background: var(--blue-50); border-radius: var(--r-xs); z-index: 0; }
+  .bar-cell span { position: relative; z-index: 1; }
+
+  .chip { font-family: var(--mono); font-size: 11px; line-height: 16px; padding: 1px 6px; border-radius: var(--r-xs); background: var(--brief); white-space: nowrap; display: inline-block; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .kstatus { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 7px; border-radius: var(--r-xs); border: 1px solid; }
+  .kstatus.open { border-color: var(--crit); background: var(--crit-bg); color: #8A1010; }
+  .kstatus.watching { border-color: var(--warn); background: #FFF8E1; color: #7A5A00; }
+  .kstatus.fixed { border-color: var(--ok); background: var(--ok-bg); color: #00583A; }
+  .kstatus.wont_fix { border-color: var(--gray-light); background: var(--brief); color: var(--gray-dark); }
+  .sev { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 1px 6px; border-radius: var(--r-xs); border: 1px solid; }
+  .sev.low { border-color: var(--gray-light); color: var(--gray-dark); } .sev.medium { border-color: var(--warn); color: #7A5A00; background: #FFF8E1; }
+  .sev.high { border-color: var(--orange); color: #A03600; background: var(--orange-50); } .sev.critical { border-color: var(--crit); color: #8A1010; background: var(--crit-bg); }
+  .jira-link { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; text-decoration: none; border: 1px solid var(--blue); background: var(--blue-50); color: #0C3AAA; padding: 3px 9px; border-radius: var(--r-s); }
+
+  .kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .kpi { background: var(--white); border: 1px solid var(--gray-light); border-radius: var(--r-l); padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .kpi .v { font-family: var(--mono); font-size: 28px; line-height: 32px; }
+  .kpi .l { font-size: 12px; line-height: 16px; color: var(--gray-dark); }
+  .kpi.hero { background: var(--hero); border-color: var(--hero); color: var(--white); } .kpi.hero .l { color: var(--hero-muted); }
+  .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .chart text { font-family: var(--mono); font-size: 11px; fill: var(--gray-dark); }
+  .chart .grid line { stroke: var(--border-ghost); } .chart .axis line { stroke: var(--gray-light); }
+  .chart .lbl.strong { fill: var(--black); }
+  .res { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; padding: 2px 8px; border-radius: var(--r-s); border: 1px solid; white-space: nowrap; }
+  .res.bad { background: var(--crit-bg); border-color: #FFB3B3; color: #8A1010; }
+  .res.ok { background: var(--ok-bg); border-color: #9BE3C4; color: #00583A; }
+  .empty { padding: 28px 0; text-align: center; color: var(--gray-mid); font-size: 13px; }
+  .loading { opacity: .45; pointer-events: none; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--black); color: var(--white); padding: 8px 14px; border-radius: var(--r-l); font-size: 13px; z-index: 40; display: none; }
+  .newform { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+  .newform input[type=text] { flex: 1 1 280px; }
+  @media (max-width: 1000px) { .kpis { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 600px) { .kpis { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body data-palette="#00C37A,#FF3B3B">
+
+<header class="top">
+  <div class="top-inner">
+    <div class="brand">
+      <span class="dot" aria-hidden="true"></span>
+      <div>
+        <a class="crumb" href="/dashboard">← Dashboard</a>
+        <h1 id="pageTitle">Issue kinds</h1>
+      </div>
+    </div>
+    <div class="status">
+      <span id="rangeLabel" class="tertiary"></span>
+      <a class="btn small" href="/dashboard/analytics">Analytics →</a>
+      <a class="btn small" href="/dashboard/diagnosis">Diagnosis →</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="filters" aria-label="Filters">
+    <label class="field"><span>From</span><input type="date" id="fFrom"></label>
+    <label class="field"><span>To</span><input type="date" id="fTo"></label>
+    <label class="field"><span>Environment</span>
+      <select id="fEnv"><option value="">All environments</option><option value="stage">Stage</option><option value="uat">UAT</option><option value="production">Production</option></select>
+    </label>
+    <label class="field" id="fStatusField"><span>Kind status</span>
+      <select id="fStatus"><option value="">Any</option><option value="open">Open</option><option value="watching">Watching</option><option value="fixed">Fixed</option><option value="wont_fix">Won't fix</option></select>
+    </label>
+    <label class="field"><span>Data</span>
+      <select id="fTest"><option value="false">Real only</option><option value="">Real + test</option><option value="true">Test only</option></select>
+    </label>
+  </section>
+
+  <!-- list view -->
+  <div id="listView" hidden>
+    <section class="card">
+      <div class="card-head">
+        <div><h2>Recurring problems</h2><div class="sub">Tickets grouped into the underlying issue, so you can see how much of each is happening</div></div>
+      </div>
+      <div class="newform">
+        <label class="field" style="flex:1 1 280px"><span>New kind</span><input type="text" id="newTitle" placeholder="e.g. Sleep start recorded hours late"></label>
+        <button class="btn" id="btnCreate" type="button">Create</button>
+      </div>
+      <div id="listBody" style="margin-top:14px"><div class="empty">Loading…</div></div>
+    </section>
+  </div>
+
+  <!-- detail view -->
+  <div id="detailView" hidden>
+    <section class="card">
+      <div class="card-head">
+        <div>
+          <h2 id="dTitle"></h2>
+          <div class="sub" id="dSub"></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="dStatus" title="Status of this recurring problem">
+            <option value="open">Open</option><option value="watching">Watching</option><option value="fixed">Fixed</option><option value="wont_fix">Won't fix</option>
+          </select>
+          <a class="jira-link" id="dJiraLink" href="#" target="_blank" rel="noopener" hidden></a>
+          <button class="btn small" id="btnKindJira" type="button">Create Jira ticket</button>
+        </div>
+      </div>
+      <p id="dDesc" class="muted" style="margin:0"></p>
+      <div class="chips" id="dChips" style="margin-top:10px"></div>
+    </section>
+
+    <section class="kpis" style="margin-top:12px">
+      <div class="kpi hero"><div class="v" id="dCount">–</div><div class="l">Reports in range</div></div>
+      <div class="kpi"><div class="v" id="dOpen">–</div><div class="l">Still open</div></div>
+      <div class="kpi"><div class="v" id="dUsers">–</div><div class="l">Testers affected</div></div>
+      <div class="kpi"><div class="v" id="dFirst">–</div><div class="l">First seen</div></div>
+      <div class="kpi"><div class="v" id="dLast">–</div><div class="l">Last seen</div></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><div><h2>How often it is happening</h2><div class="sub">Reports per day in the selected range</div></div></div>
+      <div class="chart" id="dTrend"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><div><h2>Tickets</h2><div class="sub">Every report linked to this kind</div></div></div>
+      <div id="dTickets"><div class="empty">Loading…</div></div>
+    </section>
+  </div>
+</main>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const BLUE = '#2E64E4', CRIT = '#FF3B3B';
+  const parts = location.pathname.split('/').filter(Boolean);
+  const kindId = parts[1] === 'kinds' && parts[2] ? parts[2] : null;
+  const state = { filters: null, detail: null, jira: null };
+
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; };
+  const svgEl = (tag, attrs) => { const e = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+  const fmtN = (n) => new Intl.NumberFormat('en-IN').format(n || 0);
+  const istToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const shift = (iso, days) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); };
+  const shortDate = (iso) => { if (!iso) return '—'; const [, m, d] = iso.split('-'); return `${d} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m - 1]}`; };
+  const niceScale = (v, t) => { const raw = Math.max(1, v) / t; const p = Math.pow(10, Math.floor(Math.log10(raw))); const m = raw / p; const step = Math.max(1, Math.ceil((m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p)); return { step, top: step * t }; };
+  let toastT; const toast = (m) => { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', 2600); };
+
+  async function api(path, opts = {}) {
+    const headers = Object.assign({ 'x-requested-with': 'dashboard' }, opts.headers || {});
+    if (opts.body) headers['content-type'] = 'application/json';
+    const r = await fetch(path, Object.assign({ credentials: 'same-origin' }, opts, { headers }));
+    const text = await r.text(); let body = null; try { body = text ? JSON.parse(text) : null; } catch {}
+    if (!r.ok) { const e = new Error((body && body.error && body.error.message) || `HTTP ${r.status}`); e.status = r.status; throw e; }
+    return body;
+  }
+  const qs = (o) => Object.entries(o).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+
+  function readFilters() {
+    const f = { from: $('fFrom').value, to: $('fTo').value };
+    if ($('fEnv').value) f.environment = $('fEnv').value;
+    if ($('fStatus').value) f.status = $('fStatus').value;
+    if ($('fTest').value) f.is_test = $('fTest').value;
+    return f;
+  }
+
+  // ---------- list ----------
+  async function loadList() {
+    state.filters = readFilters();
+    $('rangeLabel').textContent = `${state.filters.from} → ${state.filters.to}`;
+    const host = $('listBody'); host.classList.add('loading');
+    try {
+      const { items } = await api('/v1/kinds?' + qs(state.filters));
+      host.classList.remove('loading');
+      host.replaceChildren();
+      if (!items.length) {
+        host.appendChild(el('div', 'empty', 'No issue kinds yet. Diagnosing a ticket suggests one automatically, or create one above and link tickets from their detail pages.'));
+        return;
+      }
+      const total = items.reduce((n, k) => n + k.count, 0) || 1;
+      const t = el('table'); const head = el('tr');
+      for (const h of ['Issue kind', 'Reports', 'Share', 'Testers', 'Still open', 'First seen', 'Last seen', 'Status', 'Jira']) head.appendChild(el('th', null, h));
+      t.appendChild(head);
+      const body = document.createElement('tbody');
+      for (const k of items) {
+        const tr = el('tr');
+        const tdTitle = el('td');
+        const a = el('a', 'row-link', k.title); a.href = '/dashboard/kinds/' + k.id; tdTitle.appendChild(a);
+        if (k.feature_key) { tdTitle.appendChild(document.createTextNode(' ')); tdTitle.appendChild(el('span', 'chip', k.feature_key)); }
+        if (k.created_by === 'ai') { tdTitle.appendChild(document.createTextNode(' ')); tdTitle.appendChild(el('span', 'chip', 'ai')); }
+        tr.appendChild(tdTitle);
+        tr.appendChild(el('td', 'num', fmtN(k.count)));
+        const share = el('td', 'bar-cell num'); const fill = el('div', 'fill'); fill.style.width = Math.round((k.count / total) * 100) + '%';
+        share.appendChild(fill); share.appendChild(el('span', null, Math.round((k.count / total) * 100) + '%')); tr.appendChild(share);
+        tr.appendChild(el('td', 'num', fmtN(k.users)));
+        tr.appendChild(el('td', 'num', fmtN(k.open_count)));
+        tr.appendChild(el('td', 'code', shortDate(k.first_seen)));
+        tr.appendChild(el('td', 'code', shortDate(k.last_seen)));
+        const st = el('td'); st.appendChild(el('span', 'kstatus ' + k.status, k.status.replace('_', ' '))); tr.appendChild(st);
+        const j = el('td', 'code');
+        if (k.jira_key) { const link = el('a', null, k.jira_key); link.href = k.jira_url || '#'; link.target = '_blank'; link.rel = 'noopener'; j.appendChild(link); } else j.textContent = '—';
+        tr.appendChild(j);
+        body.appendChild(tr);
+      }
+      t.appendChild(body); host.appendChild(t);
+    } catch (err) {
+      host.classList.remove('loading');
+      if (err.status === 401) { location.replace('/dashboard?next=' + encodeURIComponent(location.pathname)); return; }
+      host.replaceChildren(el('div', 'empty', 'Could not load: ' + err.message));
+    }
+  }
+
+  $('btnCreate').addEventListener('click', async () => {
+    const title = $('newTitle').value.trim();
+    if (title.length < 4) { toast('Give the kind a name of at least 4 characters'); return; }
+    const b = $('btnCreate'); b.disabled = true;
+    try { await api('/v1/admin/kinds', { method: 'POST', body: JSON.stringify({ title }) }); $('newTitle').value = ''; toast('Created'); loadList(); }
+    catch (err) { toast('Could not create: ' + err.message); }
+    finally { b.disabled = false; }
+  });
+
+  // ---------- detail ----------
+  async function loadDetail() {
+    const filters = readFilters(); delete filters.status;
+    $('rangeLabel').textContent = `${filters.from} → ${filters.to}`;
+    try {
+      const [detail, tickets] = await Promise.all([
+        api(`/v1/kinds/${kindId}?` + qs(filters)),
+        api('/v1/feedback?' + qs(Object.assign({ limit: 100, kind_id: kindId }, filters))),
+      ]);
+      state.detail = detail;
+      renderDetail(detail, tickets.items || []);
+    } catch (err) {
+      if (err.status === 401) { location.replace('/dashboard?next=' + encodeURIComponent(location.pathname)); return; }
+      $('dTickets').replaceChildren(el('div', 'empty', 'Could not load: ' + err.message));
+    }
+  }
+
+  function renderDetail(k, tickets) {
+    document.title = k.title + ' · Luna Feedback';
+    $('pageTitle').textContent = 'Issue kind';
+    $('dTitle').textContent = k.title;
+    $('dSub').textContent = `${k.key}${k.created_by === 'ai' ? ' · first named by the model' : k.created_by ? ' · created by ' + k.created_by : ''}`;
+    $('dDesc').textContent = k.description || 'No description yet.';
+    $('dStatus').value = k.status;
+    const chips = $('dChips'); chips.replaceChildren();
+    if (k.feature_key) chips.appendChild(el('span', 'chip', k.feature_key));
+    if (k.severity) chips.appendChild(el('span', 'sev ' + k.severity, k.severity));
+    for (const t of k.tags || []) chips.appendChild(el('span', 'chip', t));
+    for (const c of k.event_codes || []) chips.appendChild(el('span', 'chip', c));
+
+    $('dCount').textContent = fmtN(k.count);
+    $('dOpen').textContent = fmtN(k.open_count);
+    $('dUsers').textContent = fmtN(k.users);
+    $('dFirst').textContent = shortDate(k.first_seen);
+    $('dLast').textContent = shortDate(k.last_seen);
+
+    const link = $('dJiraLink'); const btn = $('btnKindJira');
+    if (k.jira_key) { link.hidden = false; link.href = k.jira_url || '#'; link.textContent = k.jira_key; btn.hidden = true; }
+    else { link.hidden = true; btn.hidden = false; }
+
+    renderTrend(k.trend || []);
+    renderTickets(tickets);
+  }
+
+  function renderTrend(days) {
+    const host = $('dTrend'); host.replaceChildren();
+    if (!days.length) { host.appendChild(el('div', 'empty', 'No reports in this range.')); return; }
+    const W = 1100, H = 200, padL = 42, padR = 12, padT = 12, padB = 28;
+    const plotW = W - padL - padR, plotH = H - padT - padB, ticks = 4;
+    const scale = niceScale(Math.max(...days.map((d) => d.count)), ticks);
+    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Reports per day for this issue kind' });
+    const grid = svgEl('g', { class: 'grid' });
+    for (let i = 0; i <= ticks; i++) {
+      const y = padT + plotH - (plotH * i) / ticks;
+      grid.appendChild(svgEl('line', { x1: padL, x2: W - padR, y1: y, y2: y }));
+      const t = svgEl('text', { x: padL - 8, y: y + 4, 'text-anchor': 'end' }); t.textContent = fmtN(scale.step * i); grid.appendChild(t);
+    }
+    svg.appendChild(grid);
+    const band = plotW / days.length, bw = Math.max(2, Math.min(band - 3, 26));
+    days.forEach((d, i) => {
+      const h = (d.count / scale.top) * plotH;
+      const g = svgEl('g');
+      g.appendChild(svgEl('rect', { x: padL + band * i + (band - bw) / 2, y: padT + plotH - h, width: bw, height: h, fill: CRIT, rx: 4 }));
+      const ti = svgEl('title'); ti.textContent = `${d.date}: ${d.count} report(s)`; g.appendChild(ti);
+      svg.appendChild(g);
+    });
+    const axis = svgEl('g', { class: 'axis' });
+    axis.appendChild(svgEl('line', { x1: padL, x2: W - padR, y1: padT + plotH, y2: padT + plotH }));
+    svg.appendChild(axis);
+    const step = Math.max(1, Math.ceil(days.length / 12));
+    days.forEach((d, i) => { if (i % step === 0 || i === days.length - 1) { const t = svgEl('text', { x: padL + band * i + band / 2, y: H - 8, 'text-anchor': 'middle' }); t.textContent = shortDate(d.date); svg.appendChild(t); } });
+    host.appendChild(svg);
+  }
+
+  function renderTickets(rows) {
+    const host = $('dTickets'); host.replaceChildren();
+    if (!rows.length) { host.appendChild(el('div', 'empty', 'No tickets linked in this range.')); return; }
+    const t = el('table'); const head = el('tr');
+    for (const h of ['Occurred', 'Feature', 'Tester', 'Env', 'Status', 'Verdict', 'What they said', 'Jira']) head.appendChild(el('th', null, h));
+    t.appendChild(head);
+    const body = document.createElement('tbody');
+    for (const r of rows) {
+      const tr = el('tr'); tr.style.cursor = 'pointer';
+      tr.addEventListener('click', () => { location.href = '/dashboard/submissions/' + r.id; });
+      tr.appendChild(el('td', 'code', r.occurred_on));
+      tr.appendChild(el('td', null, r.feature_key));
+      tr.appendChild(el('td', 'code', String(r.user_id)));
+      tr.appendChild(el('td', 'code', r.environment || 'stage'));
+      const st = el('td'); st.appendChild(el('span', 'chip', (r.status || 'open').replace('_', ' '))); tr.appendChild(st);
+      tr.appendChild(el('td', null, r.ai_side || '—'));
+      const txt = el('td'); txt.style.maxWidth = '340px'; txt.style.color = 'var(--gray-dark)';
+      txt.textContent = (r.feedback_text || '').slice(0, 120) || '—';
+      tr.appendChild(txt);
+      const j = el('td', 'code', r.jira_key || '—'); tr.appendChild(j);
+      body.appendChild(tr);
+    }
+    t.appendChild(body); host.appendChild(t);
+  }
+
+  $('dStatus').addEventListener('change', async (ev) => {
+    const next = ev.target.value;
+    try { await api(`/v1/admin/kinds/${kindId}`, { method: 'PATCH', body: JSON.stringify({ status: next }) }); toast('Status updated'); }
+    catch (err) { toast('Could not update: ' + err.message); }
+  });
+
+  $('btnKindJira').addEventListener('click', async () => {
+    const b = $('btnKindJira'); b.disabled = true; const old = b.textContent; b.textContent = 'Creating…';
+    try {
+      const status = state.jira || await api('/v1/admin/jira/status').catch(() => ({ configured: false, message: 'Jira integration pending' }));
+      state.jira = status;
+      if (!status.configured) { toast(status.message || 'Jira integration pending'); return; }
+      const issue = await api(`/v1/admin/kinds/${kindId}/jira`, { method: 'POST' });
+      toast(issue.created ? 'Created ' + issue.key : 'Already linked to ' + issue.key);
+      loadDetail();
+    } catch (err) { toast('Could not create the ticket: ' + err.message); }
+    finally { b.disabled = false; b.textContent = old; }
+  });
+
+  for (const id of ['fFrom', 'fTo', 'fEnv', 'fStatus', 'fTest']) {
+    const node = $(id); if (node) node.addEventListener('change', () => (kindId ? loadDetail() : loadList()));
+  }
+
+  async function boot() {
+    const s = await api('/dashboard/session').catch(() => ({ authenticated: false }));
+    if (!s.authenticated) { location.replace('/dashboard?next=' + encodeURIComponent(location.pathname)); return; }
+    const to = istToday();
+    $('fTo').value = to; $('fFrom').value = shift(to, -89);
+    if (kindId) {
+      $('detailView').hidden = false;
+      // The kind's own status is edited on this page, so the list filter would only confuse.
+      $('fStatusField').hidden = true;
+      await loadDetail();
+    } else {
+      $('listView').hidden = false;
+      await loadList();
+    }
+  }
+  boot().catch((err) => toast('Could not start: ' + err.message));
+})();
+</script>
+</body>
+</html>
