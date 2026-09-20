@@ -98,7 +98,10 @@
   .loading { opacity: .45; pointer-events: none; }
   .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--black); color: var(--white); padding: 8px 14px; border-radius: var(--r-l); font-size: 13px; z-index: 40; display: none; }
   .newform { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
-  .newform input[type=text] { flex: 1 1 280px; }
+  /* The label carries the flex sizing; the input only fills it. Giving the input `flex` here
+     would set a basis on the label's column axis and blow its height up. */
+  .newform label.field { flex: 1 1 280px; }
+  .newform input[type=text] { width: 100%; }
   @media (max-width: 1000px) { .kpis { grid-template-columns: repeat(3, 1fr); } }
   @media (max-width: 600px) { .kpis { grid-template-columns: 1fr 1fr; } }
 </style>
@@ -144,7 +147,7 @@
         <div><h2>Recurring problems</h2><div class="sub">Tickets grouped into the underlying issue, so you can see how much of each is happening</div></div>
       </div>
       <div class="newform">
-        <label class="field" style="flex:1 1 280px"><span>New kind</span><input type="text" id="newTitle" placeholder="e.g. Sleep start recorded hours late"></label>
+        <label class="field"><span>New kind</span><input type="text" id="newTitle" placeholder="e.g. Sleep start recorded hours late"></label>
         <button class="btn" id="btnCreate" type="button">Create</button>
       </div>
       <div id="listBody" style="margin-top:14px"><div class="empty">Loading…</div></div>

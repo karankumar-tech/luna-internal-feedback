@@ -93,6 +93,11 @@ const body = (email: string, over: Record<string, unknown> = {}) => ({
 
 async function cleanup() {
   await app.db.query(`delete from luna_feedback.submissions where email like $1`, [`%@${DOMAIN}`]);
+  // The run also creates the issue kind the fake verdict suggests; it would otherwise
+  // accumulate in the real dashboard, one per title, run after run.
+  await app.db.query(`delete from luna_feedback.issue_kinds where created_by = 'ai' and title = $1`, [
+    'Sleep sync times out and the night is lost',
+  ]);
 }
 
 beforeAll(async () => {
