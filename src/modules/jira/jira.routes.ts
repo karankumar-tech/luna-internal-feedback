@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { AppError } from '../../lib/errors.js';
 import { actorOf } from '../../lib/actor.js';
+import { requirePermission } from '../../plugins/auth.js';
 import { zodIssues } from '../../schema/buildValidator.js';
 import type { JiraService } from './jira.service.js';
 
@@ -12,17 +13,17 @@ export function registerJiraRoutes(app: FastifyInstance, deps: { service: JiraSe
   app.get('/v1/admin/jira/status', async () => service.status());
 
   /** Verifies the credentials and project without creating anything. */
-  app.post('/v1/admin/jira/check', async () => service.check());
+  app.post('/v1/admin/jira/check', { onRequest: requirePermission('manage_jira') }, async () => service.check());
 
-  app.post<{ Params: { id: string } }>('/v1/admin/submissions/:id/jira', async (req, reply) => {
+  app.post<{ Params: { id: string } }>('/v1/admin/submissions/:id/jira', { onRequest: requirePermission('manage_jira') }, async (req, reply) => {
     const { issue, created } = await service.createForSubmission(req.params.id, actorOf(req));
     return reply.code(created ? 201 : 200).send({ ...issue, created });
   });
 
-  app.post<{ Params: { id: string } }>('/v1/admin/submissions/:id/jira/refresh', async (req) =>
+  app.post<{ Params: { id: string } }>('/v1/admin/submissions/:id/jira/refresh', { onRequest: requirePermission('manage_jira') }, async (req) =>
     service.refreshSubmission(req.params.id));
 
-  app.post<{ Params: { id: string } }>('/v1/admin/kinds/:id/jira', async (req, reply) => {
+  app.post<{ Params: { id: string } }>('/v1/admin/kinds/:id/jira', { onRequest: requirePermission('manage_jira') }, async (req, reply) => {
     const { issue, created } = await service.createForKind(req.params.id, actorOf(req));
     return reply.code(created ? 201 : 200).send({ ...issue, created });
   });

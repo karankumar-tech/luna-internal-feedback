@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { AppError } from '../../lib/errors.js';
 import { actorOf } from '../../lib/actor.js';
+import { requirePermission } from '../../plugins/auth.js';
 import { buildFeatureSchema, buildSchemaResponse, etagFor } from '../../schema/buildSchemaResponse.js';
 import { zodIssues } from '../../schema/buildValidator.js';
 import { isValidCalendarDate, todayInZone } from '../../lib/time.js';
@@ -143,7 +144,7 @@ export function registerFeedbackRoutes(
   app.get<{ Params: { id: string } }>('/v1/feedback/:id', async (req) => service.get(req.params.id));
 
   // ---- mark one submission as test / real, or move it through triage (admin) ----
-  app.patch<{ Params: { id: string } }>('/v1/admin/submissions/:id', async (req) => {
+  app.patch<{ Params: { id: string } }>('/v1/admin/submissions/:id', { onRequest: requirePermission('manage_triage') }, async (req) => {
     const parsed = z.object({
       is_test: z.boolean().optional(),
       status: z.enum(SUBMISSION_STATUSES).optional(),
@@ -163,7 +164,7 @@ export function registerFeedbackRoutes(
   app.get('/v1/admin/test-data', async () => ({ count: await service.countTestData() }));
 
   /** Deletes only rows flagged is_test. Requires `?confirm=delete` so a stray call cannot wipe anything. */
-  app.delete('/v1/admin/test-data', async (req) => {
+  app.delete('/v1/admin/test-data', { onRequest: requirePermission('delete_test_data') }, async (req) => {
     const q = req.query as { confirm?: string };
     if (q.confirm !== 'delete') throw AppError.validation([{ path: 'confirm', message: 'pass ?confirm=delete to delete all test submissions' }]);
     return { deleted: await service.deleteTestData() };

@@ -40,6 +40,13 @@ const EnvSchema = z.object({
   JIRA_PROJECT_KEY: z.string().min(1).max(20).optional().describe('e.g. LUNA'),
   JIRA_ISSUE_TYPE: z.string().default('Bug'),
   JIRA_LABELS: z.string().default('luna-feedback').describe('Comma-separated labels added to every created issue'),
+  // --- Dashboard accounts (phase 2) ---
+  /** Days before a password must be changed. 0 disables expiry. */
+  PASSWORD_MAX_AGE_DAYS: z.coerce.number().int().nonnegative().default(30),
+  /** How many previous passwords may not be reused. */
+  PASSWORD_HISTORY_DEPTH: z.coerce.number().int().min(0).max(10).default(5),
+  LOGIN_MAX_ATTEMPTS: z.coerce.number().int().min(3).max(50).default(8),
+  LOGIN_LOCK_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
   CATEGORY_CACHE_TTL_MS: z.coerce.number().int().nonnegative().default(30_000),
 });
 

@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Luna Feedback · People</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&display=swap">
+<style>
+  :root {
+    --black: #000000; --white: #FFFFFF;
+    --gray-dark: #737373; --gray-mid: #9E9E9E; --gray-light: #D9D9D9;
+    --bg: #F0EFEA; --brief: #E8E6E0; --border-warm: #E2E0D9; --border-ghost: #F0F0F0;
+    --hero: #1A1A18; --hero-muted: #8A887F;
+    --yellow: #F5F85D; --yellow-50: #FEFFD6; --yellow-700: #545500;
+    --blue: #2E64E4; --blue-50: #EAF0FD; --orange: #EF7432; --orange-50: #FFF3EC; --magenta: #E0237A; --magenta-50: #FFE8F4;
+    --ok: #00C37A; --ok-bg: #E6F8F0; --crit: #FF3B3B; --crit-bg: #FFECEC; --warn: #F0B429;
+    --sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --r-xs: 2px; --r-s: 4px; --r-m: 6px; --r-l: 8px; --r-xl: 12px;
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: light; }
+  body { margin: 0; background: var(--bg); color: var(--black); font-family: var(--sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased; }
+  button, input, select { font: inherit; color: inherit; }
+  a { color: inherit; }
+  .mono { font-family: var(--mono); }
+  .overline { font-family: var(--mono); font-size: 11px; line-height: 16px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); }
+  h1 { font-size: 24px; line-height: 28px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 16px; line-height: 20px; font-weight: 600; margin: 0; }
+  .muted { color: var(--gray-dark); } .tertiary { color: var(--gray-mid); }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 0 16px 64px; }
+
+  .top { background: var(--white); border-bottom: 1px solid var(--gray-light); }
+  .top-inner { max-width: 1100px; margin: 0 auto; padding: 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: baseline; gap: 12px; }
+  .brand .dot { width: 10px; height: 10px; background: var(--yellow); border: 1px solid var(--black); border-radius: var(--r-xs); display: inline-block; transform: translateY(-1px); }
+  .status { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--gray-dark); flex-wrap: wrap; }
+  .crumb { font-size: 13px; color: var(--gray-dark); text-decoration: none; } .crumb:hover { color: var(--black); }
+
+  .btn { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-l); padding: 7px 12px; line-height: 18px; cursor: pointer; font-weight: 500; text-decoration: none; display: inline-block; }
+  .btn:hover { border-color: var(--gray-mid); }
+  .btn.primary { background: var(--black); color: var(--white); border-color: var(--black); }
+  .btn.small { padding: 4px 10px; font-size: 12px; line-height: 16px; border-radius: var(--r-s); }
+  .btn.ghost { border-color: transparent; background: transparent; } .btn.ghost:hover { background: var(--brief); }
+  .btn.danger { border-color: #FFB3B3; color: #8A1010; } .btn.danger:hover { background: var(--crit-bg); }
+  .btn[disabled] { opacity: .5; cursor: default; }
+  .btn:focus-visible, input:focus-visible, select:focus-visible { outline: none; border-color: var(--black); box-shadow: 0 0 0 1px var(--black); }
+  input[type=text], input[type=email], input[type=password], select { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-m); padding: 7px 10px; line-height: 18px; min-width: 0; width: 100%; }
+  select { appearance: none; -webkit-appearance: none; padding-right: 28px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5l3.5 3.5 3.5-3.5' fill='none' stroke='%23737373' stroke-width='1.2'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; }
+  label.field { display: flex; flex-direction: column; gap: 4px; }
+  label.field > span { font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); }
+
+  .card { background: var(--white); border: 1px solid var(--gray-light); border-radius: var(--r-xl); padding: 16px 20px; }
+  .card + .card { margin-top: 12px; }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .card-head .sub { font-size: 12px; line-height: 18px; color: var(--gray-dark); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 18px; }
+  th { text-align: left; font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); font-weight: 400; padding: 8px 10px; border-bottom: 1px solid var(--gray-light); white-space: nowrap; }
+  td { padding: 10px; border-bottom: 1px solid var(--border-ghost); vertical-align: middle; }
+  td.code { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+  td.actions { text-align: right; white-space: nowrap; }
+  td.actions .btn + .btn { margin-left: 6px; }
+  tbody tr:hover td { background: #FAFAF7; }
+  tr.disabled td { opacity: .55; }
+
+  .role { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 7px; border-radius: var(--r-xs); border: 1px solid; }
+  .role.admin { border-color: var(--magenta); background: var(--magenta-50); color: #8A0044; }
+  .role.qc { border-color: var(--blue); background: var(--blue-50); color: #0C3AAA; }
+  .role.developer { border-color: var(--orange); background: var(--orange-50); color: #A03600; }
+  .role.business { border-color: var(--gray-light); background: var(--brief); color: var(--gray-dark); }
+  .flag { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; padding: 1px 6px; border-radius: var(--r-xs); }
+  .flag.warn { background: var(--yellow-50); color: var(--yellow-700); border: 1px solid var(--yellow-700); }
+  .flag.off { background: var(--crit-bg); color: #8A1010; border: 1px solid #FFB3B3; }
+
+  .newgrid { display: grid; grid-template-columns: 2fr 1.5fr 1fr auto; gap: 10px; align-items: end; }
+  .rules { margin: 8px 0 0; padding-left: 18px; font-size: 12px; color: var(--gray-dark); }
+  .secret { margin-top: 12px; border: 1px solid var(--yellow-700); background: var(--yellow-50); border-radius: var(--r-l); padding: 12px 14px; }
+  .secret .val { font-family: var(--mono); font-size: 16px; letter-spacing: .04em; user-select: all; word-break: break-all; margin: 6px 0; }
+  .empty { padding: 28px 0; text-align: center; color: var(--gray-mid); font-size: 13px; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--black); color: var(--white); padding: 8px 14px; border-radius: var(--r-l); font-size: 13px; z-index: 40; display: none; }
+  .log { font-family: var(--mono); font-size: 11px; line-height: 18px; color: var(--gray-dark); max-height: 220px; overflow-y: auto; }
+  .log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gate { max-width: 460px; margin: 48px auto 0; }
+  @media (max-width: 800px) { .newgrid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-inner">
+    <div class="brand">
+      <span class="dot" aria-hidden="true"></span>
+      <div>
+        <a class="crumb" href="/dashboard">← Dashboard</a>
+        <h1>People</h1>
+      </div>
+    </div>
+    <div class="status">
+      <span id="whoami" class="tertiary"></span>
+      <a class="btn small" href="/dashboard/analytics">Analytics →</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="card gate" id="denied" hidden>
+    <div class="overline">Access</div>
+    <h2 style="margin-top:4px">Admins only</h2>
+    <p class="muted">Managing people is limited to the admin role. Ask an admin if you need an account changed.</p>
+    <a class="btn" href="/dashboard">Back to the dashboard</a>
+  </section>
+
+  <div id="page" hidden>
+    <section class="card">
+      <div class="card-head">
+        <div><h2>Add someone</h2><div class="sub">They sign in with this email. Leave the password empty and one is generated for you to pass on.</div></div>
+      </div>
+      <div class="newgrid">
+        <label class="field"><span>Email</span><input type="email" id="nEmail" placeholder="name@gonoise.com" autocomplete="off"></label>
+        <label class="field"><span>Name</span><input type="text" id="nName" placeholder="optional" autocomplete="off"></label>
+        <label class="field"><span>Role</span>
+          <select id="nRole">
+            <option value="business">Business</option>
+            <option value="developer">Developer</option>
+            <option value="qc">QC</option>
+            <option value="admin">Admin</option>
+          </select>
+        </label>
+        <button class="btn primary" id="btnAdd" type="button">Add</button>
+      </div>
+      <div id="roleHelp" class="sub muted" style="margin-top:10px;font-size:12px"></div>
+      <div class="secret" id="secretBox" hidden>
+        <div class="overline">One-time password for <span id="secretWho"></span></div>
+        <div class="val" id="secretVal"></div>
+        <div class="tertiary" style="font-size:12px">Copy it now — it is not stored anywhere and cannot be shown again. They will be asked to change it at first sign-in.</div>
+        <button class="btn small" id="btnCopySecret" type="button" style="margin-top:8px">Copy</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <div><h2>Who can sign in</h2><div class="sub" id="peopleSub"></div></div>
+      </div>
+      <div id="tbl"><div class="empty">Loading…</div></div>
+      <ul class="rules" id="rules"></ul>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><div><h2>Recent account activity</h2><div class="sub">Sign-ins, password changes and role changes</div></div></div>
+      <div class="log" id="log"></div>
+    </section>
+  </div>
+</main>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; };
+  const state = { me: null, users: [], rules: [] };
+  let toastT; const toast = (m) => { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', 3200); };
+
+  const ROLE_HELP = {
+    admin: 'Everything, including people.',
+    qc: 'Jira, triage and closing issues, issue kinds, diagnosis. Not people.',
+    developer: 'Issue kinds, diagnosis and review. Not Jira, triage or people.',
+    business: 'Read-only across the dashboard.',
+  };
+
+  async function api(path, opts = {}) {
+    const headers = Object.assign({ 'x-requested-with': 'dashboard' }, opts.headers || {});
+    if (opts.body) headers['content-type'] = 'application/json';
+    const r = await fetch(path, Object.assign({ credentials: 'same-origin' }, opts, { headers }));
+    const text = await r.text(); let body = null; try { body = text ? JSON.parse(text) : null; } catch {}
+    if (!r.ok) { const e = new Error((body && body.error && body.error.message) || `HTTP ${r.status}`); e.status = r.status; e.body = body; throw e; }
+    return body;
+  }
+  const stamp = (iso) => { if (!iso) return '—'; return new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso)); };
+
+  function renderRoleHelp() {
+    $('roleHelp').textContent = Object.entries(ROLE_HELP).map(([k, v]) => `${k}: ${v}`).join('   ·   ');
+  }
+
+  function renderTable() {
+    const host = $('tbl'); host.replaceChildren();
+    if (!state.users.length) { host.appendChild(el('div', 'empty', 'Nobody yet.')); return; }
+    $('peopleSub').textContent = `${state.users.length} account${state.users.length === 1 ? '' : 's'}`;
+    const t = el('table'); const head = el('tr');
+    for (const h of ['Email', 'Name', 'Role', 'Password', 'Last sign-in', '']) head.appendChild(el('th', null, h));
+    t.appendChild(head);
+    const body = document.createElement('tbody');
+    for (const u of state.users) {
+      const tr = el('tr'); if (u.is_disabled) tr.className = 'disabled';
+      tr.appendChild(el('td', 'code', u.email));
+      tr.appendChild(el('td', null, u.name || '—'));
+
+      const roleCell = el('td');
+      const sel = document.createElement('select');
+      for (const r of ['business', 'developer', 'qc', 'admin']) { const o = el('option', null, r); o.value = r; sel.appendChild(o); }
+      sel.value = u.role; sel.style.width = '130px';
+      sel.addEventListener('change', () => patch(u, { role: sel.value }, sel, u.role));
+      roleCell.appendChild(sel);
+      tr.appendChild(roleCell);
+
+      const pw = el('td');
+      pw.appendChild(el('span', null, `${u.password_age_days}d old`));
+      if (u.must_change) { pw.appendChild(document.createTextNode(' ')); pw.appendChild(el('span', 'flag warn', 'must change')); }
+      else if (u.password_expired) { pw.appendChild(document.createTextNode(' ')); pw.appendChild(el('span', 'flag warn', 'expired')); }
+      if (u.is_disabled) { pw.appendChild(document.createTextNode(' ')); pw.appendChild(el('span', 'flag off', 'disabled')); }
+      tr.appendChild(pw);
+
+      tr.appendChild(el('td', 'code', stamp(u.last_login_at)));
+
+      const act = el('td', 'actions');
+      const reset = el('button', 'btn small', 'New password'); reset.type = 'button';
+      reset.addEventListener('click', () => resetPassword(u));
+      act.appendChild(reset);
+
+      const toggle = el('button', 'btn small', u.is_disabled ? 'Enable' : 'Disable'); toggle.type = 'button';
+      toggle.addEventListener('click', () => patch(u, { is_disabled: !u.is_disabled }, toggle));
+      act.appendChild(toggle);
+
+      if (u.id !== state.me.id) {
+        const del = el('button', 'btn small danger', 'Remove'); del.type = 'button';
+        del.addEventListener('click', () => remove(u));
+        act.appendChild(del);
+      }
+      tr.appendChild(act);
+      body.appendChild(tr);
+    }
+    t.appendChild(body); host.appendChild(t);
+
+    const rules = $('rules'); rules.replaceChildren();
+    rules.appendChild(el('li', null, 'A password must be: ' + state.rules.join('; ') + '.'));
+    rules.appendChild(el('li', null, 'Everyone is asked to change their password every 30 days, and after an admin issues one.'));
+  }
+
+  async function load() {
+    const { items, rules } = await api('/v1/admin/users');
+    state.users = items; state.rules = rules || [];
+    renderTable();
+    try { const { items: events } = await api('/v1/admin/users/events'); renderLog(events); } catch { /* the log is a nicety */ }
+  }
+
+  function renderLog(events) {
+    const host = $('log'); host.replaceChildren();
+    if (!events.length) { host.appendChild(el('div', null, 'Nothing yet.')); return; }
+    for (const e of events) {
+      host.appendChild(el('div', null, `${stamp(e.created_at)}  ${e.action}  ${e.target || ''}${e.actor && e.actor !== e.target ? '  by ' + e.actor : ''}${e.detail ? '  (' + e.detail + ')' : ''}`));
+    }
+  }
+
+  async function patch(user, body, control, previous) {
+    control.disabled = true;
+    try { await api(`/v1/admin/users/${user.id}`, { method: 'PATCH', body: JSON.stringify(body) }); toast('Saved'); await load(); }
+    catch (err) { if (previous !== undefined) control.value = previous; toast(err.message); }
+    finally { control.disabled = false; }
+  }
+
+  async function resetPassword(user) {
+    if (!confirm(`Issue a new password for ${user.email}? Their current one stops working immediately.`)) return;
+    try {
+      const out = await api(`/v1/admin/users/${user.id}/password`, { method: 'POST', body: JSON.stringify({}) });
+      showSecret(user.email, out.password);
+      await load();
+    } catch (err) { toast(err.message); }
+  }
+
+  async function remove(user) {
+    if (!confirm(`Remove ${user.email}? They lose access immediately.`)) return;
+    try { await api(`/v1/admin/users/${user.id}`, { method: 'DELETE' }); toast('Removed'); await load(); }
+    catch (err) { toast(err.message); }
+  }
+
+  function showSecret(who, password) {
+    $('secretWho').textContent = who;
+    $('secretVal').textContent = password;
+    $('secretBox').hidden = false;
+    $('secretBox').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  $('btnCopySecret').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText($('secretVal').textContent); toast('Copied'); } catch { toast('Copy failed — select it by hand'); }
+  });
+
+  $('btnAdd').addEventListener('click', async () => {
+    const email = $('nEmail').value.trim();
+    if (!email) { toast('An email is required'); return; }
+    const b = $('btnAdd'); b.disabled = true;
+    try {
+      const out = await api('/v1/admin/users', { method: 'POST', body: JSON.stringify({ email, name: $('nName').value.trim() || null, role: $('nRole').value }) });
+      $('nEmail').value = ''; $('nName').value = '';
+      if (out.generated_password) showSecret(out.user.email, out.generated_password);
+      else toast('Added');
+      await load();
+    } catch (err) { toast(err.message); }
+    finally { b.disabled = false; }
+  });
+
+  async function boot() {
+    let me;
+    try { me = await api('/v1/me'); } catch { location.replace('/dashboard?next=' + encodeURIComponent(location.pathname)); return; }
+    state.me = me;
+    $('whoami').textContent = `${me.email || 'shared key'} · ${me.role}`;
+    if (!me.permissions.manage_users) { $('denied').hidden = false; return; }
+    $('page').hidden = false;
+    renderRoleHelp();
+    await load();
+  }
+  boot().catch((err) => toast('Could not load: ' + err.message));
+})();
+</script>
+</body>
+</html>

@@ -28,6 +28,9 @@ import { ChatService } from './modules/chat/chat.service.js';
 import { registerChatRoutes } from './modules/chat/chat.routes.js';
 import { AnalyticsRepo } from './modules/analytics/analytics.repo.js';
 import { registerAnalyticsRoutes } from './modules/analytics/analytics.routes.js';
+import { UsersRepo } from './modules/users/users.repo.js';
+import { UsersService } from './modules/users/users.service.js';
+import { registerUserRoutes } from './modules/users/users.routes.js';
 
 export interface BuildOptions {
   config?: Config;
@@ -126,7 +129,23 @@ export function buildApp(opts: BuildOptions = {}): App {
 
   registerErrorHandler(app);
   const sessionSecret = sessionSecretFrom(config.DASHBOARD_KEY);
-  registerAuth(app, { app: config.APP_API_KEY, admin: config.ADMIN_API_KEY, sessionSecret, cronSecret: config.CRON_SECRET });
+
+  const usersRepo = new UsersRepo(db);
+  const users = new UsersService(usersRepo, {
+    maxAgeDays: config.PASSWORD_MAX_AGE_DAYS,
+    historyDepth: config.PASSWORD_HISTORY_DEPTH,
+    maxFailedAttempts: config.LOGIN_MAX_ATTEMPTS,
+    lockMinutes: config.LOGIN_LOCK_MINUTES,
+  });
+
+  registerAuth(app, { app: config.APP_API_KEY, admin: config.ADMIN_API_KEY, sessionSecret, cronSecret: config.CRON_SECRET }, {
+    actorFor: (id) => users.actorFor(id),
+    passwordEpochFor: async (id) => {
+      const row = await usersRepo.byId(id);
+      return row ? new Date(row.password_set_at).getTime() : null;
+    },
+    anyUsersExist: async () => (await usersRepo.count()) > 0,
+  });
   registerHealthRoutes(app, { db });
   const imagekit = opts.imagekit !== undefined ? opts.imagekit : config.IMAGEKIT_PUB_KEY && config.IMAGEKIT_PRI_KEY
     ? new ImageKitClient({ publicKey: config.IMAGEKIT_PUB_KEY, privateKey: config.IMAGEKIT_PRI_KEY, urlEndpoint: config.IMAGEKIT_URL_ENDPOINT, folder: config.IMAGEKIT_FOLDER })
@@ -137,7 +156,8 @@ export function buildApp(opts: BuildOptions = {}): App {
     service, categories, timeZone: config.APP_TIMEZONE,
     uploads: imagekit ? { publicKey: imagekit.publicKey, urlEndpoint: imagekit.urlEndpoint, folder: imagekit.folder, maxBytes: config.SCREENSHOT_MAX_BYTES, maxCount: config.SCREENSHOT_MAX_COUNT, authParams: () => imagekit.authParams() } : null,
   });
-  registerPageRoutes(app, { dashboardKey: config.DASHBOARD_KEY, sessionSecret, sessionDays: config.DASHBOARD_SESSION_DAYS });
+  registerPageRoutes(app, { dashboardKey: config.DASHBOARD_KEY, sessionSecret, sessionDays: config.DASHBOARD_SESSION_DAYS, users });
+  registerUserRoutes(app, { service: users });
   registerAdminRoutes(app, { categories });
   registerDiagnosisRoutes(app, { service: diagnosis, repo: diagnosisRepo });
   registerKindRoutes(app, { service: kinds, timeZone: config.APP_TIMEZONE });

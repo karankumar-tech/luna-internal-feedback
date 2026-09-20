@@ -25,6 +25,9 @@ const validBody = (over: Record<string, unknown> = {}) => ({
 async function cleanup() {
   await app.db.query(`delete from luna_feedback.submissions where email like $1`, [`%@${TEST_EMAIL_DOMAIN}`]);
   await app.db.query(`delete from luna_feedback.issue_categories where key = $1`, [TEST_CATEGORY]);
+  // Directly, not through the API: deleting the last admin is refused there, by design.
+  await app.db.query(`delete from luna_feedback.dashboard_users where email like $1`, [`%@${TEST_EMAIL_DOMAIN}`]);
+  await app.db.query(`delete from luna_feedback.dashboard_user_events where target like $1 or actor like $1`, [`%@${TEST_EMAIL_DOMAIN}`]);
 }
 
 beforeAll(async () => {
@@ -343,15 +346,34 @@ describe('admin: test data', () => {
 describe('dashboard session', () => {
   const dh = { 'x-requested-with': 'dashboard', 'content-type': 'application/json' };
   let cookie = '';
+  let accountEmail = '';
 
-  it('rejects a wrong key and a missing header', async () => {
-    expect((await app.inject({ method: 'POST', url: '/dashboard/login', headers: dh, payload: { key: 'nope' } })).statusCode).toBe(401);
-    expect((await app.inject({ method: 'POST', url: '/dashboard/login', headers: { 'content-type': 'application/json' }, payload: { key: cfg.DASHBOARD_KEY } })).statusCode).toBe(403);
-    expect((await app.inject({ method: 'GET', url: '/dashboard/session' })).json()).toEqual({ authenticated: false });
+  // An account of its own, so these tests behave the same whether or not the shared
+  // database already has people in it — the key stops working once anyone does.
+  beforeAll(async () => {
+    accountEmail = `session+${run}@${TEST_EMAIL_DOMAIN}`;
+    const created = await app.inject({
+      method: 'POST', url: '/v1/admin/users', headers: adminHeaders,
+      payload: { email: accountEmail, role: 'admin', password: 'session test pw 42' },
+    });
+    expect(created.statusCode).toBe(201);
+  });
+  // No afterAll here: the file's cleanup() removes it with SQL, because the API refuses
+  // to delete the last remaining admin and this is usually it.
+
+  it('rejects a wrong password and a missing header', async () => {
+    expect((await app.inject({ method: 'POST', url: '/dashboard/login', headers: dh, payload: { email: accountEmail, password: 'nope-nope-1' } })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'POST', url: '/dashboard/login', headers: { 'content-type': 'application/json' }, payload: { email: accountEmail, password: 'session test pw 42' } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: '/dashboard/session' })).json()).toMatchObject({ authenticated: false });
   });
 
-  it('issues an HttpOnly cookie for the right key', async () => {
-    const r = await app.inject({ method: 'POST', url: '/dashboard/login', headers: dh, payload: { key: cfg.DASHBOARD_KEY } });
+  it('refuses the shared key now that an account exists', async () => {
+    const r = await app.inject({ method: 'POST', url: '/dashboard/login', headers: { ...dh, 'x-forwarded-for': '198.51.100.7' }, payload: { key: cfg.DASHBOARD_KEY } });
+    expect(r.statusCode).toBe(403);
+  });
+
+  it('issues an HttpOnly cookie for the right password', async () => {
+    const r = await app.inject({ method: 'POST', url: '/dashboard/login', headers: dh, payload: { email: accountEmail, password: 'session test pw 42' } });
     expect(r.statusCode).toBe(200);
     const sc = String(r.headers['set-cookie']);
     expect(sc).toMatch(/^luna_dash=/);
@@ -360,6 +382,7 @@ describe('dashboard session', () => {
     cookie = sc.split(';')[0]!;
     const s = await app.inject({ method: 'GET', url: '/dashboard/session', headers: { cookie } });
     expect(s.json().authenticated).toBe(true);
+    expect(s.json().user.email).toBe(accountEmail);
     expect(new Date(s.json().expires_at).getTime()).toBeGreaterThan(Date.now() + 29 * 86_400_000);
   });
 

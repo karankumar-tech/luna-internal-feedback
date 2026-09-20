@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { AppError } from '../../lib/errors.js';
 import { actorOf } from '../../lib/actor.js';
+import { requirePermission } from '../../plugins/auth.js';
 import { isValidCalendarDate, todayInZone } from '../../lib/time.js';
 import { zodIssues } from '../../schema/buildValidator.js';
 import { CommonQuery } from '../feedback/feedback.routes.js';
@@ -56,14 +57,14 @@ export function registerKindRoutes(app: FastifyInstance, deps: { service: KindsS
     return service.detail(req.params.id, filters);
   });
 
-  app.post('/v1/admin/kinds', async (req, reply) => {
+  app.post('/v1/admin/kinds', { onRequest: requirePermission('manage_kinds') }, async (req, reply) => {
     const parsed = KindBody.safeParse(req.body);
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
     const kind = await service.create(parsed.data, actorOf(req));
     return reply.code(201).send(kind);
   });
 
-  app.patch<{ Params: { id: string } }>('/v1/admin/kinds/:id', async (req) => {
+  app.patch<{ Params: { id: string } }>('/v1/admin/kinds/:id', { onRequest: requirePermission('manage_kinds') }, async (req) => {
     const parsed = PatchBody.safeParse(req.body);
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
     const { key: _keyIsImmutable, ...patch } = parsed.data;
@@ -80,7 +81,7 @@ export function registerKindRoutes(app: FastifyInstance, deps: { service: KindsS
     items: await service.forSubmission(req.params.id),
   }));
 
-  app.post<{ Params: { id: string } }>('/v1/admin/submissions/:id/kinds', async (req) => {
+  app.post<{ Params: { id: string } }>('/v1/admin/submissions/:id/kinds', { onRequest: requirePermission('manage_kinds') }, async (req) => {
     const parsed = z.object({
       kind_id: z.string().uuid().optional(),
       /** Create-and-link in one step, for "this is a new kind of issue" from the ticket page. */
@@ -95,7 +96,7 @@ export function registerKindRoutes(app: FastifyInstance, deps: { service: KindsS
     return { items: await service.link(req.params.id, kindId, 'manual', null, by) };
   });
 
-  app.delete<{ Params: { id: string; kindId: string } }>('/v1/admin/submissions/:id/kinds/:kindId', async (req) => ({
+  app.delete<{ Params: { id: string; kindId: string } }>('/v1/admin/submissions/:id/kinds/:kindId', { onRequest: requirePermission('manage_kinds') }, async (req) => ({
     items: await service.unlink(req.params.id, req.params.kindId),
   }));
 }

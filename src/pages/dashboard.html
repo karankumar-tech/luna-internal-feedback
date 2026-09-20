@@ -78,9 +78,10 @@
   /* ---- key gate ---- */
   #gate { max-width: 460px; margin: 48px auto 0; }
   #gate p { margin: 4px 0 16px; color: var(--gray-dark); }
-  #gate form { display: flex; gap: 8px; }
-  #gate input { flex: 1; font-family: var(--mono); font-size: 13px; }
+  #gate form { display: flex; gap: 8px; flex-wrap: wrap; }
+  #gate input { flex: 1 1 180px; font-family: var(--mono); font-size: 13px; min-width: 0; }
   #gate .err { margin-top: 10px; font-size: 12px; line-height: 18px; color: #8A1010; display: none; }
+  #gate .rules { margin: 10px 0 0; padding-left: 18px; font-size: 12px; line-height: 18px; color: var(--gray-dark); }
 
   /* ---- filters ---- */
   .filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; margin: 20px 0 16px; }
@@ -127,6 +128,11 @@
   .tip .r i { display: inline-block; width: 10px; height: 2px; vertical-align: 3px; margin-right: 6px; border-radius: 1px; }
 
   .loading { opacity: .45; transition: opacity .15s; pointer-events: none; }
+
+  /* Role-driven read-only: the panels a role cannot act on are hidden rather than
+     shown-and-rejected. The server enforces the same rules regardless. */
+  body.ro-categories #manage { display: none; }
+  body.ro-testdata #btnDeleteTest { display: none; }
 
   /* ---- table ---- */
   .tbl-wrap { overflow-x: auto; margin: 0 -20px; padding: 0 20px; }
@@ -224,9 +230,11 @@
       <span id="rangeLabel" class="tertiary"></span>
       <span id="freshness" class="tertiary" title="When this data was last fetched from the server"></span>
       <button class="btn small" id="btnRefresh" type="button" title="Reload data without leaving the page"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px;margin-right:5px"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3h-3"/></svg>Refresh</button>
+      <span id="whoami" class="tertiary" hidden></span>
       <a class="btn small" href="/dashboard/analytics" style="text-decoration:none">Analytics →</a>
       <a class="btn small" href="/dashboard/kinds" style="text-decoration:none">Issue kinds →</a>
       <a class="btn small" href="/dashboard/diagnosis" style="text-decoration:none">Diagnosis →</a>
+      <a class="btn small" href="/dashboard/users" id="navUsers" style="text-decoration:none" hidden>People →</a>
       <button class="btn small ghost" id="btnKey" type="button">Sign out</button>
     </div>
   </div>
@@ -236,12 +244,44 @@
 
   <section id="gate" class="card" hidden>
     <div class="overline">Access</div>
-    <h2 style="margin-top:4px">Enter the dashboard key</h2>
-    <p>Ask the backend owner for the key. You'll stay signed in on this browser for 30 days; the key itself is never stored here.</p>
-    <form id="gateForm">
-      <input id="gateInput" type="password" placeholder="dashboard key" autocomplete="current-password" spellcheck="false" required>
-      <button class="btn primary" type="submit">Sign in</button>
-    </form>
+
+    <!-- normal sign-in -->
+    <div id="gateSignIn">
+      <h2 style="margin-top:4px">Sign in</h2>
+      <p>Use the email and password an admin gave you. You'll stay signed in on this browser for 30 days.</p>
+      <form id="gateForm">
+        <input id="gateEmail" type="email" placeholder="you@gonoise.com" autocomplete="username" spellcheck="false" required>
+        <input id="gateInput" type="password" placeholder="password" autocomplete="current-password" spellcheck="false" required>
+        <button class="btn primary" type="submit">Sign in</button>
+      </form>
+    </div>
+
+    <!-- first run: no accounts exist yet -->
+    <div id="gateBootstrap" hidden>
+      <h2 style="margin-top:4px">Create the first admin</h2>
+      <p>Nobody has an account yet. Use the dashboard key once to create the first admin; after that, sign-in is by email and password only.</p>
+      <form id="bootForm">
+        <input id="bootKey" type="password" placeholder="dashboard key" autocomplete="off" spellcheck="false" required>
+        <input id="bootEmail" type="email" placeholder="your email" autocomplete="username" spellcheck="false" required>
+        <input id="bootName" type="text" placeholder="your name (optional)" autocomplete="name">
+        <input id="bootPassword" type="password" placeholder="choose a password" autocomplete="new-password" required>
+        <button class="btn primary" type="submit">Create admin</button>
+      </form>
+      <button class="btn ghost small" id="btnHaveAccount" type="button" style="margin-top:10px">I already have an account</button>
+    </div>
+
+    <!-- forced rotation -->
+    <div id="gateChange" hidden>
+      <h2 style="margin-top:4px">Choose a new password</h2>
+      <p id="changeWhy"></p>
+      <form id="changeForm">
+        <input id="changeCurrent" type="password" placeholder="current password" autocomplete="current-password" required>
+        <input id="changeNew" type="password" placeholder="new password" autocomplete="new-password" required>
+        <button class="btn primary" type="submit">Save and continue</button>
+      </form>
+      <ul class="rules" id="changeRules"></ul>
+    </div>
+
     <div class="err" id="gateErr"></div>
   </section>
 
@@ -454,7 +494,7 @@
   'use strict';
   const $ = (id) => document.getElementById(id);
   const OK = '#00C37A', CRIT = '#FF3B3B', BLUE = '#2E64E4';
-  const state = { schema: null, features: [], catsByFeature: {}, filters: null, stats: null, rows: [], cursor: null, admin: null };
+  const state = { schema: null, features: [], catsByFeature: {}, filters: null, stats: null, rows: [], cursor: null, admin: null, me: null };
 
   // ---------- helpers ----------
   const istToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -481,26 +521,106 @@
     return body;
   }
 
-  // ---------- key gate ----------
-  function showGate(msg) {
+  /** Shows who is signed in and hides controls their role cannot use. */
+  function applyIdentity() {
+    const me = state.me;
+    if (!me) return;
+    $('whoami').hidden = false;
+    $('whoami').textContent = me.email ? `${me.email} · ${me.role}` : 'shared key · admin';
+    $('navUsers').hidden = !me.permissions?.manage_users;
+    // Read-only roles keep the whole dashboard, minus the buttons that change things.
+    document.body.classList.toggle('ro-triage', !me.permissions?.manage_triage);
+    document.body.classList.toggle('ro-categories', !me.permissions?.manage_categories);
+    document.body.classList.toggle('ro-testdata', !me.permissions?.delete_test_data);
+  }
+
+  // ---------- sign-in gate ----------
+  /** Which of the three panels the gate shows: sign in, create the first admin, or rotate. */
+  function showGate(msg, mode = 'signin') {
     $('app').hidden = true; $('gate').hidden = false;
+    $('gateSignIn').hidden = mode !== 'signin';
+    $('gateBootstrap').hidden = mode !== 'bootstrap';
+    $('gateChange').hidden = mode !== 'change';
     $('gateErr').style.display = msg ? 'block' : 'none'; $('gateErr').textContent = msg || '';
     $('conn').className = 'pill off'; $('conn').textContent = 'not connected';
     $('btnKey').hidden = true; $('rangeLabel').textContent = '';
-    setTimeout(() => $('gateInput').focus(), 0);
+    const first = { signin: 'gateEmail', bootstrap: 'bootKey', change: 'changeCurrent' }[mode];
+    setTimeout(() => $(first)?.focus(), 0);
   }
+
+  const signInError = (err) =>
+    err.status === 401 || err.status === 403 || err.status === 429 ? err.message
+      : err.status === 422 ? (err.body?.error?.issues?.[0]?.message || err.message)
+      : 'Could not reach the API: ' + err.message;
+
   $('gateForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const k = $('gateInput').value.trim(); if (!k) return;
+    const email = $('gateEmail').value.trim();
+    const password = $('gateInput').value;
+    if (!email || !password) return;
     const btn = e.submitter; if (btn) btn.disabled = true;
-    try { await api('/dashboard/login', { method: 'POST', body: JSON.stringify({ key: k }) }); $('gateInput').value = ''; await boot(); }
-    catch (err) { showGate(err.status === 401 ? 'That key was not accepted. Check it and try again.' : err.status === 429 ? err.message : 'Could not reach the API: ' + err.message); }
+    try {
+      const out = await api('/dashboard/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+      $('gateInput').value = '';
+      if (out.must_change_password) { promptChange(out.reason); return; }
+      await boot();
+    } catch (err) { showGate(signInError(err)); }
     finally { if (btn) btn.disabled = false; }
   });
-  $('btnKey').addEventListener('click', async () => { try { await api('/dashboard/logout', { method: 'POST' }); } catch {} showGate(''); });
+
+  $('bootForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = e.submitter; if (btn) btn.disabled = true;
+    try {
+      await api('/dashboard/bootstrap', { method: 'POST', body: JSON.stringify({
+        key: $('bootKey').value.trim(), email: $('bootEmail').value.trim(),
+        name: $('bootName').value.trim() || undefined, password: $('bootPassword').value,
+      }) });
+      $('bootKey').value = ''; $('bootPassword').value = '';
+      await boot();
+    } catch (err) { showGate(signInError(err), 'bootstrap'); }
+    finally { if (btn) btn.disabled = false; }
+  });
+  $('btnHaveAccount').addEventListener('click', () => showGate('', 'signin'));
+
+  async function promptChange(reason) {
+    $('changeWhy').textContent = reason === 'expired'
+      ? 'Your password is more than 30 days old. Choose a new one to carry on.'
+      : 'An admin issued this password. Choose your own before continuing.';
+    try {
+      const me = await api('/v1/me');
+      const rules = $('changeRules'); rules.replaceChildren();
+      for (const r of me.password_rules || []) rules.appendChild(el('li', null, r));
+    } catch { /* the rules list is a nicety; the server enforces them either way */ }
+    showGate('', 'change');
+  }
+
+  $('changeForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = e.submitter; if (btn) btn.disabled = true;
+    try {
+      await api('/v1/me/password', { method: 'POST', body: JSON.stringify({
+        current_password: $('changeCurrent').value, new_password: $('changeNew').value,
+      }) });
+      $('changeCurrent').value = ''; $('changeNew').value = '';
+      await boot();
+    } catch (err) {
+      const issues = err.body?.error?.issues?.map((i) => i.message).join('; ');
+      showGate(issues || err.message, 'change');
+    } finally { if (btn) btn.disabled = false; }
+  });
+
+  $('btnKey').addEventListener('click', async () => { try { await api('/dashboard/logout', { method: 'POST' }); } catch {} state.me = null; showGate('', 'signin'); });
 
   // ---------- boot ----------
   async function boot() {
+    // Identity first: a forced rotation must block the dashboard, not merely warn on it.
+    try {
+      state.me = await api('/v1/me');
+      if (state.me.password?.must_change) { promptChange(state.me.password.reason); return; }
+    } catch (err) { if (err.status === 401) { showGate('Your session expired. Sign in again.'); return; } }
+    applyIdentity();
+
     state.schema = await api('/v1/feedback/schema');
     state.features = state.schema.features;
     state.catsByFeature = {};
@@ -907,7 +1027,11 @@
 
   // ---------- start ----------
   api('/dashboard/session')
-    .then((s) => { if (s.authenticated) return boot(); showGate(''); })
+    .then((s) => {
+      if (s.authenticated) return boot();
+      // No accounts yet: offer to create the first admin rather than a sign-in nobody can pass.
+      showGate('', s.needs_bootstrap ? 'bootstrap' : 'signin');
+    })
     .catch((err) => showGate(err.status === 401 ? 'Your session expired. Sign in again.' : 'Could not reach the API: ' + err.message));
 })();
 </script>
