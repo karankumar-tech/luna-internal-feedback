@@ -698,6 +698,7 @@ Optional `client` object on POST, identical for every feature. Send it on every 
 
 | key | example | source |
 |---|---|---|
+| `environment` | `"stage"` · `"uat"` · `"production"` | which backend the build points at; case-insensitive, **defaults to `stage`** when omitted |
 | `platform` | `"ios"` · `"android"` | fixed; case-insensitive on input, stored lower-case |
 | `app_version` | `"2.4.0"` | `CFBundleShortVersionString` |
 | `build_number` | `"512"` | `CFBundleVersion` |
@@ -706,6 +707,20 @@ Optional `client` object on POST, identical for every feature. Send it on every 
 | `os_version` | `"iOS 19.1"` | `UIDevice.current.systemVersion` |
 | `device_id` | `"3F2B0C7A-…"` | `identifierForVendor` |
 | `session_id` | `"7c9e6679-…"` | app session UUID |
+
+### `environment` — what to send
+
+Every report is tagged with the environment it came from so stage noise never gets mixed
+into what UAT or production users report. Send the environment the build actually talks to:
+
+```jsonc
+"client": { "environment": "stage", "platform": "ios", "app_version": "2.4.0" }
+```
+
+- Omit it and the server records `stage`. Existing builds therefore keep working unchanged.
+- Anything outside the three values is rejected with `422` on `client.environment`, so this
+  is a fixed list, not free text — read it from `client_context_fields` rather than hard-coding.
+- Derive it from the build configuration, not from a user setting.
 
 ---
 
@@ -717,6 +732,7 @@ Optional `client` object on POST, identical for every feature. Send it on every 
 | `NOT_FOUND` | 404 | route, feature, or id unknown | refetch schema if it was a feature |
 | `VALIDATION_FAILED` | 400 / 422 | malformed JSON, or field errors in `issues` | map `issues[].path` to fields; do not retry unchanged |
 | `CONFLICT` | 409 | admin duplicate | n/a for app |
+| `UPSTREAM_ERROR` | 502 | a service the dashboard depends on (Jira, the model, the logging API) failed | dashboard-only; never returned to the app |
 | `INTERNAL` | 500 | server fault | retry with the same `Idempotency-Key` |
 
 ---

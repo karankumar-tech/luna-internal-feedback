@@ -10,9 +10,16 @@ anything in `public`. See [PLAN.md](PLAN.md) for the full design.
 | page | URL | access |
 |---|---|---|
 | API reference for front-end teams | `/docs` | public |
-| Review dashboard (filters, charts, table, category management) | `/dashboard` | `DASHBOARD_KEY`, 30-day session cookie |
+| Review dashboard (filters, charts, table, category management) | `/dashboard` | signed-in account |
+| Analytics (what kind of issues, where the fault sits) | `/dashboard/analytics` | signed-in account |
+| Issue kinds (recurring problems and how often) | `/dashboard/kinds` | signed-in account |
+| Diagnosis overview | `/dashboard/diagnosis` | signed-in account |
+| People (accounts, roles, passwords) | `/dashboard/users` | admin |
 
-Both pages are plain HTML in `src/pages/` and are embedded into the server bundle by
+Reports are tagged `stage`, `uat` or `production`, defaulting to `stage`, and every screen
+filters by it.
+
+The pages are plain HTML in `src/pages/` and are embedded into the server bundle by
 `npm run pages:embed` (runs automatically before dev/build/test; the generated
 `src/pages/generated.ts` is committed). Design tokens follow
 [docs/design/luna-design-system.html](docs/design/luna-design-system.html).
@@ -41,11 +48,39 @@ npm run dev               # http://localhost:3000
 | header | grants |
 |---|---|
 | `x-api-key: <APP_API_KEY>` | app routes under `/v1/feedback` |
-| `x-admin-key: <ADMIN_API_KEY>` | admin routes under `/v1/admin`, plus everything the app key can do |
-| dashboard session cookie + `x-requested-with: dashboard` | same as the admin key; issued by `POST /dashboard/login` with `DASHBOARD_KEY` |
+| `x-admin-key: <ADMIN_API_KEY>` | everything, for automation and scripts. Not tied to a person |
+| dashboard session cookie + `x-requested-with: dashboard` | whatever the signed-in account's role allows |
 
-`GET /healthz`, `/docs`, and `/dashboard` are open. The dashboard session is a signed,
-HttpOnly cookie valid for `DASHBOARD_SESSION_DAYS`; rotating `DASHBOARD_KEY` signs everyone out.
+`GET /healthz`, `/docs`, and the dashboard pages are open; the data behind them is not.
+The session is a signed, HttpOnly cookie valid for `DASHBOARD_SESSION_DAYS`.
+
+### People and roles
+
+Dashboard sign-in is by email and password. The first time a deployment runs, nobody has an
+account, so the sign-in page offers to create the first admin — that one form needs
+`DASHBOARD_KEY` as proof of access. **Once any account exists, the shared key stops working
+as a login**, and people are added from `/dashboard/users`.
+
+| role | can |
+|---|---|
+| `admin` | everything, including adding and removing people |
+| `qc` | Jira, triage and issue status, issue kinds, diagnosis and review |
+| `developer` | issue kinds, diagnosis and review. No Jira, triage or people |
+| `business` | read-only across the dashboard |
+
+The permission table lives in [`src/lib/actor.ts`](src/lib/actor.ts) and is enforced per
+route; the dashboard hides what a role cannot use, and the server refuses it either way.
+
+Passwords are scrypt-hashed with their parameters stored alongside the hash, so the cost can
+be raised later without invalidating anyone. They must be at least 10 characters with a
+letter and a digit, must not contain the account's own name or email, must differ from the
+last `PASSWORD_HISTORY_DEPTH` (5), and expire after `PASSWORD_MAX_AGE_DAYS` (30). An admin can
+issue a password from `/dashboard/users`: it is shown once, never stored in the clear, and the
+recipient must replace it at first sign-in. Changing a password signs out that account's other
+sessions. `LOGIN_MAX_ATTEMPTS` failures lock an account for `LOGIN_LOCK_MINUTES`.
+
+If you are ever locked out entirely, delete the rows in `luna_feedback.dashboard_users` and the
+sign-in page will offer the first-admin form again.
 
 ## Endpoints
 
@@ -144,6 +179,54 @@ returns a structured verdict
   real diagnosis locally (creates and removes an `is_test` submission; `KEEP=1` keeps it).
 
 Design: [docs/PLAN-diagnosis.md](docs/PLAN-diagnosis.md).
+
+### Event catalog
+
+Diagnoses are grounded in the vendor's critical-event sheets. `npm run catalog:build` compiles
+[`reference/luna-critical-events.xlsx`](reference/luna-critical-events.xlsx) into 133 curated
+events and ~900 vendor log-line definitions, written to `catalog.json` (for reading) and
+`catalog.generated.ts` (what the app imports). The build runs automatically before `dev`,
+`build`, `typecheck` and `test`, so the artifacts cannot drift from the workbook.
+
+At diagnosis time the excerpt is scanned for the literal log fragments each entry carries, and
+only the entries that actually matched are injected into the prompt — the model gets the
+relevant handful, not the whole catalog. Verdicts may cite event ids (`FW-01`, `RL-07`,
+`APP-22`); ids that do not exist in the catalog are dropped before anything is stored.
+Browse them at `GET /v1/catalog/events`. To take a new workbook revision, replace the file
+and re-run the build; review the `catalog.json` diff.
+
+### Per-ticket chat
+
+A submission's page carries up to `DIAGNOSIS_CHAT_MAX_MESSAGES` (10) follow-up questions about
+its own diagnosis, stored with the ticket. The model sees that ticket, its verdict, the same log
+excerpt and the matched catalog entries — nothing else. A failed model call does not spend a turn.
+
+## Issue kinds
+
+Tickets group into the recurring problem behind them ("Sleep start recorded hours late"), so the
+question "how much of this is happening?" has an answer. A diagnosis suggests a kind and links it
+automatically, matching against existing kinds by normalised title so synonyms do not multiply;
+anyone can also link or create one by hand from a ticket. `/dashboard/kinds` lists them with
+counts, share, affected testers and a per-day trend.
+
+## Jira
+
+Optional. Set all four of `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` and `JIRA_PROJECT_KEY`
+(plus optional `JIRA_ISSUE_TYPE`, default `Bug`, and `JIRA_LABELS`). Until they are set, every
+Jira action answers **"Jira integration pending"** and nothing else changes.
+
+With them set, one click on a submission files an issue carrying the tester's words, the verdict,
+the evidence lines and a link back to the dashboard (`PUBLIC_BASE_URL`), and stores the key. A
+second click never opens a second ticket. Issue kinds can have their own ticket for the whole
+recurring problem. `POST /v1/admin/jira/check` verifies the credentials without creating anything;
+`POST /v1/admin/jira/refresh-stale` re-reads cached workflow statuses.
+
+## Analytics
+
+`/dashboard/analytics` answers what kind of issues are coming in, over the same filter slice as the
+list so any two numbers can be compared: reports per day, issue kinds by share, reported categories,
+catalog events seen in logs, where the fault sits, environment split, triage state, who is
+reporting, and firmware and app versions. Served by `GET /v1/analytics/overview`.
 
 ## Adding a field or feature
 

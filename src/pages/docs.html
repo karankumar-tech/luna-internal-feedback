@@ -387,7 +387,7 @@ x-api-key: &lt;APP_API_KEY&gt;
     { "key": "device_serial",    "type": "string",       "label": "Ring or band serial number", "required": false, "maxLength": 64,
       "help": "Fill automatically from the connected ring or band, e.g. R2N08250600302. Not typed by the tester. Used to fetch device logs; email is the fallback." }
   ],
-  "client_context_keys": ["platform", "app_version", "build_number", "build_channel", "firmware_version", "os_version", "device_id", "session_id"],
+  "client_context_keys": ["environment", "platform", "app_version", "build_number", "build_channel", "firmware_version", "os_version", "device_id", "session_id"],
   "client_context_fields": [
     { "key": "platform",         "type": "string", "label": "Platform",              "required": false, "options": ["ios", "android"] },
     { "key": "app_version",      "type": "string", "label": "App version",           "required": false, "maxLength": 200 },
@@ -742,6 +742,7 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
   <p>Optional <code>client</code> object on POST, identical for every feature. Send it on every submission: the dashboard filters by platform and slices by app and firmware version, so <code>platform</code>, <code>app_version</code>, and <code>firmware_version</code> are the most valuable. The schema lists these under <code>client_context_fields</code> with their allowed values.</p>
   <div class="tbl"><table>
     <tr><th>key</th><th>example</th><th>source</th></tr>
+    <tr><td><code>environment</code></td><td><code>"stage"</code> · <code>"uat"</code> · <code>"production"</code></td><td>which backend the build points at; case-insensitive, <strong>defaults to <code>stage</code></strong> when omitted</td></tr>
     <tr><td><code>platform</code></td><td><code>"ios"</code> · <code>"android"</code></td><td>fixed; case-insensitive on input, stored lower-case</td></tr>
     <tr><td><code>app_version</code></td><td><code>"2.4.0"</code></td><td><code>CFBundleShortVersionString</code></td></tr>
     <tr><td><code>build_number</code></td><td><code>"512"</code></td><td><code>CFBundleVersion</code></td></tr>
@@ -751,6 +752,10 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
     <tr><td><code>device_id</code></td><td><code>"3F2B0C7A-…"</code></td><td><code>identifierForVendor</code></td></tr>
     <tr><td><code>session_id</code></td><td><code>"7c9e6679-…"</code></td><td>app session UUID</td></tr>
   </table></div>
+  <div class="callout">
+    <p><strong><code>environment</code> — what to send.</strong> Every report is tagged with the environment it came from, so stage noise never gets mixed into what UAT or production users report. Send the environment the build actually talks to, derived from the build configuration rather than a user setting.</p>
+    <p>Omit it and the server records <code>stage</code>, so existing builds keep working unchanged. Anything outside the three values is rejected with <code>422</code> on <code>client.environment</code> — read the list from <code>client_context_fields</code> rather than hard-coding it.</p>
+  </div>
 </section>
 
 <section class="block" id="errors">
