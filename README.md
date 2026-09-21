@@ -56,10 +56,22 @@ The session is a signed, HttpOnly cookie valid for `DASHBOARD_SESSION_DAYS`.
 
 ### People and roles
 
-Dashboard sign-in is by email and password. The first time a deployment runs, nobody has an
-account, so the sign-in page offers to create the first admin — that one form needs
-`DASHBOARD_KEY` as proof of access. **Once any account exists, the shared key stops working
-as a login**, and people are added from `/dashboard/users`.
+Dashboard sign-in is by email and password. The first time a deployment runs no admin account
+exists, so the sign-in page offers to create one — that form needs `DASHBOARD_KEY` as proof of
+access. After that, people are added from `/dashboard/users`.
+
+**Getting back in.** `DASHBOARD_KEY_LOGIN` defaults to `true`, which keeps `DASHBOARD_KEY`
+working as a master key: it signs in as an admin however many accounts exist. Set it to `false`
+once everyone has their own account and the key reverts to bootstrap-only — it then stops
+working as soon as an admin account exists, and starts working again if every admin is ever
+removed or disabled, so a deployment can never become unreachable. Two more ways back:
+
+- `SUPERADMIN_EMAIL` — optional. That address signs in with `DASHBOARD_KEY` as its password and
+  is always an admin. It needs no row in the database, and it names master-key sessions in the
+  account log. A real account with the same email always takes precedence.
+- `npm run users:grant-admin -- someone@nexxbase.com "Their Name"` — from any machine with
+  `SUPABASE_DB_URL`, creates or promotes an admin and prints a one-time password. Works whatever
+  state the accounts are in.
 
 | role | can |
 |---|---|

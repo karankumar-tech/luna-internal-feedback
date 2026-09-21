@@ -41,6 +41,18 @@ const EnvSchema = z.object({
   JIRA_ISSUE_TYPE: z.string().default('Bug'),
   JIRA_LABELS: z.string().default('luna-feedback').describe('Comma-separated labels added to every created issue'),
   // --- Dashboard accounts (phase 2) ---
+  /**
+   * Master key. While true, DASHBOARD_KEY signs in as an admin however many accounts exist —
+   * the way back in when nobody can reach /dashboard/users. Set it to false once everyone has
+   * their own account, and the key reverts to a bootstrap-only credential that stops working
+   * the moment an admin account exists.
+   */
+  DASHBOARD_KEY_LOGIN: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  /**
+   * Optional label for master-key sessions, so the account log names a person rather than
+   * "master key". It also lets that email sign in with DASHBOARD_KEY as its password.
+   */
+  SUPERADMIN_EMAIL: z.string().email().optional(),
   /** Days before a password must be changed. 0 disables expiry. */
   PASSWORD_MAX_AGE_DAYS: z.coerce.number().int().nonnegative().default(30),
   /** How many previous passwords may not be reused. */

@@ -5,8 +5,8 @@ import { PAGES } from '../../pages/generated.js';
 import { AppError } from '../../lib/errors.js';
 import { DASHBOARD_HEADER } from '../../plugins/auth.js';
 import {
-  SESSION_COOKIE, clearedSessionCookie, makeSessionToken, makeUserSessionToken, readCookie, sessionCookie,
-  verifySessionToken, verifyUserSessionToken,
+  SESSION_COOKIE, clearedSessionCookie, makeSessionToken, makeSuperSessionToken, makeUserSessionToken,
+  readCookie, sessionCookie, verifySessionToken, verifySuperSessionToken, verifyUserSessionToken,
 } from '../../plugins/dashboardSession.js';
 import type { UsersService } from '../users/users.service.js';
 
@@ -14,6 +14,8 @@ interface PageDeps {
   dashboardKey: string;
   sessionSecret: string;
   sessionDays: number;
+  /** Master key: while true, DASHBOARD_KEY signs in as an admin however many accounts exist. */
+  keyLogin: boolean;
   /** Absent only in tests that do not exercise accounts. */
   users?: UsersService;
 }
@@ -77,7 +79,8 @@ export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
   app.get('/dashboard/session', async (req) => {
     const token = readCookie(req.headers.cookie, SESSION_COOKIE);
     const needsBootstrap = deps.users ? await deps.users.needsBootstrap() : false;
-    const base = { needs_bootstrap: needsBootstrap, accounts_enabled: !needsBootstrap };
+    // `key_login` tells the sign-in page whether to offer the key at all.
+    const base = { needs_bootstrap: needsBootstrap, accounts_enabled: !needsBootstrap, key_login: deps.keyLogin };
 
     if (token && deps.users) {
       const session = verifyUserSessionToken(deps.sessionSecret, token);
@@ -94,10 +97,17 @@ export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
       }
     }
 
-    // Shared-key session: valid only until the first account exists.
-    const exp = token ? verifySessionToken(deps.sessionSecret, token) : null;
-    if (exp !== null && needsBootstrap) {
-      return { ...base, authenticated: true, expires_at: new Date(exp).toISOString(), user: null, password: { must_change: false, reason: null, age_days: 0 } };
+    // Master-key session: always valid while DASHBOARD_KEY_LOGIN is on, otherwise only until
+    // an admin account exists to take over.
+    const exp = token
+      ? verifySessionToken(deps.sessionSecret, token) ?? verifySuperSessionToken(deps.sessionSecret, token)
+      : null;
+    if (exp !== null && (deps.keyLogin || needsBootstrap)) {
+      return {
+        ...base, authenticated: true, expires_at: new Date(exp).toISOString(),
+        user: { id: null, email: deps.users?.superAdminEmail ?? null, name: 'Master key', role: 'admin' },
+        password: { must_change: false, reason: null, age_days: 0 },
+      };
     }
     return { ...base, authenticated: false };
   });
@@ -111,6 +121,24 @@ export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
 
     if ('email' in parsed.data) {
       if (!deps.users) throw AppError.validation([{ path: 'email', message: 'accounts are not configured on this server' }]);
+
+      // Master key by email: SUPERADMIN_EMAIL with DASHBOARD_KEY as the password. Only when no
+      // real account owns that email, so a genuine password always wins.
+      const byMasterKey = deps.users.isSuperAdmin(parsed.data.email)
+        && safeEqual(parsed.data.password, deps.dashboardKey)
+        && !(await deps.users.hasAccount(parsed.data.email));
+      if (byMasterKey) {
+        const email = parsed.data.email.trim().toLowerCase();
+        await deps.users.logSuperAdminSignIn(email);
+        const { token, expiresAt } = makeSuperSessionToken(deps.sessionSecret, ttlMs);
+        reply.header('set-cookie', sessionCookie(token, deps.sessionDays * 86_400, isSecure(req)));
+        return {
+          authenticated: true, expires_at: new Date(expiresAt).toISOString(),
+          user: { id: null, email, name: 'Master key', role: 'admin' },
+          must_change_password: false, reason: null,
+        };
+      }
+
       let result;
       try {
         result = await deps.users.signIn(parsed.data.email, parsed.data.password);
@@ -127,8 +155,9 @@ export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
       };
     }
 
-    // Key sign-in is a bootstrap path only: once anyone has an account it is refused.
-    if (deps.users && !(await deps.users.needsBootstrap())) {
+    // With the master key off, the key is a bootstrap credential only: once an admin
+    // account exists to take over, it is refused.
+    if (!deps.keyLogin && deps.users && (await deps.users.anyAdminExists())) {
       throw AppError.forbidden('The shared key no longer works. Sign in with your email and password, or ask an admin to add you.');
     }
     if (!safeEqual(parsed.data.key.trim(), deps.dashboardKey)) {
@@ -137,7 +166,11 @@ export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
     }
     const { token, expiresAt } = makeSessionToken(deps.sessionSecret, ttlMs);
     reply.header('set-cookie', sessionCookie(token, deps.sessionDays * 86_400, isSecure(req)));
-    return { authenticated: true, expires_at: new Date(expiresAt).toISOString(), user: null };
+    return {
+      authenticated: true, expires_at: new Date(expiresAt).toISOString(),
+      user: { id: null, email: deps.users?.superAdminEmail ?? null, name: 'Master key', role: 'admin' },
+      must_change_password: false, reason: null,
+    };
   });
 
   /**

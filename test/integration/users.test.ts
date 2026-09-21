@@ -317,26 +317,102 @@ describe('lockout', () => {
   });
 });
 
-describe('the shared key once accounts exist', () => {
+describe('the master key', () => {
   // The brake on password guessing counts failures per IP, and the tests above spend that
-  // budget on purpose. These two are about the key, not the brake, so they come from elsewhere.
+  // budget on purpose. These are about the key, not the brake, so they come from elsewhere.
   const fromElsewhere = { ...dash, 'x-forwarded-for': '203.0.113.9' };
 
-  it('is refused, and says what to do instead', async () => {
-    const r = await app.inject({ method: 'POST', url: '/dashboard/login', headers: fromElsewhere, payload: { key: cfg.DASHBOARD_KEY } });
-    expect(r.statusCode).toBe(403);
-    expect(r.json().error.message).toContain('email and password');
+  // An admin of this suite's own, so the result does not depend on who the shared
+  // database already has in it.
+  beforeAll(async () => {
+    await app.inject({ method: 'POST', url: '/v1/admin/users', headers: adminHeaders, payload: { email: email('gatekeeper'), role: 'admin', password: 'gatekeeper pw 5521' } });
   });
 
-  it('cannot be used to create another first admin', async () => {
+  it('signs in as an admin even though accounts exist, while it is switched on', async () => {
+    const r = await app.inject({ method: 'POST', url: '/dashboard/login', headers: fromElsewhere, payload: { key: cfg.DASHBOARD_KEY } });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().user).toMatchObject({ role: 'admin', name: 'Master key' });
+
+    const cookie = String(r.headers['set-cookie'] ?? '').split(';')[0] ?? '';
+    const me = (await app.inject({ method: 'GET', url: '/v1/me', headers: asUser(cookie) })).json();
+    expect(me.role).toBe('admin');
+    expect(me.permissions.manage_users).toBe(true);
+    // No account behind it, so nothing to rotate.
+    expect(me.password.must_change).toBe(false);
+  });
+
+  it('reports itself on the session endpoint so the page can offer it', async () => {
+    const s = (await app.inject({ method: 'GET', url: '/dashboard/session' })).json();
+    expect(s.key_login).toBe(true);
+    expect(s.needs_bootstrap).toBe(false);
+  });
+
+  it('cannot be used to create another first admin once one exists', async () => {
     const r = await app.inject({ method: 'POST', url: '/dashboard/bootstrap', headers: fromElsewhere, payload: { key: cfg.DASHBOARD_KEY, email: email('second-first'), password: 'another admin 123' } });
     expect(r.statusCode).toBe(403);
     expect(r.json().error.message).toContain('already exist');
   });
 
-  it('reports bootstrap as unnecessary on the session endpoint', async () => {
-    const s = (await app.inject({ method: 'GET', url: '/dashboard/session' })).json();
-    expect(s.needs_bootstrap).toBe(false);
-    expect(s.accounts_enabled).toBe(true);
+  it('is refused once DASHBOARD_KEY_LOGIN is off and an admin exists', async () => {
+    const off = buildApp({
+      config: loadConfig({ NODE_ENV: 'test', CATEGORY_CACHE_TTL_MS: '0', LOG_LEVEL: 'silent', DASHBOARD_KEY_LOGIN: 'false' }),
+      logger: false, db: app.db, diagnosis: { logs: null, ai: null }, jira: null,
+    });
+    await off.ready();
+    try {
+      const r = await off.inject({ method: 'POST', url: '/dashboard/login', headers: { ...dash, 'x-forwarded-for': '203.0.113.10' }, payload: { key: cfg.DASHBOARD_KEY } });
+      expect(r.statusCode).toBe(403);
+      expect(r.json().error.message).toContain('email and password');
+      expect((await off.inject({ method: 'GET', url: '/dashboard/session' })).json().key_login).toBe(false);
+    } finally { await off.close(); }
+  });
+
+  it('still works with it off while no admin exists, so a fresh deployment is reachable', async () => {
+    const off = buildApp({
+      config: loadConfig({ NODE_ENV: 'test', CATEGORY_CACHE_TTL_MS: '0', LOG_LEVEL: 'silent', DASHBOARD_KEY_LOGIN: 'false' }),
+      logger: false, db: app.db, diagnosis: { logs: null, ai: null }, jira: null,
+    });
+    await off.ready();
+    // Every admin temporarily disabled: the key has to come back, or nobody can get in.
+    await app.db.query(`update luna_feedback.dashboard_users set is_disabled = true where role = 'admin'`);
+    try {
+      const r = await off.inject({ method: 'POST', url: '/dashboard/login', headers: { ...dash, 'x-forwarded-for': '203.0.113.11' }, payload: { key: cfg.DASHBOARD_KEY } });
+      expect(r.statusCode).toBe(200);
+      expect((await off.inject({ method: 'GET', url: '/dashboard/session' })).json().needs_bootstrap).toBe(true);
+    } finally {
+      await app.db.query(`update luna_feedback.dashboard_users set is_disabled = false where role = 'admin'`);
+      await off.close();
+    }
+  });
+});
+
+describe('SUPERADMIN_EMAIL', () => {
+  const superEmail = 'super+recovery@luna-users-test.invalid';
+
+  it('signs in with the dashboard key as its password and is an admin', async () => {
+    const withSuper = buildApp({
+      config: loadConfig({ NODE_ENV: 'test', CATEGORY_CACHE_TTL_MS: '0', LOG_LEVEL: 'silent', SUPERADMIN_EMAIL: superEmail }),
+      logger: false, db: app.db, diagnosis: { logs: null, ai: null }, jira: null,
+    });
+    await withSuper.ready();
+    try {
+      const r = await withSuper.inject({ method: 'POST', url: '/dashboard/login', headers: { ...dash, 'x-forwarded-for': '203.0.113.12' }, payload: { email: superEmail, password: cfg.DASHBOARD_KEY } });
+      expect(r.statusCode).toBe(200);
+      expect(r.json().user).toMatchObject({ email: superEmail, role: 'admin' });
+
+      const cookie = String(r.headers['set-cookie'] ?? '').split(';')[0] ?? '';
+      const me = (await withSuper.inject({ method: 'GET', url: '/v1/me', headers: asUser(cookie) })).json();
+      expect(me).toMatchObject({ email: superEmail, role: 'admin' });
+      expect(me.permissions.manage_users).toBe(true);
+
+      // Wrong password, and an email that is not the configured one, are both refused.
+      expect((await withSuper.inject({ method: 'POST', url: '/dashboard/login', headers: { ...dash, 'x-forwarded-for': '203.0.113.13' }, payload: { email: superEmail, password: 'not-the-key-1' } })).statusCode).toBe(401);
+      expect((await withSuper.inject({ method: 'POST', url: '/dashboard/login', headers: { ...dash, 'x-forwarded-for': '203.0.113.14' }, payload: { email: email('other'), password: cfg.DASHBOARD_KEY } })).statusCode).toBe(401);
+    } finally { await withSuper.close(); }
+  });
+
+  it('is not honoured when it is not configured', async () => {
+    const r = await app.inject({ method: 'POST', url: '/dashboard/login', headers: { ...dash, 'x-forwarded-for': '203.0.113.15' }, payload: { email: superEmail, password: cfg.DASHBOARD_KEY } });
+    expect(r.statusCode).toBe(401);
   });
 });

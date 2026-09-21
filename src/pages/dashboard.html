@@ -254,12 +254,24 @@
         <input id="gateInput" type="password" placeholder="password" autocomplete="current-password" spellcheck="false" required>
         <button class="btn primary" type="submit">Sign in</button>
       </form>
+      <button class="btn ghost small" id="btnUseKey" type="button" style="margin-top:10px" hidden>Use the master key instead</button>
     </div>
 
-    <!-- first run: no accounts exist yet -->
+    <!-- master key, while DASHBOARD_KEY_LOGIN is on -->
+    <div id="gateKey" hidden>
+      <h2 style="margin-top:4px">Master key</h2>
+      <p>Signs in as an admin without an account. Kept for setup and for getting back in; it stops working once <code>DASHBOARD_KEY_LOGIN</code> is set to <code>false</code>.</p>
+      <form id="keyForm">
+        <input id="keyInput" type="password" placeholder="dashboard key" autocomplete="off" spellcheck="false" required>
+        <button class="btn primary" type="submit">Sign in</button>
+      </form>
+      <button class="btn ghost small" id="btnUseAccount" type="button" style="margin-top:10px">Use an email and password instead</button>
+    </div>
+
+    <!-- first run: no admin account exists yet -->
     <div id="gateBootstrap" hidden>
       <h2 style="margin-top:4px">Create the first admin</h2>
-      <p>Nobody has an account yet. Use the dashboard key once to create the first admin; after that, sign-in is by email and password only.</p>
+      <p>No admin account exists yet. Use the dashboard key once to create one, then add everyone else from the People page.</p>
       <form id="bootForm">
         <input id="bootKey" type="password" placeholder="dashboard key" autocomplete="off" spellcheck="false" required>
         <input id="bootEmail" type="email" placeholder="your email" autocomplete="username" spellcheck="false" required>
@@ -494,7 +506,7 @@
   'use strict';
   const $ = (id) => document.getElementById(id);
   const OK = '#00C37A', CRIT = '#FF3B3B', BLUE = '#2E64E4';
-  const state = { schema: null, features: [], catsByFeature: {}, filters: null, stats: null, rows: [], cursor: null, admin: null, me: null };
+  const state = { schema: null, features: [], catsByFeature: {}, filters: null, stats: null, rows: [], cursor: null, admin: null, me: null, keyLogin: false };
 
   // ---------- helpers ----------
   const istToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -541,12 +553,27 @@
     $('gateSignIn').hidden = mode !== 'signin';
     $('gateBootstrap').hidden = mode !== 'bootstrap';
     $('gateChange').hidden = mode !== 'change';
+    $('gateKey').hidden = mode !== 'key';
+    $('btnUseKey').hidden = !state.keyLogin;
     $('gateErr').style.display = msg ? 'block' : 'none'; $('gateErr').textContent = msg || '';
     $('conn').className = 'pill off'; $('conn').textContent = 'not connected';
     $('btnKey').hidden = true; $('rangeLabel').textContent = '';
-    const first = { signin: 'gateEmail', bootstrap: 'bootKey', change: 'changeCurrent' }[mode];
+    const first = { signin: 'gateEmail', bootstrap: 'bootKey', change: 'changeCurrent', key: 'keyInput' }[mode];
     setTimeout(() => $(first)?.focus(), 0);
   }
+
+  $('btnUseKey').addEventListener('click', () => showGate('', 'key'));
+  $('btnUseAccount').addEventListener('click', () => showGate('', 'signin'));
+
+  $('keyForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const key = $('keyInput').value.trim();
+    if (!key) return;
+    const btn = e.submitter; if (btn) btn.disabled = true;
+    try { await api('/dashboard/login', { method: 'POST', body: JSON.stringify({ key }) }); $('keyInput').value = ''; await boot(); }
+    catch (err) { showGate(signInError(err), 'key'); }
+    finally { if (btn) btn.disabled = false; }
+  });
 
   const signInError = (err) =>
     err.status === 401 || err.status === 403 || err.status === 429 ? err.message
@@ -1028,8 +1055,9 @@
   // ---------- start ----------
   api('/dashboard/session')
     .then((s) => {
+      state.keyLogin = s.key_login === true;
       if (s.authenticated) return boot();
-      // No accounts yet: offer to create the first admin rather than a sign-in nobody can pass.
+      // No admin yet: offer to create the first one rather than a sign-in nobody can pass.
       showGate('', s.needs_bootstrap ? 'bootstrap' : 'signin');
     })
     .catch((err) => showGate(err.status === 401 ? 'Your session expired. Sign in again.' : 'Could not reach the API: ' + err.message));

@@ -136,15 +136,17 @@ export function buildApp(opts: BuildOptions = {}): App {
     historyDepth: config.PASSWORD_HISTORY_DEPTH,
     maxFailedAttempts: config.LOGIN_MAX_ATTEMPTS,
     lockMinutes: config.LOGIN_LOCK_MINUTES,
+    superAdminEmail: config.SUPERADMIN_EMAIL ?? null,
   });
 
-  registerAuth(app, { app: config.APP_API_KEY, admin: config.ADMIN_API_KEY, sessionSecret, cronSecret: config.CRON_SECRET }, {
+  registerAuth(app, { app: config.APP_API_KEY, admin: config.ADMIN_API_KEY, sessionSecret, cronSecret: config.CRON_SECRET, keyLogin: config.DASHBOARD_KEY_LOGIN }, {
     actorFor: (id) => users.actorFor(id),
     passwordEpochFor: async (id) => {
       const row = await usersRepo.byId(id);
       return row ? new Date(row.password_set_at).getTime() : null;
     },
-    anyUsersExist: async () => (await usersRepo.count()) > 0,
+    anyAdminExists: () => users.anyAdminExists(),
+    superAdminEmail: () => users.superAdminEmail,
   });
   registerHealthRoutes(app, { db });
   const imagekit = opts.imagekit !== undefined ? opts.imagekit : config.IMAGEKIT_PUB_KEY && config.IMAGEKIT_PRI_KEY
@@ -156,7 +158,7 @@ export function buildApp(opts: BuildOptions = {}): App {
     service, categories, timeZone: config.APP_TIMEZONE,
     uploads: imagekit ? { publicKey: imagekit.publicKey, urlEndpoint: imagekit.urlEndpoint, folder: imagekit.folder, maxBytes: config.SCREENSHOT_MAX_BYTES, maxCount: config.SCREENSHOT_MAX_COUNT, authParams: () => imagekit.authParams() } : null,
   });
-  registerPageRoutes(app, { dashboardKey: config.DASHBOARD_KEY, sessionSecret, sessionDays: config.DASHBOARD_SESSION_DAYS, users });
+  registerPageRoutes(app, { dashboardKey: config.DASHBOARD_KEY, sessionSecret, sessionDays: config.DASHBOARD_SESSION_DAYS, keyLogin: config.DASHBOARD_KEY_LOGIN, users });
   registerUserRoutes(app, { service: users });
   registerAdminRoutes(app, { categories });
   registerDiagnosisRoutes(app, { service: diagnosis, repo: diagnosisRepo });

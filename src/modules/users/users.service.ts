@@ -14,6 +14,8 @@ export interface UsersConfig {
   historyDepth: number;
   maxFailedAttempts: number;
   lockMinutes: number;
+  /** Break-glass admin from SUPERADMIN_EMAIL; signs in with the dashboard key. */
+  superAdminEmail?: string | null;
 }
 
 export interface SignInResult {
@@ -28,9 +30,36 @@ export class UsersService {
 
   get passwordRules(): readonly string[] { return PASSWORD_RULES; }
 
-  /** True while no account exists: the sign-in page then offers to create the first admin. */
+  get superAdminEmail(): string | null { return this.config.superAdminEmail?.trim().toLowerCase() || null; }
+
+  /** Is this the break-glass admin signing in with the dashboard key? */
+  isSuperAdmin(email: string): boolean {
+    const configured = this.superAdminEmail;
+    return configured !== null && email.trim().toLowerCase() === configured;
+  }
+
+  /**
+   * True while no enabled admin exists: the sign-in page then offers to create the first one.
+   *
+   * Keyed on admins, not on accounts. Adding a QC or a developer first must not close the
+   * door behind itself and leave nobody able to manage people.
+   */
   async needsBootstrap(): Promise<boolean> {
-    return (await this.repo.count()) === 0;
+    return (await this.repo.countAdmins()) === 0;
+  }
+
+  /** Whether an enabled admin exists — what decides if the shared key still works. */
+  async anyAdminExists(): Promise<boolean> {
+    return (await this.repo.countAdmins()) > 0;
+  }
+
+  /** Recorded so a break-glass sign-in is visible in the account log rather than silent. */
+  async logSuperAdminSignIn(email: string): Promise<void> {
+    await this.repo.logEvent({ actor: email, target: email, action: 'superadmin_sign_in', detail: 'signed in with the dashboard key' });
+  }
+
+  async hasAccount(email: string): Promise<boolean> {
+    return (await this.repo.byEmail(email)) !== undefined;
   }
 
   async list(): Promise<PublicUser[]> {

@@ -367,9 +367,10 @@ describe('dashboard session', () => {
     expect((await app.inject({ method: 'GET', url: '/dashboard/session' })).json()).toMatchObject({ authenticated: false });
   });
 
-  it('refuses the shared key now that an account exists', async () => {
+  it('still accepts the master key alongside accounts, while it is switched on', async () => {
     const r = await app.inject({ method: 'POST', url: '/dashboard/login', headers: { ...dh, 'x-forwarded-for': '198.51.100.7' }, payload: { key: cfg.DASHBOARD_KEY } });
-    expect(r.statusCode).toBe(403);
+    expect(r.statusCode).toBe(200);
+    expect(r.json().user.role).toBe('admin');
   });
 
   it('issues an HttpOnly cookie for the right password', async () => {

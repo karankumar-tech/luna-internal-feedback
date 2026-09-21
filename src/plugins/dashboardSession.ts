@@ -36,6 +36,30 @@ export function verifySessionToken(secret: string, token: string, now = Date.now
   return exp > now ? exp : null;
 }
 
+/**
+ * Break-glass session for SUPERADMIN_EMAIL: `s.<expiry>.<hmac>`.
+ *
+ * Carries no user id because the super admin has no row to point at — that is the whole point
+ * of it. The email comes from configuration at request time, so changing the variable changes
+ * who it is, and rotating DASHBOARD_KEY (which the signing secret derives from) ends it.
+ */
+export function makeSuperSessionToken(secret: string, ttlMs: number, now = Date.now()): { token: string; expiresAt: number } {
+  const expiresAt = now + ttlMs;
+  const payload = `s.${expiresAt}`;
+  return { token: `${payload}.${sign(secret, payload)}`, expiresAt };
+}
+
+/** Returns the expiry (ms) for a valid, unexpired super-admin token, else null. */
+export function verifySuperSessionToken(secret: string, token: string, now = Date.now()): number | null {
+  const parts = token.split('.');
+  if (parts.length !== 3 || parts[0] !== 's') return null;
+  const [, expiryRaw, sig] = parts as [string, string, string];
+  if (!/^\d{1,16}$/.test(expiryRaw)) return null;
+  if (!signatureMatches(secret, `s.${expiryRaw}`, sig)) return null;
+  const expiresAt = Number(expiryRaw);
+  return expiresAt > now ? expiresAt : null;
+}
+
 export interface UserSession {
   userId: string;
   /** password_set_at when the session was issued, so a rotation invalidates older sessions. */
