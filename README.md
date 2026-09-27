@@ -177,8 +177,13 @@ returns a structured verdict
 (`root_cause_side`, confidence, severity, tags, evidence, suggested fix). Results live in
 `luna_feedback.diagnoses` with `ai_*` columns denormalised onto `submissions`.
 
+- **Log window.** Only uploads dated the day before the issue, the issue day and the day after are ever
+  used, listed or waited for (`LOG_WINDOW_DAYS` in `logs/select.ts`). A diagnosed ticket shows the
+  files it was diagnosed from, read from the database, and makes no call to the logging service; the
+  service keeps only a rolling set of recent uploads, so those stored links are often the only record.
 - Runs after the HTTP response via `waitUntil` (Vercel) or `setImmediate` (local). Same-day reports
-  park as `waiting_logs` until the evening log sync (`DIAGNOSIS_SYNC_HOUR_IST`) and retry.
+  park as `waiting_logs` until the evening log sync (`DIAGNOSIS_SYNC_HOUR_IST`) and retry, and are
+  finalised as `no_logs` once the day after the issue has ended.
 - `POST /v1/admin/diagnoses/run-pending` finishes runs that are waiting for logs (and, in automatic
   mode, backfills undiagnosed issues); the dashboard calls it on load and `vercel.json` schedules it
   nightly (needs `CRON_SECRET`). A finished diagnosis is never re-run unless someone presses Re-run.

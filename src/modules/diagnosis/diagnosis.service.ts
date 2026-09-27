@@ -3,7 +3,7 @@ import { DiagnosisRepo, type DiagnosisRow, type DiagnosisStatus } from './diagno
 import type { FeedbackRepo, SubmissionRow } from '../feedback/feedback.repo.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
 import { LogsClient } from './logs/client.js';
-import { pickAllSources, pickEntry } from './logs/select.js';
+import { LOG_WINDOW_DAYS, logWindow, pickAllSources, pickEntry, withinWindow } from './logs/select.js';
 import { fetchLogFile } from './logs/fetch.js';
 import { parseFetched, istToEpoch } from './logs/parse.js';
 import type { LogDeviceEntry, LogFileRef, LogSource, ParsedFile } from './logs/types.js';
@@ -156,13 +156,14 @@ export class DiagnosisService {
   /**
    * Logs upload on a schedule (iOS after ~20:00 IST). For an issue that happened today or yesterday,
    * a missing same-day file is "not yet", not "never". Returns the time to try again, or null when
-   * waiting is pointless (the issue is old enough that the logs would have arrived by now).
+   * waiting is pointless: once the last day of the log window (issue day + LOG_WINDOW_DAYS.after) has
+   * ended, no upload that could be used can still appear.
    */
   private nextLogCheck(occurredOn: string): Date | null {
     const now = this.now();
     const [y, m, d] = occurredOn.split('-').map(Number) as [number, number, number];
     const syncAt = new Date(istToEpoch(y, m, d, this.d.config.syncHourIst, 30, 0));
-    const giveUpAt = new Date(istToEpoch(y, m, d, 23, 0, 0) + 2 * 86_400_000); // two days after the issue day
+    const giveUpAt = new Date(istToEpoch(y, m, d, 23, 59, 59) + LOG_WINDOW_DAYS.after * 86_400_000);
     if (now >= giveUpAt) return null;
     if (now < syncAt) return syncAt;
     return new Date(Math.min(now.getTime() + 3 * 3_600_000, giveUpAt.getTime()));
@@ -309,12 +310,21 @@ export class DiagnosisService {
     return toDiagnosisDto(row);
   }
 
-  /** Raw lookup for the detail page: every file the logging service has for this tester. */
-  async lookup(params: { serial_no?: string; email?: string }): Promise<LogDeviceEntry[]> {
+  /**
+   * Lookup for the detail page. With `occurred_on`, only uploads inside that issue's log window are
+   * returned and the rest are counted, so a ticket never lists what the tester uploaded weeks later.
+   */
+  async lookup(params: { serial_no?: string; email?: string; occurred_on?: string }): Promise<{ items: LogDeviceEntry[]; window: { from: string; to: string } | null; hidden: number }> {
     if (!this.d.logs) throw AppError.validation([{ path: 'logs', message: 'LUNA_LOGS_APIKEY not configured' }], 'Logs lookup unavailable');
-    if (params.serial_no) return this.d.logs.listBySerial(params.serial_no);
-    if (params.email) return this.d.logs.listByEmail(params.email);
-    throw AppError.validation([{ path: 'serial_no', message: 'serial_no or email is required' }]);
+    let entries: LogDeviceEntry[];
+    if (params.serial_no) entries = await this.d.logs.listBySerial(params.serial_no);
+    else if (params.email) entries = await this.d.logs.listByEmail(params.email);
+    else throw AppError.validation([{ path: 'serial_no', message: 'serial_no or email is required' }]);
+
+    if (!params.occurred_on) return { items: entries, window: null, hidden: 0 };
+    let hidden = 0;
+    const items = entries.map((e) => { const w = withinWindow(e, params.occurred_on!); hidden += w.hidden; return w.entry; });
+    return { items, window: logWindow(params.occurred_on), hidden };
   }
 }
 

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { AppError } from '../../lib/errors.js';
 import { zodIssues } from '../../schema/buildValidator.js';
+import { isValidCalendarDate } from '../../lib/time.js';
 import type { DiagnosisService } from './diagnosis.service.js';
 import type { DiagnosisRepo } from './diagnosis.repo.js';
 
@@ -61,8 +62,11 @@ export function registerDiagnosisRoutes(app: FastifyInstance, deps: { service: D
     return repo.overview(from, to, q.include_test === 'true');
   });
 
+  /** Lists a tester's uploads. Pass occurred_on to get only that issue's log window. */
   app.get('/v1/admin/logs/lookup', async (req) => {
-    const q = req.query as { serial_no?: string; email?: string };
-    return { items: await service.lookup({ serial_no: q.serial_no?.trim() || undefined, email: q.email?.trim() || undefined }) };
+    const q = req.query as { serial_no?: string; email?: string; occurred_on?: string };
+    const occurredOn = q.occurred_on?.trim() || undefined;
+    if (occurredOn && !isValidCalendarDate(occurredOn)) throw AppError.validation([{ path: 'occurred_on', message: 'must be YYYY-MM-DD' }]);
+    return service.lookup({ serial_no: q.serial_no?.trim() || undefined, email: q.email?.trim() || undefined, occurred_on: occurredOn });
   });
 }

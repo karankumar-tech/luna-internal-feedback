@@ -660,28 +660,80 @@
   });
 
   // ---------- log files ----------
-  async function loadFiles() {
-    const host = $('files'); const r = state.sub;
-    const q = r.device_serial ? 'serial_no=' + encodeURIComponent(r.device_serial) : 'email=' + encodeURIComponent(r.email);
-    try {
-      const { items } = await api('/v1/admin/logs/lookup?' + q);
+  // Only uploads from the day before the issue to the day after can belong to it. A diagnosed ticket
+  // shows the files it was diagnosed from, straight from the database, and makes no call to the logging
+  // service at all; anything else looks up that window only, on view or on request.
+  const shiftIso = (iso, days) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); };
+  const windowOf = (iso) => ({ from: shiftIso(iso, -1), to: shiftIso(iso, 1) });
+  const windowLabel = (w) => `${shortDate(w.from)} – ${shortDate(w.to)}`;
+  const istToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const dateInUrl = (url) => (/(\d{4}-\d{2}-\d{2})/.exec(url) || [])[1] || '';
+
+  function fileRow(src, url, date, used) {
+    const row = el('div', 'row'); row.appendChild(el('span', 'src', src));
+    const a = el('a', null, url.split('/').pop() || url); a.href = url; a.target = '_blank'; a.rel = 'noopener'; row.appendChild(a);
+    const right = el('span'); right.appendChild(el('span', 'date', date || ''));
+    if (used) { right.appendChild(document.createTextNode(' ')); right.appendChild(el('span', 'used', 'used')); }
+    row.appendChild(right);
+    return row;
+  }
+
+  function lookupButton(label) {
+    const b = el('button', 'btn small', label); b.type = 'button'; b.style.marginTop = '10px';
+    b.addEventListener('click', () => loadFiles(true));
+    return b;
+  }
+
+  async function loadFiles(force = false) {
+    const host = $('files'); const r = state.sub; const win = windowOf(r.occurred_on);
+    const stored = state.diag && state.diag.log_files
+      ? Object.entries(state.diag.log_files).flatMap(([src, urls]) => (urls || []).map((url) => ({ src, url, date: dateInUrl(url) })))
+      : [];
+
+    if (stored.length && !force) {
       host.replaceChildren();
-      $('filesSub').textContent = items.length ? `${items.length} device${items.length === 1 ? '' : 's'} in the logging service (looked up by ${r.device_serial ? 'serial' : 'email'})` : 'nothing in the logging service for this tester';
-      if (!items.length) { host.appendChild(el('div', 'empty', 'No log uploads found. Logs sync from the phone on a schedule; iOS after about 8 PM IST.')); return; }
-      const used = new Set(state.diag && state.diag.log_files ? [].concat(...Object.values(state.diag.log_files)) : []);
-      for (const dev of items) {
-        const h = el('div', 'overline', `${dev.platform || '?'} · ${dev.device_manufacturer || ''} ${dev.device_model || ''} · app ${dev.version_name || '?'} · fv ${dev.fv || '?'} · last upload ${dev.updated_at ? istStamp(dev.updated_at) : '?'}`); h.style.margin = '8px 0 4px'; host.appendChild(h);
-        const rows = [];
-        for (const src of ['app', 'ring', 'firmware']) for (const f of dev.files[src] || []) rows.push({ src, f });
-        rows.sort((a, b) => (b.f.date || '').localeCompare(a.f.date || '') || a.src.localeCompare(b.src));
-        for (const { src, f } of rows.slice(0, 30)) {
-          const row = el('div', 'row'); row.appendChild(el('span', 'src', src));
-          const a = el('a', null, (f.url.split('/').pop() || f.url)); a.href = f.url; a.target = '_blank'; a.rel = 'noopener'; row.appendChild(a);
-          const right = el('span'); right.appendChild(el('span', 'date', f.date || '')); if (used.has(f.url)) { right.appendChild(document.createTextNode(' ')); right.appendChild(el('span', 'used', 'used')); } row.appendChild(right);
-          host.appendChild(row);
-        }
-        if (rows.length > 30) host.appendChild(el('div', 'tertiary', `… ${rows.length - 30} older files`));
+      $('filesSub').textContent = `what the diagnosis used · window ${windowLabel(win)}`;
+      stored.sort((a, b) => a.src.localeCompare(b.src) || b.date.localeCompare(a.date));
+      for (const f of stored) host.appendChild(fileRow(f.src, f.url, f.date, true));
+      host.appendChild(lookupButton('Check the logging service for this window'));
+      return;
+    }
+
+    host.replaceChildren(el('div', 'empty', 'Looking up the logging service…'));
+    const by = r.device_serial ? 'serial_no=' + encodeURIComponent(r.device_serial) : 'email=' + encodeURIComponent(r.email);
+    try {
+      const { items, hidden } = await api(`/v1/admin/logs/lookup?${by}&occurred_on=${r.occurred_on}`);
+      host.replaceChildren();
+      const used = new Set(stored.map((f) => f.url));
+      const rows = [];
+      for (const dev of items) for (const src of ['app', 'ring', 'firmware']) for (const f of dev.files[src] || []) if (!used.has(f.url)) rows.push({ dev, src, f });
+      $('filesSub').textContent = `window ${windowLabel(win)} · looked up by ${r.device_serial ? 'serial' : 'email'}`;
+
+      // What the verdict rests on stays visible whatever the service lists today: it keeps only a
+      // rolling set of recent uploads, so older ones drop out of the listing.
+      if (stored.length) {
+        stored.sort((a, b) => a.src.localeCompare(b.src) || b.date.localeCompare(a.date));
+        for (const f of stored) host.appendChild(fileRow(f.src, f.url, f.date, true));
       }
+
+      const windowOpen = istToday() <= win.to;
+      if (!rows.length) {
+        const msg = stored.length
+          ? 'No other uploads from this window are listed by the logging service.'
+          : windowOpen
+            ? `No uploads between ${windowLabel(win)} yet. Phones upload in the evening (iOS after about 8 PM IST), so they may still arrive before the window closes.`
+            : `The logging service has no uploads between ${windowLabel(win)}.`;
+        host.appendChild(el('div', 'empty', msg));
+      } else {
+        for (const dev of items) {
+          const mine = rows.filter((x) => x.dev === dev);
+          if (!mine.length) continue;
+          const h = el('div', 'overline', `${dev.platform || '?'} · ${dev.device_manufacturer || ''} ${dev.device_model || ''} · app ${dev.version_name || '?'} · fv ${dev.fv || '?'}`); h.style.margin = '8px 0 4px'; host.appendChild(h);
+          mine.sort((a, b) => (b.f.date || '').localeCompare(a.f.date || '') || a.src.localeCompare(b.src));
+          for (const { src, f } of mine) host.appendChild(fileRow(src, f.url, f.date, used.has(f.url)));
+        }
+      }
+      if (hidden) host.appendChild(el('div', 'tertiary', `${hidden} upload${hidden === 1 ? '' : 's'} outside this window not shown — they cannot belong to this report.`));
     } catch (err) { host.replaceChildren(el('div', 'empty', 'Lookup failed: ' + err.message)); }
   }
 

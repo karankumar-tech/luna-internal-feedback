@@ -193,6 +193,23 @@ describe('auto diagnosis on negative submission', () => {
     expect((await app.inject({ method: 'GET', url: `/v1/feedback?user_id=900010&ai_status=no_logs`, headers: appHeaders })).json().items.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('stops waiting once the day after the issue has ended', async () => {
+    // NOW is 1 Sep 22:00 IST. For a 30 Aug report the window closed at the end of 31 Aug, so no
+    // usable upload can still arrive: it is finalised instead of being retried (the old rule
+    // kept waiting until two days after the issue).
+    const closed = await app.inject({ method: 'POST', url: '/v1/feedback/home', headers: appHeaders, payload: body(`nologs+${run}@${DOMAIN}`, { occurred_on: '2026-08-30', issue_categories: ['wrong_peak_score'], details: {} }) });
+    const dc = await waitFor(async () => { const x = await app.diagnosis.get(closed.json().id); return x && ['no_logs', 'waiting_logs', 'done', 'failed'].includes(x.status) ? x : null; });
+    expect(dc.status).toBe('no_logs');
+
+    // A 31 Aug report is still inside its window until the end of 1 Sep, so it waits.
+    const open = await app.inject({ method: 'POST', url: '/v1/feedback/home', headers: appHeaders, payload: body(`nologs+${run}@${DOMAIN}`, { occurred_on: '2026-08-31', issue_categories: ['wrong_peak_score'], details: {} }) });
+    const dopen = await waitFor(async () => { const x = await app.diagnosis.get(open.json().id); return x && ['no_logs', 'waiting_logs', 'done', 'failed'].includes(x.status) ? x : null; });
+    expect(dopen.status).toBe('waiting_logs');
+    const job = await app.db.query(`select run_after from luna_feedback.diagnosis_jobs where submission_id = $1`, [open.json().id]);
+    // Next check never lands after the window closes (end of 1 Sep IST = 18:29:59Z).
+    expect(new Date(job.rows[0].run_after).getTime()).toBeLessThanOrEqual(Date.parse('2026-09-01T18:29:59.000Z'));
+  });
+
   it('manual re-run, review, summary and sweep endpoints', async () => {
     const list = (await app.inject({ method: 'GET', url: `/v1/feedback?user_id=900010&ai_side=backend`, headers: appHeaders })).json();
     const id = list.items[0].id;
@@ -224,6 +241,15 @@ describe('auto diagnosis on negative submission', () => {
 
     const lookup = (await app.inject({ method: 'GET', url: `/v1/admin/logs/lookup?serial_no=R2NTEST0001`, headers: adminHeaders })).json();
     expect(lookup.items[0].files.app).toHaveLength(2);
+
+    // With the issue day, only that issue's window comes back and the rest is counted, not listed.
+    const inWindow = (await app.inject({ method: 'GET', url: `/v1/admin/logs/lookup?serial_no=R2NTEST0001&occurred_on=2026-09-01`, headers: adminHeaders })).json();
+    expect(inWindow.window).toEqual({ from: '2026-08-31', to: '2026-09-02' });
+    expect(inWindow.hidden).toBe(0);
+    const weeksLater = (await app.inject({ method: 'GET', url: `/v1/admin/logs/lookup?serial_no=R2NTEST0001&occurred_on=2026-08-20`, headers: adminHeaders })).json();
+    expect(weeksLater.items[0].files).toEqual({ app: [], ring: [], firmware: [] });
+    expect(weeksLater.hidden).toBe(4);
+    expect((await app.inject({ method: 'GET', url: `/v1/admin/logs/lookup?serial_no=R2NTEST0001&occurred_on=nope`, headers: adminHeaders })).statusCode).toBe(422);
   });
 
   it('the backfill queues negative submissions that were never diagnosed (automatic mode)', async () => {

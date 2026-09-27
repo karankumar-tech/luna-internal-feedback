@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeEntry, toFileRefs } from '../../../src/modules/diagnosis/logs/client.js';
-import { pickEntry, pickFiles } from '../../../src/modules/diagnosis/logs/select.js';
+import { LOG_WINDOW_DAYS, inLogWindow, logWindow, pickEntry, pickFiles, withinWindow } from '../../../src/modules/diagnosis/logs/select.js';
 import { parseAppLog, parseFirmware, parseRingAndroid, parseRingIos, istToEpoch, epochToIst, collapseRepeats } from '../../../src/modules/diagnosis/logs/parse.js';
 import { redact } from '../../../src/modules/diagnosis/logs/redact.js';
 import { buildExcerpt, computeWindow } from '../../../src/modules/diagnosis/extract.js';
@@ -35,13 +35,49 @@ describe('entry and file selection', () => {
     expect(pickEntry([android, ios], { platform: null, occurredOn: '2026-08-09' })).toBe(android); // closer upload + more files
     expect(pickEntry([], { platform: 'ios', occurredOn: '2026-08-09' })).toBeNull();
   });
-  it('picks one upload per source: the first dated on/after the issue day, else the day before', () => {
+  it('picks one upload per source from the issue window: the day itself, then the next day, then the day before', () => {
     const files = ['2026-08-04', '2026-08-05', '2026-08-06', '2026-08-07', '2026-08-10'].map((d) => ({ source: 'app' as const, url: U('app_logs', d, 'a.txt'), date: d }));
     expect(pickFiles(files, '2026-08-06').map((f) => f.date)).toEqual(['2026-08-06']);
-    expect(pickFiles(files, '2026-08-08').map((f) => f.date)).toEqual(['2026-08-10']);   // nearest after, within +2
-    expect(pickFiles(files, '2026-08-11').map((f) => f.date)).toEqual(['2026-08-10']);   // nothing after: day before
+    expect(pickFiles(files, '2026-08-09').map((f) => f.date)).toEqual(['2026-08-10']);   // next day
+    expect(pickFiles(files, '2026-08-11').map((f) => f.date)).toEqual(['2026-08-10']);   // nothing on or after: the day before
     expect(pickFiles(files, '2026-08-20')).toEqual([]);
-    expect(pickFiles([{ source: 'app', url: 'https://x/y.txt', date: null }], '2026-08-20')).toHaveLength(1);
+  });
+
+  it('never reaches past the day after the issue, and never uses undated uploads', () => {
+    const files = ['2026-08-10', '2026-08-27'].map((d) => ({ source: 'app' as const, url: U('app_logs', d, 'a.txt'), date: d }));
+    // Two days later was allowed before; an old ticket must not be diagnosed from a later upload.
+    expect(pickFiles(files, '2026-08-08')).toEqual([]);
+    expect(pickFiles(files, '2026-08-04')).toEqual([]);
+    expect(pickFiles([{ source: 'app', url: 'https://x/y.txt', date: null }], '2026-08-20')).toEqual([]);
+  });
+
+  it('prefers the latest upload from the day before when that is all there is', () => {
+    const files = [
+      { source: 'app' as const, url: U('app_logs', '2026-08-05', 'early.txt'), date: '2026-08-05' },
+      { source: 'app' as const, url: U('app_logs', '2026-08-05', 'late.txt'), date: '2026-08-05' },
+    ];
+    expect(pickFiles(files, '2026-08-06')[0]!.url).toContain('late.txt');
+  });
+});
+
+describe('log window', () => {
+  it('spans the day before to the day after', () => {
+    expect(logWindow('2026-09-04')).toEqual({ from: '2026-09-03', to: '2026-09-05' });
+    expect(logWindow('2026-03-01')).toEqual({ from: '2026-02-28', to: '2026-03-02' });   // across a month end
+    expect(LOG_WINDOW_DAYS).toEqual({ before: 1, after: 1 });
+  });
+
+  it('filters a device entry to the window and counts what it hid', () => {
+    const entry = normalizeEntry({
+      platform: 'ios', updated_at: '2026-09-27T13:46:00Z',
+      app_logs: ['2026-09-03', '2026-09-05', '2026-09-24', '2026-09-27'].map((d) => U('app_logs', d, 'a.txt')).join(','),
+      firmware_logs: U('firmware_logs', '2026-09-27', 'f.txt'),
+    });
+    const { entry: kept, hidden } = withinWindow(entry, '2026-09-04');
+    expect(kept.files.app.map((f) => f.date)).toEqual(['2026-09-03', '2026-09-05']);
+    expect(kept.files.firmware).toEqual([]);
+    expect(hidden).toBe(3);
+    expect(inLogWindow(null, '2026-09-04')).toBe(false);
   });
 });
 
