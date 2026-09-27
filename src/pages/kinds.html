@@ -71,6 +71,8 @@
   .bar-cell span { position: relative; z-index: 1; }
 
   .chip { font-family: var(--mono); font-size: 11px; line-height: 16px; padding: 1px 6px; border-radius: var(--r-xs); background: var(--brief); white-space: nowrap; display: inline-block; }
+  .jira-link[hidden] { display: none; }
+  .chip.cx { background: var(--magenta, #E0237A); color: #fff; letter-spacing: .08em; font-size: 10px; }
   .chips { display: flex; flex-wrap: wrap; gap: 4px; }
   .kstatus { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 7px; border-radius: var(--r-xs); border: 1px solid; }
   .kstatus.open { border-color: var(--crit); background: var(--crit-bg); color: #8A1010; }
@@ -82,7 +84,7 @@
   .sev.high { border-color: var(--orange); color: #A03600; background: var(--orange-50); } .sev.critical { border-color: var(--crit); color: #8A1010; background: var(--crit-bg); }
   .jira-link { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; text-decoration: none; border: 1px solid var(--blue); background: var(--blue-50); color: #0C3AAA; padding: 3px 9px; border-radius: var(--r-s); }
 
-  .kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
   .kpi { background: var(--white); border: 1px solid var(--gray-light); border-radius: var(--r-l); padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 6px; }
   .kpi .v { font-family: var(--mono); font-size: 28px; line-height: 32px; }
   .kpi .l { font-size: 12px; line-height: 16px; color: var(--gray-dark); }
@@ -132,6 +134,9 @@
     <label class="field"><span>Environment</span>
       <select id="fEnv"><option value="">All environments</option><option value="stage">Stage</option><option value="uat">UAT</option><option value="production">Production</option></select>
     </label>
+    <label class="field"><span>Source</span>
+      <select id="fOrigin"><option value="">CX + internal</option><option value="cx">CX (customers)</option><option value="internal">Internal testers</option></select>
+    </label>
     <label class="field" id="fStatusField"><span>Kind status</span>
       <select id="fStatus"><option value="">Any</option><option value="open">Open</option><option value="watching">Watching</option><option value="fixed">Fixed</option><option value="wont_fix">Won't fix</option></select>
     </label>
@@ -177,7 +182,8 @@
     <section class="kpis" style="margin-top:12px">
       <div class="kpi hero"><div class="v" id="dCount">–</div><div class="l">Reports in range</div></div>
       <div class="kpi"><div class="v" id="dOpen">–</div><div class="l">Still open</div></div>
-      <div class="kpi"><div class="v" id="dUsers">–</div><div class="l">Testers affected</div></div>
+      <div class="kpi"><div class="v" id="dUsers">–</div><div class="l">People affected</div></div>
+      <div class="kpi"><div class="v" id="dCx">–</div><div class="l">Via CX</div><div class="d" id="dCxD" style="font-family:var(--mono);font-size:11px;color:var(--gray-mid)"></div></div>
       <div class="kpi"><div class="v" id="dFirst">–</div><div class="l">First seen</div></div>
       <div class="kpi"><div class="v" id="dLast">–</div><div class="l">Last seen</div></div>
     </section>
@@ -201,8 +207,11 @@
   const $ = (id) => document.getElementById(id);
   const BLUE = '#2E64E4', CRIT = '#FF3B3B';
   const parts = location.pathname.split('/').filter(Boolean);
-  const kindId = parts[1] === 'kinds' && parts[2] ? parts[2] : null;
-  const state = { filters: null, detail: null, jira: null };
+  // Opened by reference (/dashboard/kinds/LNK-0007) or by id; API calls that change things use the id.
+  const kindParam = parts[1] === 'kinds' && parts[2] ? decodeURIComponent(parts[2]) : null;
+  let kindId = null;
+  const state = { filters: null, detail: null, jira: null, me: null };
+  const can = (p) => !!(state.me && state.me.permissions && state.me.permissions[p]);
 
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; };
   const svgEl = (tag, attrs) => { const e = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
@@ -226,6 +235,7 @@
   function readFilters() {
     const f = { from: $('fFrom').value, to: $('fTo').value };
     if ($('fEnv').value) f.environment = $('fEnv').value;
+    if ($('fOrigin').value) f.origin = $('fOrigin').value;
     if ($('fStatus').value) f.status = $('fStatus').value;
     if ($('fTest').value) f.is_test = $('fTest').value;
     return f;
@@ -246,13 +256,14 @@
       }
       const total = items.reduce((n, k) => n + k.count, 0) || 1;
       const t = el('table'); const head = el('tr');
-      for (const h of ['Issue kind', 'Reports', 'Share', 'Testers', 'Still open', 'First seen', 'Last seen', 'Status', 'Jira']) head.appendChild(el('th', null, h));
+      for (const h of ['Issue kind', 'Reports', 'Share', 'People', 'Via CX', 'Still open', 'First seen', 'Last seen', 'Status', 'Jira']) head.appendChild(el('th', null, h));
       t.appendChild(head);
       const body = document.createElement('tbody');
       for (const k of items) {
         const tr = el('tr');
         const tdTitle = el('td');
-        const a = el('a', 'row-link', k.title); a.href = '/dashboard/kinds/' + k.id; tdTitle.appendChild(a);
+        tdTitle.appendChild(el('span', 'code', k.ref)); tdTitle.appendChild(document.createTextNode(' '));
+        const a = el('a', 'row-link', k.title); a.href = '/dashboard/kinds/' + encodeURIComponent(k.ref); tdTitle.appendChild(a);
         if (k.feature_key) { tdTitle.appendChild(document.createTextNode(' ')); tdTitle.appendChild(el('span', 'chip', k.feature_key)); }
         if (k.created_by === 'ai') { tdTitle.appendChild(document.createTextNode(' ')); tdTitle.appendChild(el('span', 'chip', 'ai')); }
         tr.appendChild(tdTitle);
@@ -260,6 +271,7 @@
         const share = el('td', 'bar-cell num'); const fill = el('div', 'fill'); fill.style.width = Math.round((k.count / total) * 100) + '%';
         share.appendChild(fill); share.appendChild(el('span', null, Math.round((k.count / total) * 100) + '%')); tr.appendChild(share);
         tr.appendChild(el('td', 'num', fmtN(k.users)));
+        tr.appendChild(el('td', 'num', k.cx_count ? `${fmtN(k.cx_count)} (${fmtN(k.cx_users)})` : '—'));
         tr.appendChild(el('td', 'num', fmtN(k.open_count)));
         tr.appendChild(el('td', 'code', shortDate(k.first_seen)));
         tr.appendChild(el('td', 'code', shortDate(k.last_seen)));
@@ -291,10 +303,10 @@
     const filters = readFilters(); delete filters.status;
     $('rangeLabel').textContent = `${filters.from} → ${filters.to}`;
     try {
-      const [detail, tickets] = await Promise.all([
-        api(`/v1/kinds/${kindId}?` + qs(filters)),
-        api('/v1/feedback?' + qs(Object.assign({ limit: 100, kind_id: kindId }, filters))),
-      ]);
+      const detail = await api(`/v1/kinds/${encodeURIComponent(kindParam)}?` + qs(filters));
+      kindId = detail.id;
+      if (kindParam !== detail.ref) history.replaceState(null, '', '/dashboard/kinds/' + encodeURIComponent(detail.ref));
+      const tickets = await api('/v1/feedback?' + qs(Object.assign({ limit: 100, kind_id: kindId }, filters)));
       state.detail = detail;
       renderDetail(detail, tickets.items || []);
     } catch (err) {
@@ -304,10 +316,10 @@
   }
 
   function renderDetail(k, tickets) {
-    document.title = k.title + ' · Luna Feedback';
+    document.title = `${k.ref} · ${k.title} · Luna Feedback`;
     $('pageTitle').textContent = 'Issue kind';
     $('dTitle').textContent = k.title;
-    $('dSub').textContent = `${k.key}${k.created_by === 'ai' ? ' · first named by the model' : k.created_by ? ' · created by ' + k.created_by : ''}`;
+    $('dSub').textContent = `${k.ref} · ${k.key}${k.created_by === 'ai' ? ' · first named by the model' : k.created_by ? ' · created by ' + k.created_by : ''}`;
     $('dDesc').textContent = k.description || 'No description yet.';
     $('dStatus').value = k.status;
     const chips = $('dChips'); chips.replaceChildren();
@@ -319,12 +331,15 @@
     $('dCount').textContent = fmtN(k.count);
     $('dOpen').textContent = fmtN(k.open_count);
     $('dUsers').textContent = fmtN(k.users);
+    $('dCx').textContent = fmtN(k.cx_count);
+    $('dCxD').textContent = k.cx_count ? `${fmtN(k.cx_users)} customer${k.cx_users === 1 ? '' : 's'}` : 'no customer reports';
     $('dFirst').textContent = shortDate(k.first_seen);
     $('dLast').textContent = shortDate(k.last_seen);
 
     const link = $('dJiraLink'); const btn = $('btnKindJira');
     if (k.jira_key) { link.hidden = false; link.href = k.jira_url || '#'; link.textContent = k.jira_key; btn.hidden = true; }
-    else { link.hidden = true; btn.hidden = false; }
+    else { link.hidden = true; btn.hidden = !can('manage_jira'); }
+    $('dStatus').disabled = !can('manage_kinds');
 
     renderTrend(k.trend || []);
     renderTickets(tickets);
@@ -364,15 +379,18 @@
     const host = $('dTickets'); host.replaceChildren();
     if (!rows.length) { host.appendChild(el('div', 'empty', 'No tickets linked in this range.')); return; }
     const t = el('table'); const head = el('tr');
-    for (const h of ['Occurred', 'Feature', 'Tester', 'Env', 'Status', 'Verdict', 'What they said', 'Jira']) head.appendChild(el('th', null, h));
+    for (const h of ['Report', 'Occurred', 'Feature', 'Reporter', 'Env', 'Status', 'Verdict', 'What they said', 'Jira']) head.appendChild(el('th', null, h));
     t.appendChild(head);
     const body = document.createElement('tbody');
     for (const r of rows) {
       const tr = el('tr'); tr.style.cursor = 'pointer';
-      tr.addEventListener('click', () => { location.href = '/dashboard/submissions/' + r.id; });
+      tr.addEventListener('click', () => { location.href = '/dashboard/submissions/' + encodeURIComponent(r.ref); });
+      tr.appendChild(el('td', 'code', r.ref));
       tr.appendChild(el('td', 'code', r.occurred_on));
       tr.appendChild(el('td', null, r.feature_key));
-      tr.appendChild(el('td', 'code', String(r.user_id)));
+      const who = el('td', 'code', r.origin === 'cx' ? (r.user_id ? String(r.user_id) : r.device_serial) : String(r.user_id));
+      if (r.origin === 'cx') { who.appendChild(document.createTextNode(' ')); who.appendChild(el('span', 'chip cx', 'CX')); }
+      tr.appendChild(who);
       tr.appendChild(el('td', 'code', r.environment || 'stage'));
       const st = el('td'); st.appendChild(el('span', 'chip', (r.status || 'open').replace('_', ' '))); tr.appendChild(st);
       tr.appendChild(el('td', null, r.ai_side || '—'));
@@ -404,16 +422,18 @@
     finally { b.disabled = false; b.textContent = old; }
   });
 
-  for (const id of ['fFrom', 'fTo', 'fEnv', 'fStatus', 'fTest']) {
-    const node = $(id); if (node) node.addEventListener('change', () => (kindId ? loadDetail() : loadList()));
+  for (const id of ['fFrom', 'fTo', 'fEnv', 'fOrigin', 'fStatus', 'fTest']) {
+    const node = $(id); if (node) node.addEventListener('change', () => (kindParam ? loadDetail() : loadList()));
   }
 
   async function boot() {
     const s = await api('/dashboard/session').catch(() => ({ authenticated: false }));
     if (!s.authenticated) { location.replace('/dashboard?next=' + encodeURIComponent(location.pathname)); return; }
+    state.me = await api('/v1/me').catch(() => null);
+    document.querySelector('.newform').hidden = !can('manage_kinds');
     const to = istToday();
     $('fTo').value = to; $('fFrom').value = shift(to, -89);
-    if (kindId) {
+    if (kindParam) {
       $('detailView').hidden = false;
       // The kind's own status is edited on this page, so the list filter would only confuse.
       $('fStatusField').hidden = true;

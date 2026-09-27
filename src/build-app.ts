@@ -31,13 +31,22 @@ import { registerAnalyticsRoutes } from './modules/analytics/analytics.routes.js
 import { UsersRepo } from './modules/users/users.repo.js';
 import { UsersService } from './modules/users/users.service.js';
 import { registerUserRoutes } from './modules/users/users.routes.js';
+import { registerCxRoutes } from './modules/cx/cx.routes.js';
+import { AttentionRepo } from './modules/attention/attention.repo.js';
+import { AttentionService } from './modules/attention/attention.service.js';
+import { registerAttentionRoutes } from './modules/attention/attention.routes.js';
+import { runInBackground } from './modules/diagnosis/background.js';
+import type { Environment } from './schema/registry.js';
 
 export interface BuildOptions {
   config?: Config;
   db?: Db;
   logger?: boolean | object;
-  /** Test seams for the diagnosis pipeline. */
-  diagnosis?: { logs?: LogsClient | null; ai?: OpenRouterClient | null; fetchImpl?: typeof fetch; now?: () => Date };
+  /**
+   * Test seams for the diagnosis pipeline. `logs` alone serves every environment; `logsByEnv`
+   * overrides it per environment (null = no logging host for that environment).
+   */
+  diagnosis?: { logs?: LogsClient | null; logsByEnv?: Partial<Record<Environment, LogsClient | null>>; ai?: OpenRouterClient | null; fetchImpl?: typeof fetch; now?: () => Date };
   /** Test seam: replaces the ImageKit client built from config. */
   imagekit?: ImageKitClient | null;
   /** Test seam: replaces the Jira client built from config. */
@@ -92,17 +101,27 @@ export function buildApp(opts: BuildOptions = {}): App {
   const kinds = new KindsService(kindsRepo);
 
   const diagnosisRepo = new DiagnosisRepo(db);
-  const logsClient = opts.diagnosis && 'logs' in opts.diagnosis ? opts.diagnosis.logs ?? null
-    : config.LUNA_LOGS_APIKEY ? new LogsClient({ baseUrl: config.LUNA_LOGS_BASE_URL, apiKey: config.LUNA_LOGS_APIKEY }) : null;
+  // Stage and production logs live on different hosts behind the same key. UAT has none until its
+  // host is configured, so its reports are never looked up.
+  const logsAt = (baseUrl: string | undefined) => (config.LUNA_LOGS_APIKEY && baseUrl ? new LogsClient({ baseUrl, apiKey: config.LUNA_LOGS_APIKEY }) : null);
+  const seamed = opts.diagnosis && 'logs' in opts.diagnosis;
+  const logsClient = seamed ? opts.diagnosis!.logs ?? null : logsAt(config.LUNA_LOGS_BASE_URL_STAGE ?? config.LUNA_LOGS_BASE_URL);
+  const logsByEnv = opts.diagnosis?.logsByEnv ?? (seamed ? undefined : {
+    stage: logsClient,
+    production: logsAt(config.LUNA_LOGS_BASE_URL_PRODUCTION),
+    uat: logsAt(config.LUNA_LOGS_BASE_URL_UAT),
+  });
   const aiClient = opts.diagnosis && 'ai' in opts.diagnosis ? opts.diagnosis.ai ?? null
     : config.OPEN_ROUTER_KEY ? new OpenRouterClient({ apiKey: config.OPEN_ROUTER_KEY, model: config.OPENROUTER_MODEL }) : null;
   const diagnosis = new DiagnosisService({
-    repo: diagnosisRepo, feedback: feedbackRepo, categories, logs: logsClient, ai: aiClient, kinds,
+    repo: diagnosisRepo, feedback: feedbackRepo, categories, logs: logsClient, logsByEnv, ai: aiClient, kinds,
     config: { model: config.OPENROUTER_MODEL, auto: config.DIAGNOSIS_AUTO, dailyBudgetUsd: config.DIAGNOSIS_DAILY_BUDGET_USD, timeZone: config.APP_TIMEZONE, maxAttempts: 6, syncHourIst: config.DIAGNOSIS_SYNC_HOUR_IST },
     log: app.log, fetchImpl: opts.diagnosis?.fetchImpl, now: opts.diagnosis?.now,
   });
   app.diagnosis = diagnosis;
   service.setDiagnosisHook({ onNegativeSubmission: (id, log) => diagnosis.enqueueAndRun(id, log) });
+  // A CX report arrives with only its ring serial; the logging service knows the rest.
+  service.setDeviceHook({ onCxSubmission: (id, log) => runInBackground(() => diagnosis.fillDeviceFromLogs(id), log, `device ${id}`) });
   if (!diagnosis.enabled) app.log.warn('AI diagnosis disabled: set LUNA_LOGS_APIKEY and OPEN_ROUTER_KEY to enable');
 
   const chat = new ChatService({
@@ -139,7 +158,7 @@ export function buildApp(opts: BuildOptions = {}): App {
     superAdminEmail: config.SUPERADMIN_EMAIL ?? null,
   });
 
-  registerAuth(app, { app: config.APP_API_KEY, admin: config.ADMIN_API_KEY, sessionSecret, cronSecret: config.CRON_SECRET, keyLogin: config.DASHBOARD_KEY_LOGIN }, {
+  registerAuth(app, { app: config.APP_API_KEY, admin: config.ADMIN_API_KEY, cx: config.CX_API_KEY, sessionSecret, cronSecret: config.CRON_SECRET, keyLogin: config.DASHBOARD_KEY_LOGIN }, {
     actorFor: (id) => users.actorFor(id),
     passwordEpochFor: async (id) => {
       const row = await usersRepo.byId(id);
@@ -166,6 +185,8 @@ export function buildApp(opts: BuildOptions = {}): App {
   registerJiraRoutes(app, { service: jira });
   registerChatRoutes(app, { service: chat });
   registerAnalyticsRoutes(app, { repo: new AnalyticsRepo(db), timeZone: config.APP_TIMEZONE });
+  registerCxRoutes(app, { feedback: service, kinds, publicBaseUrl: config.PUBLIC_BASE_URL });
+  registerAttentionRoutes(app, { service: new AttentionService(new AttentionRepo(db)) });
 
   app.addHook('onClose', async () => {
     if (!opts.db) await db.end();

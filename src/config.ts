@@ -5,6 +5,8 @@ const EnvSchema = z.object({
   SUPABASE_DB_URL: z.string().url().describe('Postgres connection string from Supabase'),
   APP_API_KEY: z.string().min(16, 'APP_API_KEY must be at least 16 chars'),
   ADMIN_API_KEY: z.string().min(16, 'ADMIN_API_KEY must be at least 16 chars'),
+  /** Sent by the CX team's tool as x-api-key. It can only file and read CX reports. Unset = /v1/cx/* refuses everyone but the admin key. */
+  CX_API_KEY: z.preprocess((v) => (v === '' ? undefined : v), z.string().min(16, 'CX_API_KEY must be at least 16 chars').optional()),
   DASHBOARD_KEY: z.string().min(16, 'DASHBOARD_KEY must be at least 16 chars'),
   DASHBOARD_SESSION_DAYS: z.coerce.number().int().positive().max(365).default(30),
   PORT: z.coerce.number().int().positive().default(3000),
@@ -16,7 +18,13 @@ const EnvSchema = z.object({
   DB_POOL_MAX: z.coerce.number().int().positive().default(5),
   // --- AI diagnosis (optional: when either key is missing, diagnosis is disabled and submissions still work) ---
   LUNA_LOGS_APIKEY: z.string().min(8).optional(),
+  /** Stage logging host. LUNA_LOGS_BASE_URL_STAGE wins when both are set; this name is kept for existing deployments. */
   LUNA_LOGS_BASE_URL: z.string().url().default('https://stage-app.gonoise.com'),
+  LUNA_LOGS_BASE_URL_STAGE: z.string().url().optional(),
+  /** Production customers' logs. Same api-key as stage. */
+  LUNA_LOGS_BASE_URL_PRODUCTION: z.string().url().default('https://app.gonoise.com'),
+  /** Empty until UAT credentials exist: UAT reports are then never looked up, and Diagnose is disabled for them. */
+  LUNA_LOGS_BASE_URL_UAT: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
   OPEN_ROUTER_KEY: z.string().min(8).optional(),
   OPENROUTER_MODEL: z.string().default('google/gemini-3.1-flash-lite'),
   DIAGNOSIS_AUTO: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
@@ -73,6 +81,11 @@ export function loadConfig(overrides: Partial<Record<keyof Config, string>> = {}
   if (!parsed.success) {
     const lines = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`);
     throw new Error(`Invalid environment configuration:\n${lines.join('\n')}`);
+  }
+  // The key decides whether a report is internal or CX, so the two callers must never share one.
+  const cx = parsed.data.CX_API_KEY;
+  if (cx && (cx === parsed.data.APP_API_KEY || cx === parsed.data.ADMIN_API_KEY)) {
+    throw new Error('Invalid environment configuration:\n  - CX_API_KEY: must differ from APP_API_KEY and ADMIN_API_KEY');
   }
   if (Object.keys(overrides).length === 0) cached = parsed.data;
   return parsed.data;

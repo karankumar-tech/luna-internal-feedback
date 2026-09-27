@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AppError } from '../../lib/errors.js';
 import { zodIssues } from '../../schema/buildValidator.js';
 import type { CategoriesRepo } from './categories.repo.js';
+import { requirePermission } from '../../plugins/auth.js';
 
 const Slug = z.string().trim().regex(/^[a-z][a-z0-9_]*$/, 'must be a lowercase slug like wrong_peak_score').max(64);
 
@@ -31,7 +32,7 @@ export function registerAdminRoutes(app: FastifyInstance, deps: { categories: Ca
 
   app.get('/v1/admin/features', async () => ({ items: await categories.allFeatures() }));
 
-  app.patch<{ Params: { feature: string } }>('/v1/admin/features/:feature', async (req) => {
+  app.patch<{ Params: { feature: string } }>('/v1/admin/features/:feature', { onRequest: requirePermission('manage_categories') }, async (req) => {
     const patch = parseOr422(PatchFeature, req.body);
     const row = await categories.updateFeature(req.params.feature, patch);
     if (!row) throw AppError.notFound(`Unknown feature "${req.params.feature}"`);
@@ -43,7 +44,7 @@ export function registerAdminRoutes(app: FastifyInstance, deps: { categories: Ca
     return { items: await categories.listAll(req.params.feature) };
   });
 
-  app.post<{ Params: { feature: string } }>('/v1/admin/features/:feature/issue-categories', async (req, reply) => {
+  app.post<{ Params: { feature: string } }>('/v1/admin/features/:feature/issue-categories', { onRequest: requirePermission('manage_categories') }, async (req, reply) => {
     if (!(await categories.feature(req.params.feature))) throw AppError.notFound(`Unknown feature "${req.params.feature}"`);
     const input = parseOr422(CreateCategory, req.body) as { key: string; label: string; sort_order: number };
     try {
@@ -57,7 +58,7 @@ export function registerAdminRoutes(app: FastifyInstance, deps: { categories: Ca
     }
   });
 
-  app.patch<{ Params: { id: string } }>('/v1/admin/issue-categories/:id', async (req) => {
+  app.patch<{ Params: { id: string } }>('/v1/admin/issue-categories/:id', { onRequest: requirePermission('manage_categories') }, async (req) => {
     if (!z.string().uuid().safeParse(req.params.id).success) throw AppError.notFound('Category not found');
     const patch = parseOr422(PatchCategory, req.body);
     const row = await categories.update(req.params.id, patch);

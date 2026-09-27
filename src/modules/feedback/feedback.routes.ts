@@ -6,9 +6,9 @@ import { requirePermission } from '../../plugins/auth.js';
 import { buildFeatureSchema, buildSchemaResponse, etagFor } from '../../schema/buildSchemaResponse.js';
 import { zodIssues } from '../../schema/buildValidator.js';
 import { isValidCalendarDate, todayInZone } from '../../lib/time.js';
-import { ENVIRONMENTS, PLATFORMS } from '../../schema/registry.js';
+import { ENVIRONMENTS, ORIGINS, PLATFORMS } from '../../schema/registry.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
-import { SUBMISSION_STATUSES } from './feedback.repo.js';
+import { SUBMISSION_STATUSES, parseSubmissionRef } from './feedback.repo.js';
 import type { FeedbackService } from './feedback.service.js';
 
 const IsTest = z.enum(['true', 'false']).transform((v) => v === 'true').optional();
@@ -21,6 +21,7 @@ const AiSeverity = z.enum(['low', 'medium', 'high', 'critical']).optional();
 export const CommonQuery = z.object({
   feature: z.string().optional(),
   environment: z.enum(ENVIRONMENTS).optional(),
+  origin: z.enum(ORIGINS).optional(),
   platform: z.enum(PLATFORMS).optional(),
   is_test: IsTest,
   status: z.enum(SUBMISSION_STATUSES).optional(),
@@ -41,6 +42,12 @@ const DateRange = {
 
 const ListQuery = CommonQuery.extend({
   ...DateRange,
+  /** One report by reference: LN-00042, ln-42 or 42. */
+  ref: z.string().trim().max(20).transform((v, ctx) => {
+    const n = parseSubmissionRef(v);
+    if (n === null) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'must look like LN-00042' }); return z.NEVER; }
+    return n;
+  }).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   cursor: z.string().regex(/^[^|]+\|[0-9a-f-]{36}$/, 'invalid cursor').optional(),
 });
@@ -138,9 +145,11 @@ export function registerFeedbackRoutes(
   app.get('/v1/feedback', async (req) => {
     const parsed = ListQuery.safeParse(req.query);
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error), 'Invalid query');
-    return service.list(parsed.data);
+    const { ref, ...filters } = parsed.data;
+    return service.list({ ...filters, ref_no: ref });
   });
 
+  /** By uuid or by reference (LN-00042, ln-42, 42). */
   app.get<{ Params: { id: string } }>('/v1/feedback/:id', async (req) => service.get(req.params.id));
 
   // ---- mark one submission as test / real, or move it through triage (admin) ----

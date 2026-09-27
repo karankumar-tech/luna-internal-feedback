@@ -124,6 +124,9 @@
   <a href="#ep-stats"><span class="m">GET</span>/v1/feedback/stats</a>
   <a href="#ep-diagnosis"><span class="m">GET</span>…/{id}/diagnosis</a>
   <a href="#ep-admin">Admin routes</a>
+  <a href="#cx">CX integration</a>
+  <a href="#ep-cx-submit" class="sub"><span class="m">POST</span>/v1/cx/feedback/{feature}</a>
+  <a href="#ep-cx-status" class="sub"><span class="m">GET</span>/v1/cx/feedback/{ref}</a>
   <div class="grp"></div>
   <a href="#features">Feature reference</a>
   <a href="#client">Client context</a>
@@ -156,6 +159,7 @@
   <div class="callout warn"><div class="overline">Stage only</div><p>The key is distributed out of band by the backend owner. Compile the feedback module out of Release builds; never ship the key in a public binary.</p></div>
   <div class="callout"><div class="overline">While integrating</div><p>Send <code>"is_test": true</code> on every submission from development and integration runs so it can be separated from real feedback. Details in <a href="#testing">Test submissions</a>.</p></div>
   <p><code>GET /healthz</code>, <code>/docs</code>, and <code>/dashboard</code> are the only unauthenticated routes. Admin routes under <code>/v1/admin</code> need a separate key (<code>x-admin-key</code>) and are not for the app.</p>
+  <p>The CX team's tool has its own key (<code>CX_API_KEY</code>, also sent as <code>x-api-key</code>). It files customer problems through <a href="#cx"><code>/v1/cx/*</code></a> and can read the form schema, nothing else. The app key cannot file CX reports.</p>
 </section>
 
 <section class="block" id="quickstart">
@@ -550,6 +554,7 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
   <h4>Response 201 Created (live, verbatim)</h4>
 <pre><code>{
   "id": "178239d2-2581-4207-a378-742b0ac186ef",
+  "ref": "LN-00042",
   "feature_key": "workout",
   "is_positive": false,
   "occurred_on": "2026-09-01",
@@ -578,6 +583,7 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
   "created_at_ist": "2026-09-02 13:50:23 +05:30"
 }</code></pre>
   <p>Times come back zero-padded, and the <code>client</code> block is flattened to top-level fields. Client keys not sent come back as <code>null</code>.</p>
+  <p><code>ref</code> is the report's readable reference (<code>LN-00042</code>). Show it to the tester after they submit ("Thanks — your reference is LN-00042") so they can quote it; everyone on the dashboard finds the report by it. Responses also carry <code>origin</code> (<code>internal</code> for everything the app sends) and <code>status</code> (triage state).</p>
   <p><strong>Response 200 OK</strong>: same body, returned when the <code>Idempotency-Key</code> was already used. Treat as success.</p>
   <h4>Response 422</h4>
 <pre><code>{
@@ -598,6 +604,9 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
   <div class="tbl"><table>
     <tr><th>param</th><th>type</th><th>notes</th></tr>
     <tr><td><code>feature</code></td><td>string</td><td><code>home</code> / <code>sleep</code> / <code>activity</code> / <code>workout</code> / <code>other</code></td></tr>
+    <tr><td><code>environment</code></td><td>string</td><td><code>stage</code> / <code>uat</code> / <code>production</code></td></tr>
+    <tr><td><code>origin</code></td><td>string</td><td><code>internal</code> (testers, through the app) / <code>cx</code> (customers, through CX)</td></tr>
+    <tr><td><code>ref</code></td><td>string</td><td>one report by reference: <code>LN-00042</code>, <code>ln-42</code> or <code>42</code></td></tr>
     <tr><td><code>platform</code></td><td>string</td><td><code>ios</code> / <code>android</code></td></tr>
     <tr><td><code>is_test</code></td><td><code>true</code> / <code>false</code></td><td>omit for both</td></tr>
     <tr><td><code>user_id</code></td><td>integer</td><td></td></tr>
@@ -614,11 +623,11 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
   <p><code>next_cursor</code> is <code>null</code> on the last page. Pass it back URL-encoded as <code>cursor</code>. Invalid parameters return <code>422</code>.</p>
 
   <div id="ep-one" class="endpoint" style="margin-top:20px"><span class="method get">GET</span><code class="path">/v1/feedback/{id}</code><span class="auth">x-api-key</span></div>
-  <p>One submission by UUID. <code>404</code> if not found or the id is not a UUID.</p>
+  <p>One submission by UUID or by reference (<code>LN-00042</code>, <code>ln-42</code> and <code>42</code> all work). <code>404</code> if not found.</p>
 
   <hr class="ep">
   <div id="ep-stats" class="endpoint"><span class="method get">GET</span><code class="path">/v1/feedback/stats</code><span class="auth">x-api-key</span></div>
-  <p>Aggregates for the dashboard. Accepts the same filters as the list (<code>feature</code>, <code>platform</code>, <code>is_test</code>, <code>user_id</code>, <code>from</code>, <code>to</code>, <code>is_positive</code>, <code>category</code>). <code>to</code> defaults to today in IST and <code>from</code> to 30 days earlier.</p>
+  <p>Aggregates for the dashboard. Accepts the same filters as the list (<code>feature</code>, <code>environment</code>, <code>origin</code>, <code>platform</code>, <code>is_test</code>, <code>user_id</code>, <code>from</code>, <code>to</code>, <code>is_positive</code>, <code>category</code>). <code>to</code> defaults to today in IST and <code>from</code> to 30 days earlier. Also returns <code>by_origin</code>: issues, open, and when the oldest open one arrived, per origin. <code>users</code> counts people: testers by user id, customers by user id or ring serial.</p>
 <pre><code>{
   "range": { "from": "2026-08-04", "to": "2026-09-02" },
   "totals": { "submissions": 42, "positive": 30, "negative": 12, "users": 9 },
@@ -658,6 +667,52 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
     <tr><td><span class="method" style="background:var(--crit)">DELETE</span></td><td><code>/v1/admin/test-data?confirm=delete</code></td><td>deletes only <code>is_test</code> rows → <code>{ "deleted" }</code>; <code>422</code> without the confirm parameter</td></tr>
   </table></div>
   <div class="callout"><div class="overline">Stale schema</div><p>Categories are never deleted. Deactivating one removes it from the schema and makes the server reject it on new submissions, so a client holding a stale cached schema may get a <code>422</code> on <code>issue_categories.N</code>. Handle that by refetching the schema and asking the user to re-pick.</p></div>
+</section>
+
+<section class="block" id="cx">
+  <div class="overline">For the CX tool</div>
+  <h2>CX integration</h2>
+  <p>For the CX team's tool, not the app. An agent checks that a customer's problem is real and belongs here, then presses a button in the tool, which calls this API with <code>CX_API_KEY</code>. The key decides that the report is a CX report; there is no <code>origin</code> field to send.</p>
+
+  <div id="ep-cx-submit" class="endpoint"><span class="method post">POST</span><code class="path">/v1/cx/feedback/{feature}</code><span class="auth">CX key</span></div>
+  <p>The same feature fields, categories and rules as <a href="#ep-submit"><code>POST /v1/feedback/{feature}</code></a>, with these differences:</p>
+  <div class="tbl"><table>
+    <tr><th>field</th><th>required</th><th>notes</th></tr>
+    <tr><td><code>device_serial</code></td><td><span class="req yes">yes</span></td><td>the customer's ring or band serial, 3–64 characters. It identifies the customer and finds their logs</td></tr>
+    <tr><td><code>cx</code></td><td><span class="req yes">yes</span></td><td><code>{ "ref", "url"?, "channel"?, "agent"?, "transcript"? }</code>. <code>ref</code> is the ticket id in the CX tool (≤ 100). <code>channel</code>: <code>email</code> · <code>chat</code> · <code>call</code> · <code>whatsapp</code> · <code>social</code> · <code>app_store</code> · <code>play_store</code> · <code>other</code>. <code>agent</code>: who pressed the button (≤ 120). <code>transcript</code>: the customer's own words (≤ 5000)</td></tr>
+    <tr><td><code>email</code></td><td><span class="req yes" style="background:var(--crit)">never</span></td><td>rejected with <code>422</code> on <code>email</code>: customer email addresses are not stored. Any email address or phone number inside <code>feedback_text</code> or <code>cx.transcript</code> is redacted before storing</td></tr>
+    <tr><td><code>user_id</code></td><td><span class="req no">no</span></td><td>the customer's Luna user id if the tool has it; otherwise it is looked up from the serial</td></tr>
+    <tr><td><code>client.environment</code></td><td><span class="req no">no</span></td><td>defaults to <code>production</code></td></tr>
+    <tr><td><code>feedback_text</code></td><td><span class="req no">no</span></td><td>the agent's summary, ≤ 500</td></tr>
+  </table></div>
+  <p>The server fills in the Luna user id, platform, app and firmware version from the logging service by serial, shortly after the response.</p>
+<pre><code>curl -X POST https://luna-feedback.buildsage.tech/v1/cx/feedback/sleep \
+  -H "x-api-key: $CX_API_KEY" -H "content-type: application/json" \
+  -d '{
+    "is_positive": false,
+    "occurred_on": "2026-09-25",
+    "device_serial": "R2N08250600302",
+    "issue_categories": ["incorrect_sleep"],
+    "feedback_text": "Customer says sleep shows 3h; they slept about 7h.",
+    "cx": { "ref": "FD-48213", "url": "https://support.example/tickets/48213", "channel": "email", "agent": "Asha" }
+  }'</code></pre>
+  <h4>Response 201 (new) or 200 (already filed)</h4>
+  <p><code>200</code> means this <code>cx.ref</code> was already filed for this feature: the first report comes back, never a second one.</p>
+<pre><code>{
+  "id": "5d0c…", "ref": "LN-00042", "feature_key": "sleep", "is_positive": false,
+  "occurred_on": "2026-09-25", "environment": "production", "device_serial": "R2N08250600302",
+  "cx": { "ref": "FD-48213", "url": "https://support.example/tickets/48213", "channel": "email", "agent": "Asha" },
+  "status": "open", "status_changed_at": null,
+  "created_at": "2026-09-27T10:02:11.000Z", "created_at_ist": "2026-09-27 15:32:11 +05:30",
+  "problems": [],
+  "dashboard_url": "https://luna-feedback.buildsage.tech/i/LN-00042"
+}</code></pre>
+  <p>Store <code>ref</code> on the CX ticket. <code>problems</code> lists the recurring problems (<code>LNK-0007</code>) the report has been grouped under.</p>
+
+  <hr class="ep">
+  <div id="ep-cx-status" class="endpoint"><span class="method get">GET</span><code class="path">/v1/cx/feedback/{ref}</code><span class="auth">CX key</span></div>
+  <p>Where a CX report stands, by reference or id, in the same shape as above. Internal tester reports are not readable with the CX key (<code>404</code>).</p>
+  <div class="callout"><div class="overline">What the CX key can reach</div><p><code>/v1/cx/*</code>, <code>GET /v1/feedback/schema</code> and <code>/v1/feedback/schema/{feature}</code> (to build the button's form), and <code>GET /v1/uploads/screenshot-auth</code> (to attach screenshots the same way the app does). Anything else answers <code>403</code>.</p></div>
 </section>
 
 <section class="block" id="features">
@@ -871,10 +926,12 @@ struct FeedbackAPI {
 
     struct SubmissionResponse: Decodable {
         let id: String
+        /// Readable reference to show the tester, e.g. "LN-00042".
+        let ref: String
         let createdAt: String
         let createdAtIST: String
         enum CodingKeys: String, CodingKey {
-            case id
+            case id, ref
             case createdAt = "created_at"
             case createdAtIST = "created_at_ist"
         }

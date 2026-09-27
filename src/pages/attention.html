@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Luna Needs Attention</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&display=swap">
+<style>
+  :root {
+    --black: #000; --white: #fff; --gray-dark: #737373; --gray-mid: #9E9E9E; --gray-light: #D9D9D9;
+    --bg: #F0EFEA; --brief: #E8E6E0; --border-warm: #E2E0D9; --border-ghost: #F0F0F0; --hero: #1A1A18; --hero-muted: #8A887F;
+    --yellow: #F5F85D; --yellow-50: #FEFFD6; --blue: #2E64E4; --orange: #EF7432; --magenta: #E0237A; --ok: #00C37A; --ok-bg: #E6F8F0; --crit: #FF3B3B; --crit-bg: #FFECEC;
+    --sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --r-xs: 2px; --r-s: 4px; --r-m: 6px; --r-l: 8px; --r-xl: 12px;
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: light; }
+  body { margin: 0; background: var(--bg); color: var(--black); font-family: var(--sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; } button, input, select { font: inherit; color: inherit; }
+  .overline { font-family: var(--mono); font-size: 11px; line-height: 16px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); }
+  h1 { font-size: 24px; line-height: 28px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 16px; line-height: 20px; font-weight: 600; margin: 0; }
+  .tertiary { color: var(--gray-mid); }
+  .mono { font-family: var(--mono); font-size: 12px; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px 64px; }
+  .top { background: var(--white); border-bottom: 1px solid var(--gray-light); }
+  .top-inner { max-width: 1240px; margin: 0 auto; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .crumb { font-size: 13px; color: var(--gray-dark); text-decoration: none; } .crumb:hover { color: var(--black); }
+  .btn { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-l); padding: 7px 12px; line-height: 18px; cursor: pointer; font-weight: 500; text-decoration: none; }
+  .btn.small { padding: 4px 10px; font-size: 12px; line-height: 16px; border-radius: var(--r-s); }
+  .btn:focus-visible, select:focus-visible { outline: none; border-color: var(--black); box-shadow: 0 0 0 1px var(--black); }
+  select { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-m); padding: 7px 10px; line-height: 18px; }
+  label.field { display: flex; flex-direction: column; gap: 4px; }
+  label.field > span { font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); }
+  .filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; margin: 20px 0 16px; }
+  .card { background: var(--white); border: 1px solid var(--gray-light); border-radius: var(--r-xl); padding: 16px 20px; min-width: 0; margin-bottom: 12px; }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .card-head .sub { font-size: 12px; line-height: 18px; color: var(--gray-dark); }
+  .count { font-family: var(--mono); font-size: 12px; color: var(--gray-dark); }
+  .kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .kpi { background: var(--white); border: 1px solid var(--gray-light); border-radius: var(--r-l); padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; text-decoration: none; }
+  a.kpi:hover { border-color: var(--black); }
+  .kpi .v { font-family: var(--mono); font-size: 28px; line-height: 32px; } .kpi .l { font-size: 12px; line-height: 16px; color: var(--gray-dark); } .kpi .d { font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--gray-mid); }
+  .kpi.hero { background: var(--hero); border-color: var(--hero); color: var(--white); } .kpi.hero .l { color: var(--hero-muted); }
+  .kpi.warn .v { color: #A03600; }
+  .empty { padding: 20px 0; text-align: center; color: var(--gray-mid); font-size: 13px; }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 18px; }
+  th { text-align: left; font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); font-weight: 400; padding: 8px 10px; border-bottom: 1px solid var(--gray-light); white-space: nowrap; }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--border-ghost); vertical-align: top; }
+  td.num, th.num { text-align: right; } td.num { font-family: var(--mono); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  td.nowrap { white-space: nowrap; }
+  tr.link { cursor: pointer; } tr.link:hover td { background: #FAFAF7; }
+  .pill { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 6px; border-radius: var(--r-s); display: inline-block; line-height: 14px; }
+  .pill.cx { background: var(--magenta); color: var(--white); }
+  .pill.internal { background: var(--brief); color: var(--gray-dark); }
+  .over { color: #A03600; font-family: var(--mono); font-size: 12px; }
+  .sev { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+  .sev.critical { color: #8A1010; } .sev.high { color: #A03600; } .sev.medium { color: #7A5A00; } .sev.low { color: var(--gray-dark); }
+  .kind { font-size: 12px; color: var(--gray-dark); } .kind b { font-family: var(--mono); font-weight: 500; color: var(--black); }
+  .snippet { color: var(--gray-dark); font-size: 12px; max-width: 360px; }
+  .bar { height: 6px; border-radius: 3px; background: var(--brief); overflow: hidden; min-width: 80px; } .bar i { display: block; height: 100%; }
+  .loading { opacity: .45; }
+  @media (max-width: 1100px) { .kpis { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 600px) { .kpis { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <div>
+      <a class="crumb" href="/dashboard">← Dashboard</a>
+      <div class="overline" style="margin-top:2px">Luna · Feedback</div>
+      <h1>Needs attention</h1>
+    </div>
+    <span style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span class="tertiary" id="freshness" style="font-size:12px"></span>
+      <button class="btn small" id="btnRefresh" type="button">Refresh</button>
+      <a class="btn small" href="/dashboard/kinds">Issue kinds →</a>
+    </span>
+  </div>
+</header>
+<main class="wrap">
+  <section class="filters" aria-label="Filters">
+    <label class="field"><span>Source</span>
+      <select id="fOrigin"><option value="">CX + internal</option><option value="cx">CX only</option><option value="internal">Internal only</option></select>
+    </label>
+    <label class="field"><span>Environment</span>
+      <select id="fEnv"><option value="">All environments</option><option value="stage">Stage</option><option value="uat">UAT</option><option value="production">Production</option></select>
+    </label>
+    <label class="field"><span>Data</span>
+      <select id="fTest"><option value="false">Real only</option><option value="true">Test only</option></select>
+    </label>
+  </section>
+
+  <div id="content">
+    <section class="kpis" aria-label="Summary">
+      <div class="kpi hero"><div class="v" id="kOpen">–</div><div class="l">Open issues</div><div class="d" id="kOpenD"></div></div>
+      <a class="kpi" href="#untouched"><div class="v" id="kUntouched">–</div><div class="l">Untouched too long</div><div class="d" id="kUntouchedD"></div></a>
+      <a class="kpi" href="#cx"><div class="v" id="kCx">–</div><div class="l">CX waiting on us</div><div class="d" id="kCxD"></div></a>
+      <a class="kpi" href="#stale"><div class="v" id="kStale">–</div><div class="l">Stale</div><div class="d" id="kStaleD"></div></a>
+      <a class="kpi" href="#stuck"><div class="v" id="kStuck">–</div><div class="l">Diagnosis stuck</div><div class="d">failed, or waiting &gt; 2 days</div></a>
+      <a class="kpi" href="#kinds"><div class="v" id="kKinds">–</div><div class="l">Problems with no Jira</div><div class="d" id="kKindsD"></div></a>
+    </section>
+
+    <section class="card" id="untouched">
+      <div class="card-head"><div><h2>Untouched too long</h2><div class="sub" id="subUntouched">Still open, and nobody has changed its status, filed a ticket or grouped it.</div></div><span class="count" id="cUntouched"></span></div>
+      <div class="table-scroll" id="tUntouched"></div>
+    </section>
+
+    <section class="card" id="cx">
+      <div class="card-head"><div><h2>CX reports waiting on us</h2><div class="sub">Every open report that came from a customer through CX, most urgent first.</div></div><span class="count" id="cCx"></span></div>
+      <div class="table-scroll" id="tCx"></div>
+    </section>
+
+    <section class="card" id="stale">
+      <div class="card-head"><div><h2>Stale</h2><div class="sub" id="subStale">Someone picked it up, but nothing has moved since.</div></div><span class="count" id="cStale"></span></div>
+      <div class="table-scroll" id="tStale"></div>
+    </section>
+
+    <section class="card" id="stuck">
+      <div class="card-head"><div><h2>Diagnosis stuck</h2><div class="sub">The AI run failed, or has waited more than two days for logs.</div></div><span class="count" id="cStuck"></span></div>
+      <div class="table-scroll" id="tStuck"></div>
+    </section>
+
+    <section class="card" id="kinds">
+      <div class="card-head"><div><h2>Problems with no Jira ticket</h2><div class="sub" id="subKinds">Recurring problems with enough reports, or any from a customer, and still no ticket.</div></div><span class="count" id="cKinds"></span></div>
+      <div class="table-scroll" id="tKinds"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><div><h2>How old are open issues?</h2><div class="sub">Every open issue in this slice, by days since it was reported.</div></div></div>
+      <div class="table-scroll" id="tAges"></div>
+    </section>
+  </div>
+</main>
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; };
+  const fmtN = (n) => new Intl.NumberFormat('en-IN').format(n);
+  const days = (d) => d < 1 ? `${Math.max(1, Math.round(d * 24))}h` : `${Math.round(d)}d`;
+  const FEATURE = { home: 'Home', sleep: 'Sleep', activity: 'Activity', workout: 'Workout', other: 'Other' };
+  const HERE = '/dashboard/attention';
+
+  async function api(path) {
+    const r = await fetch(path, { credentials: 'same-origin', headers: { 'x-requested-with': 'dashboard' } });
+    const b = await r.json().catch(() => null);
+    if (!r.ok) { const e = new Error((b && b.error && b.error.message) || `HTTP ${r.status}`); e.status = r.status; throw e; }
+    return b;
+  }
+
+  function table(host, cols, rows, emptyText, onRow) {
+    host.replaceChildren();
+    if (!rows.length) { host.appendChild(el('div', 'empty', emptyText)); return; }
+    const t = el('table'); const tr = el('tr'); for (const c of cols) tr.appendChild(el('th', c.num ? 'num' : null, c.h)); t.appendChild(tr);
+    for (const r of rows) {
+      const row = el('tr', onRow ? 'link' : null);
+      for (const c of cols) { const td = el('td', c.cls || (c.num ? 'num' : null)); const v = c.render ? c.render(r) : r[c.k]; if (v instanceof Node) td.appendChild(v); else td.textContent = v == null || v === '' ? '—' : v; row.appendChild(td); }
+      if (onRow) { row.tabIndex = 0; row.addEventListener('click', () => onRow(r)); row.addEventListener('keydown', (e) => { if (e.key === 'Enter') onRow(r); }); }
+      t.appendChild(row);
+    }
+    host.appendChild(t);
+  }
+
+  const originPill = (o) => el('span', 'pill ' + o, o === 'cx' ? 'CX' : 'Internal');
+  const kindsCell = (r) => {
+    if (!r.kinds.length) return el('span', 'tertiary', 'not grouped');
+    const box = el('span', 'kind');
+    r.kinds.forEach((k, i) => { if (i) box.appendChild(document.createTextNode(', ')); box.appendChild(el('b', null, k.ref)); box.appendChild(document.createTextNode(' ' + k.title)); });
+    return box;
+  };
+  const scoreCell = (r) => { const s = el('span', null, r.score.toFixed(1)); s.title = `severity ${r.score_parts.severity} × (1 + log2(${r.score_parts.impact} people)) × (1 + ${r.score_parts.age_days}d / 7)`; return s; };
+  const openReport = (r) => { location.href = '/dashboard/submissions/' + encodeURIComponent(r.ref); };
+
+  function issueCols(extra) {
+    return [
+      { h: 'report', cls: 'nowrap', render: (r) => el('span', 'mono', r.ref) },
+      { h: 'source', render: (r) => originPill(r.origin) },
+      { h: 'feature', render: (r) => FEATURE[r.feature_key] || r.feature_key },
+      { h: 'age', num: true, render: (r) => days(r.age_days) },
+      ...extra,
+      { h: 'severity', render: (r) => el('span', 'sev ' + (r.severity || ''), r.severity || '—') },
+      { h: 'problem', render: kindsCell },
+      { h: 'what they said', render: (r) => el('span', 'snippet', r.feedback_text || '') },
+      { h: 'priority', num: true, render: scoreCell },
+    ];
+  }
+  const overdueCol = { h: 'overdue', num: true, render: (r) => r.overdue_days > 0 ? el('span', 'over', '+' + days(r.overdue_days)) : '—' };
+
+  function render(o) {
+    const c = o.counts;
+    const t = o.thresholds;
+    $('kOpen').textContent = fmtN(c.open);
+    $('kOpenD').textContent = `${fmtN(o.age_buckets.filter((b) => b.origin === 'cx').reduce((a, b) => a + b.count, 0))} from CX`;
+    $('kUntouched').textContent = fmtN(c.untouched); $('kUntouchedD').textContent = `CX > ${t.cx.untouched_days}d · internal > ${t.internal.untouched_days}d`;
+    $('kCx').textContent = fmtN(c.cx_waiting);
+    const oldestCx = o.sections.cx_waiting.items.reduce((m, r) => Math.max(m, r.age_days), 0);
+    $('kCxD').textContent = c.cx_waiting ? `oldest ${days(oldestCx)}` : 'none open';
+    $('kStale').textContent = fmtN(c.stale); $('kStaleD').textContent = `idle: CX > ${t.cx.stale_days}d · internal > ${t.internal.stale_days}d`;
+    $('kStuck').textContent = fmtN(c.diagnosis_stuck);
+    $('kKinds').textContent = fmtN(c.kinds_without_jira); $('kKindsD').textContent = `${t.kind_ticket_min_reports}+ reports, or any from CX`;
+    for (const [id, n] of [['kUntouched', c.untouched], ['kCx', c.cx_waiting], ['kStale', c.stale], ['kStuck', c.diagnosis_stuck], ['kKinds', c.kinds_without_jira]]) $(id).parentElement.classList.toggle('warn', n > 0);
+
+    $('subUntouched').textContent = `Still open, and nobody has changed its status, filed a ticket or grouped it. Flagged after ${t.cx.untouched_days} day for CX and ${t.internal.untouched_days} days for internal reports; critical ones after half that.`;
+    $('subStale').textContent = `Someone picked it up, but nothing has moved for ${t.cx.stale_days} days (CX) or ${t.internal.stale_days} days (internal).`;
+
+    const shown = (s) => s.total > s.items.length ? `${s.items.length} of ${fmtN(s.total)}` : fmtN(s.total);
+    $('cUntouched').textContent = shown(o.sections.untouched);
+    $('cCx').textContent = shown(o.sections.cx_waiting);
+    $('cStale').textContent = shown(o.sections.stale);
+    $('cStuck').textContent = shown(o.sections.diagnosis_stuck);
+    $('cKinds').textContent = fmtN(o.kinds_without_jira.length);
+
+    table($('tUntouched'), issueCols([overdueCol]), o.sections.untouched.items, 'Nothing has been left untouched past its limit.', openReport);
+    table($('tCx'), issueCols([
+      { h: 'CX ticket', cls: 'nowrap', render: (r) => el('span', 'mono', r.cx_ref || '—') },
+      { h: 'status', render: (r) => r.status.replace('_', ' ') },
+    ]), o.sections.cx_waiting.items, 'No open CX reports.', openReport);
+    table($('tStale'), issueCols([
+      { h: 'status', render: (r) => r.status.replace('_', ' ') },
+      { h: 'idle', num: true, render: (r) => days(r.idle_days) },
+      overdueCol,
+    ]), o.sections.stale.items, 'Nothing is stale.', openReport);
+    table($('tStuck'), issueCols([{ h: 'AI', render: (r) => (r.ai_status || '').replace('_', ' ') }]), o.sections.diagnosis_stuck.items, 'No stuck diagnoses.', openReport);
+
+    table($('tKinds'), [
+      { h: 'problem', cls: 'nowrap', render: (r) => el('span', 'mono', r.ref) },
+      { h: 'title', k: 'title' },
+      { h: 'status', k: 'status' },
+      { h: 'reports', k: 'reports', num: true },
+      { h: 'open', k: 'open_reports', num: true },
+      { h: 'people', k: 'people', num: true },
+      { h: 'via CX', num: true, render: (r) => r.cx_reports ? el('span', 'over', String(r.cx_reports)) : '0' },
+      { h: 'last seen', k: 'last_seen' },
+    ], o.kinds_without_jira, 'Every big problem has a ticket.', (r) => { location.href = '/dashboard/kinds/' + encodeURIComponent(r.ref); });
+
+    const buckets = [...new Set(o.age_buckets.map((b) => b.bucket))];
+    const max = Math.max(1, ...o.age_buckets.map((b) => b.count));
+    const count = (origin, bucket) => (o.age_buckets.find((b) => b.origin === origin && b.bucket === bucket) || { count: 0 }).count;
+    const bar = (n, color) => { const b = el('div', 'bar'); const i = el('i'); i.style.width = (n / max) * 100 + '%'; i.style.background = color; b.appendChild(i); return b; };
+    table($('tAges'), [
+      { h: 'age', render: (r) => r },
+      { h: 'CX', num: true, render: (r) => String(count('cx', r)) },
+      { h: '', render: (r) => bar(count('cx', r), '#E0237A') },
+      { h: 'internal', num: true, render: (r) => String(count('internal', r)) },
+      { h: '', render: (r) => bar(count('internal', r), '#000') },
+    ], c.open ? buckets : [], 'No open issues.');
+  }
+
+  let loadedAt = 0;
+  function renderFreshness() { if (!loadedAt) return; const age = Math.round((Date.now() - loadedAt) / 1000); $('freshness').textContent = age < 60 ? 'updated just now' : age < 3600 ? `updated ${Math.round(age / 60)} min ago` : `updated ${(age / 3600).toFixed(1)} h ago`; }
+  setInterval(renderFreshness, 15_000);
+
+  let inflight = 0;
+  async function load() {
+    const my = ++inflight; $('content').classList.add('loading');
+    const q = new URLSearchParams({ is_test: $('fTest').value });
+    if ($('fOrigin').value) q.set('origin', $('fOrigin').value);
+    if ($('fEnv').value) q.set('environment', $('fEnv').value);
+    try {
+      const o = await api('/v1/attention?' + q);
+      if (my !== inflight) return;
+      render(o);
+      loadedAt = Date.now(); renderFreshness();
+    } catch (err) {
+      if (err.status === 401) { location.replace('/dashboard?next=' + encodeURIComponent(HERE)); return; }
+      $('freshness').textContent = 'Could not load: ' + err.message;
+    } finally { if (my === inflight) $('content').classList.remove('loading'); }
+  }
+  for (const id of ['fOrigin', 'fEnv', 'fTest']) $(id).addEventListener('change', load);
+  $('btnRefresh').addEventListener('click', async () => { const b = $('btnRefresh'); b.disabled = true; try { await load(); } finally { b.disabled = false; } });
+
+  api('/dashboard/session').then((s) => { if (!s.authenticated) { location.replace('/dashboard?next=' + encodeURIComponent(HERE)); return; } load(); })
+    .catch(() => location.replace('/dashboard?next=' + encodeURIComponent(HERE)));
+})();
+</script>
+</body>
+</html>

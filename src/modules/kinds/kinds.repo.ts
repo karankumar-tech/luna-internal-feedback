@@ -1,5 +1,5 @@
 import type { Db } from '../../db/pool.js';
-import { buildWhere, type CommonFilters } from '../feedback/feedback.repo.js';
+import { buildWhere, personSql, type CommonFilters } from '../feedback/feedback.repo.js';
 
 export const KIND_STATUSES = ['open', 'watching', 'fixed', 'wont_fix'] as const;
 export type KindStatus = (typeof KIND_STATUSES)[number];
@@ -9,6 +9,8 @@ export type KindLinkSource = (typeof KIND_LINK_SOURCES)[number];
 
 export interface IssueKindRow {
   id: string;
+  /** Readable reference, LNK-0007. */
+  ref: string;
   key: string;
   title: string;
   description: string | null;
@@ -34,10 +36,14 @@ export interface IssueKindWithCounts extends IssueKindRow {
   open_count: number;
   /** Instances in the window that the model linked rather than a person. */
   ai_count: number;
+  /** Instances that came through CX, and how many customers they are. */
+  cx_count: number;
+  cx_users: number;
 }
 
 export interface KindLink {
   kind_id: string;
+  ref: string;
   key: string;
   title: string;
   status: string;
@@ -50,7 +56,7 @@ export interface KindLink {
   created_at: Date;
 }
 
-const K_COLS = `k.id, k.key, k.title, k.description, k.feature_key, k.tags, k.event_codes, k.status, k.severity,
+const K_COLS = `k.id, k.ref, k.key, k.title, k.description, k.feature_key, k.tags, k.event_codes, k.status, k.severity,
   k.jira_key, k.jira_url, k.is_archived, k.created_by, k.created_at, k.updated_at`;
 
 /** "Sleep start recorded hours late" -> "sleep_start_recorded_hours_late". */
@@ -65,6 +71,14 @@ export function slugify(title: string): string {
   return /^[a-z]/.test(base) ? base : `kind_${base}`.slice(0, 60).replace(/_+$/, '');
 }
 
+/** "LNK-0007", "lnk-7", "LNK7" -> 7. A bare number is not accepted: it would be ambiguous with LN- references. */
+export function parseKindRef(input: string): number | null {
+  const m = /^lnk-?0*(\d{1,12})$/i.exec(input.trim());
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
+}
+
 /** Comparison form for "is this the same kind?": case, spacing and punctuation removed. */
 export function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -75,6 +89,11 @@ export class KindsRepo {
 
   async byId(id: string): Promise<IssueKindRow | undefined> {
     const r = await this.db.query<IssueKindRow>(`select ${K_COLS} from luna_feedback.issue_kinds k where k.id = $1`, [id]);
+    return r.rows[0];
+  }
+
+  async byRefNo(refNo: number): Promise<IssueKindRow | undefined> {
+    const r = await this.db.query<IssueKindRow>(`select ${K_COLS} from luna_feedback.issue_kinds k where k.ref_no = $1`, [refNo]);
     return r.rows[0];
   }
 
@@ -111,16 +130,20 @@ export class KindsRepo {
               c.first_seen::text              as first_seen,
               c.last_seen::text               as last_seen,
               coalesce(c.open_count, 0)::int  as open_count,
-              coalesce(c.ai_count, 0)::int    as ai_count
+              coalesce(c.ai_count, 0)::int    as ai_count,
+              coalesce(c.cx_count, 0)::int    as cx_count,
+              coalesce(c.cx_users, 0)::int    as cx_users
          from luna_feedback.issue_kinds k
          left join (
            select sk.kind_id,
                   count(*)::int as count,
-                  count(distinct s.user_id)::int as users,
+                  count(distinct ${personSql()})::int as users,
                   min(s.occurred_on) as first_seen,
                   max(s.occurred_on) as last_seen,
                   count(*) filter (where s.status not in ('closed','resolved','wont_fix'))::int as open_count,
-                  count(*) filter (where sk.source = 'ai')::int as ai_count
+                  count(*) filter (where sk.source = 'ai')::int as ai_count,
+                  count(*) filter (where s.origin = 'cx')::int as cx_count,
+                  count(distinct ${personSql()}) filter (where s.origin = 'cx')::int as cx_users
              from luna_feedback.submission_issue_kinds sk
              join luna_feedback.submissions s on s.id = sk.submission_id
              ${where}
@@ -199,7 +222,7 @@ export class KindsRepo {
 
   async forSubmission(submissionId: string): Promise<KindLink[]> {
     const r = await this.db.query<KindLink>(
-      `select k.id as kind_id, k.key, k.title, k.status, k.severity, k.jira_key, k.jira_url,
+      `select k.id as kind_id, k.ref, k.key, k.title, k.status, k.severity, k.jira_key, k.jira_url,
               sk.source, sk.confidence::float8 as confidence, sk.created_by, sk.created_at
          from luna_feedback.submission_issue_kinds sk
          join luna_feedback.issue_kinds k on k.id = sk.kind_id
@@ -211,11 +234,11 @@ export class KindsRepo {
   }
 
   /** Kind links for many submissions at once, so a list page does not fan out one query per row. */
-  async forSubmissions(ids: string[]): Promise<Map<string, { id: string; key: string; title: string }[]>> {
-    const out = new Map<string, { id: string; key: string; title: string }[]>();
+  async forSubmissions(ids: string[]): Promise<Map<string, { id: string; ref: string; key: string; title: string }[]>> {
+    const out = new Map<string, { id: string; ref: string; key: string; title: string }[]>();
     if (!ids.length) return out;
-    const r = await this.db.query<{ submission_id: string; id: string; key: string; title: string }>(
-      `select sk.submission_id, k.id, k.key, k.title
+    const r = await this.db.query<{ submission_id: string; id: string; ref: string; key: string; title: string }>(
+      `select sk.submission_id, k.id, k.ref, k.key, k.title
          from luna_feedback.submission_issue_kinds sk
          join luna_feedback.issue_kinds k on k.id = sk.kind_id
         where sk.submission_id = any($1::uuid[])`,
@@ -223,7 +246,7 @@ export class KindsRepo {
     );
     for (const row of r.rows) {
       const list = out.get(row.submission_id) ?? [];
-      list.push({ id: row.id, key: row.key, title: row.title });
+      list.push({ id: row.id, ref: row.ref, key: row.key, title: row.title });
       out.set(row.submission_id, list);
     }
     return out;

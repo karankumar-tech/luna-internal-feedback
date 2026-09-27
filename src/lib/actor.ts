@@ -8,7 +8,7 @@ import type { FastifyRequest } from 'fastify';
  * rows they change and check `can(...)`, so switching to real accounts is a change to how
  * the actor is built, not a change to every route.
  */
-export const ROLES = ['admin', 'qc', 'developer', 'business'] as const;
+export const ROLES = ['admin', 'qc', 'developer', 'business', 'cx'] as const;
 export type Role = (typeof ROLES)[number];
 
 export interface Actor {
@@ -17,7 +17,7 @@ export interface Actor {
   name: string | null;
   role: Role;
   /** Which credential got them in. */
-  via: 'admin_key' | 'app_key' | 'session' | 'cron';
+  via: 'admin_key' | 'app_key' | 'cx_key' | 'session' | 'cron';
 }
 
 /** What a role is allowed to do. Read access to feedback and diagnoses is common to all. */
@@ -30,8 +30,8 @@ export const PERMISSIONS = {
   manage_triage: ['admin', 'qc'],
   /** Create, edit and link issue kinds. */
   manage_kinds: ['admin', 'qc', 'developer'],
-  /** Spend money: run a diagnosis or send a chat message to the model. */
-  run_diagnosis: ['admin', 'qc', 'developer'],
+  /** Spend money: run a diagnosis or send a chat message to the model. CX may, on the reports they look at. */
+  run_diagnosis: ['admin', 'qc', 'developer', 'cx'],
   /** Record agreement with a verdict. */
   review_diagnosis: ['admin', 'qc', 'developer'],
   /** Edit the issue-category master list. */

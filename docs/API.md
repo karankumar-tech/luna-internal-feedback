@@ -36,6 +36,8 @@ x-api-key: <APP_API_KEY>
 
 The key is distributed out of band by the backend owner. `GET /healthz`, `/docs` (this document), and `/dashboard` (its own sign-in) are the only unauthenticated routes. Admin routes under `/v1/admin` need a different key (`x-admin-key`) and are not for the app.
 
+The CX team's tool has its own key (`CX_API_KEY`, also sent as `x-api-key`). It files customer problems through `/v1/cx/*` (§5b) and can read the form schema, nothing else. The app key cannot file CX reports.
+
 **While integrating:** send `"is_test": true` on submissions from development and integration runs. They show up in the dashboard tagged TEST, can be hidden with one filter, and are deleted in bulk later without touching real tester feedback. Drop the flag in the build testers use.
 
 ---
@@ -482,6 +484,7 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
 ```json
 {
   "id": "178239d2-2581-4207-a378-742b0ac186ef",
+  "ref": "LN-00042",
   "feature_key": "workout",
   "is_positive": false,
   "occurred_on": "2026-09-01",
@@ -513,6 +516,8 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
 
 Note the times came back zero-padded, and the `client` block is flattened to top-level columns. Client keys not sent come back as `null`.
 
+`ref` is the report's readable reference (`LN-00042`). Show it to the tester after they submit ("Thanks — your reference is LN-00042") so they can quote it; everyone on the dashboard finds the report by it. Responses also carry `origin` (`internal` for everything the app sends) and `status` (triage state).
+
 **Response `200 OK`**: same body, returned when the `Idempotency-Key` was already used. Treat as success.
 
 **Response `422`**
@@ -543,6 +548,9 @@ List submissions, newest first. Intended for dashboards; the app does not need i
 | param | type | notes |
 |---|---|---|
 | `feature` | string | `home` / `sleep` / `activity` / `workout` / `other` |
+| `environment` | string | `stage` / `uat` / `production` |
+| `origin` | string | `internal` (testers, through the app) / `cx` (customers, through CX) |
+| `ref` | string | one report by reference: `LN-00042`, `ln-42` or `42` |
 | `platform` | string | `ios` / `android` |
 | `is_test` | `true` / `false` | omit for both |
 | `user_id` | integer | |
@@ -567,13 +575,13 @@ List submissions, newest first. Intended for dashboards; the app does not need i
 
 ### `GET /v1/feedback/{id}`
 
-One submission by UUID. `404` if not found or the id is not a UUID.
+One submission by UUID or by reference (`LN-00042`, `ln-42` and `42` all work). `404` if not found.
 
 ---
 
 ### `GET /v1/feedback/stats`
 
-Aggregates for the dashboard. Same filters as the list (`feature`, `platform`, `is_test`, `user_id`, `from`, `to`, `is_positive`, `category`); `to` defaults to today in IST and `from` to 30 days earlier. Returns `range`, `totals` (submissions, positive, negative, users), `by_day`, `by_feature`, and `by_category`.
+Aggregates for the dashboard. Same filters as the list (`feature`, `environment`, `origin`, `platform`, `is_test`, `user_id`, `from`, `to`, `is_positive`, `category`); `to` defaults to today in IST and `from` to 30 days earlier. Returns `range`, `totals` (submissions, positive, negative, users), `by_day`, `by_feature`, `by_category`, and `by_origin` (issues, open, and when the oldest open one arrived, per origin). `users` counts people: testers by user id, customers by user id or ring serial.
 
 ---
 
@@ -599,6 +607,64 @@ Not for the app. Listed so the front-end team knows how categories change.
 | `DELETE` | `/v1/admin/test-data?confirm=delete` | deletes only `is_test` rows → `{ "deleted" }`; `422` without the confirm parameter |
 
 Categories are never deleted. Deactivating one removes it from the schema and makes the server reject it on new submissions, so a client holding a stale cached schema may get a `422` on `issue_categories.N`. Handle that by refetching the schema and asking the user to re-pick.
+
+---
+
+## 5b. CX integration (`CX_API_KEY`)
+
+For the CX team's tool, not the app. An agent checks that a customer's problem is real and belongs here, then presses a button in the tool, which calls this API. The key decides that the report is a CX report; there is no `origin` field to send.
+
+### `POST /v1/cx/feedback/{feature}`
+
+The same feature fields, categories and rules as `POST /v1/feedback/{feature}` (§5 and §6), with these differences:
+
+| field | required | notes |
+|---|---|---|
+| `device_serial` | **yes** | the customer's ring or band serial, 3–64 characters. It identifies the customer and finds their logs |
+| `cx` | **yes** | `{ "ref", "url"?, "channel"?, "agent"?, "transcript"? }`. `ref` is the ticket id in the CX tool (≤ 100). `channel`: `email` · `chat` · `call` · `whatsapp` · `social` · `app_store` · `play_store` · `other`. `agent`: who pressed the button (≤ 120). `transcript`: the customer's own words (≤ 5000) |
+| `email` | **never** | rejected with `422` on `email`: customer email addresses are not stored. Any email address or phone number inside `feedback_text` or `cx.transcript` is redacted before storing |
+| `user_id` | no | the customer's Luna user id if the tool has it; otherwise it is looked up from the serial |
+| `client.environment` | no | defaults to `production` |
+| `feedback_text` | no | the agent's summary, ≤ 500 |
+
+The server fills in the Luna user id, platform, app and firmware version from the logging service by serial, shortly after the response.
+
+```bash
+curl -X POST https://luna-feedback.buildsage.tech/v1/cx/feedback/sleep \
+  -H "x-api-key: $CX_API_KEY" -H "content-type: application/json" \
+  -d '{
+    "is_positive": false,
+    "occurred_on": "2026-09-25",
+    "device_serial": "R2N08250600302",
+    "issue_categories": ["incorrect_sleep"],
+    "feedback_text": "Customer says sleep shows 3h; they slept about 7h.",
+    "cx": { "ref": "FD-48213", "url": "https://support.example/tickets/48213", "channel": "email", "agent": "Asha" }
+  }'
+```
+
+**Response `201`** (new) or **`200`** (this `cx.ref` was already filed for this feature: the first report is returned, never a second one)
+
+```json
+{
+  "id": "5d0c…", "ref": "LN-00042", "feature_key": "sleep", "is_positive": false,
+  "occurred_on": "2026-09-25", "environment": "production", "device_serial": "R2N08250600302",
+  "cx": { "ref": "FD-48213", "url": "https://support.example/tickets/48213", "channel": "email", "agent": "Asha" },
+  "status": "open", "status_changed_at": null,
+  "created_at": "2026-09-27T10:02:11.000Z", "created_at_ist": "2026-09-27 15:32:11 +05:30",
+  "problems": [],
+  "dashboard_url": "https://luna-feedback.buildsage.tech/i/LN-00042"
+}
+```
+
+Store `ref` on the CX ticket. `problems` lists the recurring problems (`LNK-0007`) the report has been grouped under.
+
+### `GET /v1/cx/feedback/{ref}`
+
+Where a CX report stands, by reference or id, in the same shape as above. Internal tester reports are not readable with the CX key (`404`).
+
+### What the CX key can reach
+
+`/v1/cx/*`, `GET /v1/feedback/schema` and `GET /v1/feedback/schema/{feature}` (to build the button's form), and `GET /v1/uploads/screenshot-auth` (to attach screenshots the same way the app does). Anything else answers `403`.
 
 ---
 
@@ -838,10 +904,12 @@ struct FeedbackAPI {
 
     struct SubmissionResponse: Decodable {
         let id: String
+        /// Readable reference to show the tester, e.g. "LN-00042".
+        let ref: String
         let createdAt: String
         let createdAtIST: String
         enum CodingKeys: String, CodingKey {
-            case id
+            case id, ref
             case createdAt = "created_at"
             case createdAtIST = "created_at_ist"
         }

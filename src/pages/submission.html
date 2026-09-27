@@ -50,6 +50,11 @@
   .res::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
   .chip { font-family: var(--mono); font-size: 11px; line-height: 16px; padding: 1px 6px; border-radius: var(--r-xs); background: var(--brief); color: var(--black); white-space: nowrap; display: inline-block; }
   .chip.test { background: var(--yellow); letter-spacing: .08em; font-size: 10px; }
+  .chip.cx { background: var(--magenta); color: var(--white); letter-spacing: .08em; font-size: 10px; }
+  .refno { font-family: var(--mono); font-weight: 500; letter-spacing: 0; margin-right: 10px; }
+  .kind .kref { font-family: var(--mono); font-size: 11px; color: var(--gray-dark); }
+  .ro { display: none !important; }
+  .jira-link[hidden] { display: none; }
   .chips { display: flex; flex-wrap: wrap; gap: 4px; }
 
   .grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 12px; }
@@ -169,7 +174,7 @@
   <div class="top-inner">
     <div>
       <a class="crumb" href="/dashboard">← Dashboard</a>
-      <div class="overline" style="margin-top:2px">Luna · Internal feedback · Submission</div>
+      <div class="overline" style="margin-top:2px">Luna · Feedback · Report</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <label class="overline" for="statusSel" style="letter-spacing:.1em">Status</label>
@@ -177,7 +182,8 @@
       <a class="jira-link" id="jiraLink" href="#" target="_blank" rel="noopener" hidden></a>
       <button class="btn small" id="btnJira" type="button" hidden>Create Jira ticket</button>
       <button class="btn small" id="btnFlag" type="button" hidden>Mark as test</button>
-      <button class="btn small" id="btnCopyLink" type="button">Copy link</button>
+      <button class="btn small" id="btnCopyLink" type="button" title="A short link anyone with a dashboard account can open">Copy link</button>
+      <button class="btn small" id="btnCopyText" type="button" title="One line to paste into Slack, WhatsApp or Jira">Copy as text</button>
       <button class="btn primary" id="btnDiagnose" type="button" hidden>Diagnose now</button>
     </div>
   </div>
@@ -273,8 +279,11 @@
   'use strict';
   const $ = (id) => document.getElementById(id);
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; };
-  const id = location.pathname.split('/').filter(Boolean).pop();
-  const state = { sub: null, diag: null, schema: null, files: null, pollTimer: null, kinds: [], allKinds: [], chat: null, jira: null };
+  // The page opens by reference (/dashboard/submissions/LN-00042) or by id; every API call below uses the id.
+  const param = decodeURIComponent(location.pathname.split('/').filter(Boolean).pop() || '');
+  let id = null;
+  const state = { sub: null, diag: null, schema: null, files: null, pollTimer: null, kinds: [], allKinds: [], chat: null, jira: null, me: null, logEnvs: null };
+  const can = (p) => !!(state.me && state.me.permissions && state.me.permissions[p]);
   let toastT; const toast = (m) => { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', 2400); };
 
   async function api(path, opts = {}) {
@@ -295,12 +304,17 @@
   async function load() {
     const s = await api('/dashboard/session').catch(() => ({ authenticated: false }));
     if (!s.authenticated) { location.replace('/dashboard?next=' + encodeURIComponent(location.pathname)); return; }
-    const [sub, schema] = await Promise.all([api('/v1/feedback/' + id), api('/v1/feedback/schema')]);
-    state.sub = sub; state.schema = schema;
+    const [sub, schema, me, summary] = await Promise.all([
+      api('/v1/feedback/' + encodeURIComponent(param)), api('/v1/feedback/schema'), api('/v1/me'),
+      api('/v1/admin/diagnoses/summary').catch(() => null),
+    ]);
+    id = sub.id;
+    state.sub = sub; state.schema = schema; state.me = me; state.logEnvs = summary && summary.environments;
+    // Shared links carry the reference, whichever way the page was opened.
+    if (param !== sub.ref) history.replaceState(null, '', '/dashboard/submissions/' + encodeURIComponent(sub.ref) + location.search + location.hash);
+    applyRole();
     renderSubmission();
     $('loading').hidden = true; $('page').hidden = false;
-    $('btnDiagnose').hidden = false;
-    $('btnFlag').hidden = false;
     // Independent of each other and of the diagnosis; none of them should hold up the page.
     loadKinds();
     loadJiraStatus();
@@ -309,29 +323,57 @@
     loadFiles();
   }
 
+  /** Hide what this role cannot do; the server refuses it either way. */
+  function applyRole() {
+    $('statusSel').disabled = !can('manage_triage');
+    $('statusSel').title = can('manage_triage') ? 'Move this ticket through triage' : 'Your role can see the status but not change it';
+    $('btnFlag').hidden = !can('manage_triage');
+    $('btnDiagnose').hidden = !can('run_diagnosis');
+    document.querySelector('.kind-add').classList.toggle('ro', !can('manage_kinds'));
+    const logsReady = !state.logEnvs || state.logEnvs[state.sub.environment] !== false;
+    $('btnDiagnose').disabled = !logsReady;
+    if (!logsReady) $('btnDiagnose').title = `Log lookup isn't set up for ${state.sub.environment} yet`;
+  }
+  const logsReady = () => !state.logEnvs || state.logEnvs[state.sub.environment] !== false;
+
   const feature = () => (state.schema.features.find((f) => f.key === state.sub.feature_key) || { label: state.sub.feature_key, fields: [], issue_categories: [] });
   const catLabel = (k) => ((feature().issue_categories || []).find((c) => c.key === k) || { label: k }).label;
 
   function renderSubmission() {
     const r = state.sub; const f = feature();
     $('btnFlag').textContent = r.is_test ? 'Mark as real' : 'Mark as test';
-    document.title = `${f.label} · ${r.is_positive ? 'Working fine' : 'Issue'} · Luna Feedback`;
-    $('title').replaceChildren(el('span', null, f.label + ' · '), el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue'), ...(r.is_test ? [el('span', null, ' '), el('span', 'chip test', 'TEST')] : []));
+    document.title = `${r.ref} · ${f.label} · ${r.is_positive ? 'Working fine' : 'Issue'} · Luna Feedback`;
+    $('title').replaceChildren(
+      el('span', 'refno', r.ref), el('span', null, f.label + ' · '), el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue'),
+      ...(r.origin === 'cx' ? [el('span', null, ' '), el('span', 'chip cx', 'CX')] : []),
+      ...(r.is_test ? [el('span', null, ' '), el('span', 'chip test', 'TEST')] : []));
     const meta = $('meta'); meta.replaceChildren();
     const m = (k, v) => { const s = el('span'); s.appendChild(el('span', null, k + ' ')); s.appendChild(el('b', null, v)); meta.appendChild(s); };
-    m('occurred', shortDate(r.occurred_on)); m('submitted', istStamp(r.created_at)); m('tester', String(r.user_id));
+    m('occurred', shortDate(r.occurred_on)); m('submitted', istStamp(r.created_at));
+    if (r.origin === 'cx') { m('CX ticket', r.cx_ref || '—'); m('ring', r.device_serial || '—'); } else m('tester', String(r.user_id));
     m('platform', r.platform === 'ios' ? 'iOS' : r.platform === 'android' ? 'Android' : '—'); m('app', r.app_version || '—'); m('fw', r.firmware_version || '—');
     const envWrap = el('span'); envWrap.appendChild(el('span', 'env ' + (r.environment || 'stage'), r.environment || 'stage')); meta.appendChild(envWrap);
     if (r.status_changed_at) { const s = el('span', 'tertiary'); s.textContent = `${(TRIAGE.find((t) => t[0] === r.status) || [, r.status])[1]} by ${r.status_changed_by || 'someone'} · ${istStamp(r.status_changed_at)}`; meta.appendChild(s); }
     renderStatusSelect();
     renderJira();
-    $('quote').textContent = r.feedback_text || '(no text)';
+    $('quote').replaceChildren(...linkRefs(r.feedback_text || '(no text)'));
     const cats = $('cats'); cats.replaceChildren(); for (const c of r.issue_categories) cats.appendChild(el('span', 'chip', catLabel(c)));
-    const dl = (host, pairs) => { host.replaceChildren(); for (const [k, v, mono] of pairs) { host.appendChild(el('dt', null, k)); host.appendChild(el('dd', mono ? 'mono' : null, v == null || v === '' ? '—' : v)); } };
+    const dl = (host, pairs) => { host.replaceChildren(); for (const [k, v, mono] of pairs) { host.appendChild(el('dt', null, k)); const dd = el('dd', mono ? 'mono' : null); if (v instanceof Node) dd.appendChild(v); else dd.textContent = v == null || v === '' ? '—' : v; host.appendChild(dd); } };
     const order = f.fields.map((x) => x.key);
     const det = Object.entries(r.details || {}).sort(([a], [b]) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999));
     dl($('details'), det.length ? det.map(([k, v]) => [((f.fields.find((x) => x.key === k) || { label: k }).label), v, true]) : [['—', 'none entered']]);
-    dl($('reporter'), [['User ID', r.user_id, true], ['Email', r.email], ['Device serial', r.device_serial, true], ['Occurred on', r.occurred_on, true], ['Submitted (IST)', r.created_at_ist, true], ['Record', r.id, true]]);
+    if (r.origin === 'cx') {
+      // A customer: no email is ever stored. The CX tool holds their contact details.
+      dl($('reporter'), [
+        ['Reported by', 'Customer support' + (r.cx_agent ? ' · ' + r.cx_agent : '')],
+        ['CX ticket', r.cx_url ? cxLink(r) : r.cx_ref, true], ['Channel', r.cx_channel],
+        ['Ring serial', r.device_serial, true], ['Luna user ID', r.user_id || 'not resolved from the ring yet', true],
+        ['Occurred on', r.occurred_on, true], ['Submitted (IST)', r.created_at_ist, true], ['Reference', r.ref, true],
+      ]);
+      if (r.cx_transcript) { $('reporter').appendChild(el('dt', null, 'Customer\'s words')); $('reporter').appendChild(el('dd', 'quote', r.cx_transcript)); }
+    } else {
+      dl($('reporter'), [['User ID', r.user_id, true], ['Email', r.email], ['Device serial', r.device_serial, true], ['Occurred on', r.occurred_on, true], ['Submitted (IST)', r.created_at_ist, true], ['Reference', r.ref, true], ['Record', r.id, true]]);
+    }
     const shots = r.screenshots || [];
     $('shotsCard').hidden = shots.length === 0;
     if (shots.length) {
@@ -398,7 +440,7 @@
     link.hidden = true;
     // Shown even before Jira has credentials; pressing it says so rather than failing oddly.
     const pending = state.jira && !state.jira.configured;
-    btn.hidden = false;
+    btn.hidden = !can('manage_jira');
     btn.textContent = 'Create Jira ticket';
     btn.title = pending ? state.jira.message || 'Jira integration pending' : 'File this report as a Jira issue';
   }
@@ -433,9 +475,10 @@
     if (!state.kinds.length) host.appendChild(el('span', 'tertiary', 'Not linked to any recurring issue yet.'));
     for (const k of state.kinds) {
       const chip = el('span', 'kind');
-      const a = el('a', null, k.title); a.href = '/dashboard/kinds/' + k.kind_id; chip.appendChild(a);
+      chip.appendChild(el('span', 'kref', k.ref));
+      const a = el('a', null, k.title); a.href = '/dashboard/kinds/' + encodeURIComponent(k.ref); chip.appendChild(a);
       if (k.source === 'ai') chip.appendChild(el('span', 'by', 'ai'));
-      const x = el('button', 'x', '×'); x.type = 'button'; x.title = 'Unlink';
+      const x = el('button', 'x' + (can('manage_kinds') ? '' : ' ro'), '×'); x.type = 'button'; x.title = 'Unlink';
       x.addEventListener('click', async () => {
         try { const out = await api(`/v1/admin/submissions/${id}/kinds/${k.kind_id}`, { method: 'DELETE' }); state.kinds = out.items || []; renderKinds(); toast('Unlinked'); }
         catch (err) { toast('Could not unlink: ' + err.message); }
@@ -483,8 +526,9 @@
     }
     log.scrollTop = log.scrollHeight;
     const spent = c.remaining <= 0;
-    $('btnChat').disabled = spent || !c.enabled;
-    $('chatInput').disabled = spent || !c.enabled;
+    $('btnChat').disabled = spent || !c.enabled || !can('run_diagnosis');
+    $('chatInput').disabled = spent || !c.enabled || !can('run_diagnosis');
+    if (!can('run_diagnosis')) $('chatInput').placeholder = 'Your role can read this conversation but not add to it.';
     $('chatHint').textContent = spent
       ? `All ${c.limit} questions used on this ticket. Re-run the diagnosis for a fresh look.`
       : 'Press ⌘/Ctrl + Enter to send.';
@@ -512,10 +556,12 @@
   function renderDiagnosis() {
     const d = state.diag; const body = $('diagBody'); body.replaceChildren();
     $('btnDiagnose').textContent = d && d.status === 'done' ? 'Re-run diagnosis' : 'Diagnose now';
-    $('btnDiagnose').disabled = !!(d && (d.status === 'running'));
+    $('btnDiagnose').disabled = !logsReady() || !!(d && (d.status === 'running'));
     if (!d) {
       $('diagWhen').textContent = '';
-      body.appendChild(el('div', 'empty', state.sub.is_positive ? 'Positive feedback is not diagnosed unless you ask. Press Diagnose now if something looks off.' : 'Not diagnosed yet. Press Diagnose now to fetch this tester\'s logs (one file per source around the issue day) and run the AI.'));
+      body.appendChild(el('div', 'empty', !logsReady()
+        ? `Log lookup isn't set up for ${state.sub.environment} yet, so this report can't be diagnosed.`
+        : state.sub.is_positive ? 'Positive feedback is not diagnosed unless you ask. Press Diagnose now if something looks off.' : 'Not diagnosed yet. Press Diagnose now to fetch the logs (one file per source around the issue day) and run the AI.'));
       $('excerptCard').hidden = true; return;
     }
     $('diagWhen').textContent = d.updated_at ? 'updated ' + istStamp(d.updated_at) : '';
@@ -588,7 +634,10 @@
     if (d.log_device && d.log_device.device_model) ml.appendChild(el('span', null, `${d.log_device.device_manufacturer || ''} ${d.log_device.device_model} · ${d.log_device.platform || ''} ${d.log_device.os_version || ''}`.trim()));
     body.appendChild(ml);
 
-    if (d.status === 'done') renderReview(body, d);
+    if (d.status === 'done') {
+      if (can('review_diagnosis')) renderReview(body, d);
+      else if (d.review_verdict) body.appendChild(el('div', 'verdict-note', `Reviewed: ${d.review_verdict}${d.reviewed_by ? ' by ' + d.reviewed_by : ''}`));
+    }
     renderRuns(body);
 
     if (d.log_excerpt) { renderExcerpt(d.log_excerpt); $('excerptCard').hidden = false; $('excerptSub').textContent = `${d.log_excerpt_lines} lines · window ${d.log_window_from ? istStamp(d.log_window_from) + ' → ' + istStamp(d.log_window_to) : '—'} · times in IST, "~" = inferred`; }
@@ -649,7 +698,36 @@
     catch (err) { toast(err.status === 401 ? 'Needs the admin key' : 'Could not update: ' + err.message); }
     finally { b.disabled = false; }
   });
-  $('btnCopyLink').addEventListener('click', async () => { try { await navigator.clipboard.writeText(location.href); toast('Link copied'); } catch { toast('Copy failed'); } });
+  const shortLink = () => `${location.origin}/i/${state.sub.ref}`;
+  $('btnCopyLink').addEventListener('click', async () => { try { await navigator.clipboard.writeText(shortLink()); toast('Link copied: ' + shortLink()); } catch { toast('Copy failed'); } });
+  $('btnCopyText').addEventListener('click', async () => {
+    const r = state.sub; const f = feature();
+    const status = (TRIAGE.find((t) => t[0] === r.status) || [, r.status])[1];
+    const parts = [r.ref, f.label, r.issue_categories.map(catLabel).join(', ') || (r.is_positive ? 'Working fine' : 'Issue'), status];
+    if (r.origin === 'cx') parts.push('CX ' + (r.cx_ref || ''));
+    if (r.environment !== 'stage') parts.push(r.environment);
+    if (state.kinds.length) parts.push(state.kinds.map((k) => `${k.ref} ${k.title}`).join('; '));
+    const line = parts.filter(Boolean).join(' · ') + ' — ' + shortLink();
+    try { await navigator.clipboard.writeText(line); toast('Copied: ' + line); } catch { toast('Copy failed'); }
+  });
+
+  /** Text with LN-00042 and LNK-0007 turned into links to the report or problem. Built from nodes, never HTML. */
+  function linkRefs(text) {
+    const out = []; const re = /\b(LNK?-\d{1,9})\b/gi; let last = 0; let m;
+    while ((m = re.exec(text))) {
+      if (m.index > last) out.push(document.createTextNode(text.slice(last, m.index)));
+      const ref = m[1].toUpperCase(); const a = el('a', null, ref);
+      a.href = (ref.startsWith('LNK-') ? '/dashboard/kinds/' : '/dashboard/submissions/') + ref; out.push(a);
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) out.push(document.createTextNode(text.slice(last)));
+    return out;
+  }
+  function cxLink(r) {
+    // Only http(s) links from the CX tool are made clickable.
+    if (!/^https?:\/\//i.test(r.cx_url || '')) return r.cx_ref;
+    const a = el('a', null, r.cx_ref || r.cx_url); a.href = r.cx_url; a.target = '_blank'; a.rel = 'noopener noreferrer'; return a;
+  }
 
   // ---------- diagnose now ----------
   $('btnDiagnose').addEventListener('click', async () => {
@@ -699,10 +777,12 @@
       return;
     }
 
+    if (!logsReady()) { host.replaceChildren(el('div', 'empty', `Log lookup isn't set up for ${r.environment} yet.`)); return; }
+    if (!r.device_serial && !r.email) { host.replaceChildren(el('div', 'empty', 'No ring serial or email to look the logs up by.')); return; }
     host.replaceChildren(el('div', 'empty', 'Looking up the logging service…'));
     const by = r.device_serial ? 'serial_no=' + encodeURIComponent(r.device_serial) : 'email=' + encodeURIComponent(r.email);
     try {
-      const { items, hidden } = await api(`/v1/admin/logs/lookup?${by}&occurred_on=${r.occurred_on}`);
+      const { items, hidden } = await api(`/v1/admin/logs/lookup?${by}&occurred_on=${r.occurred_on}&environment=${encodeURIComponent(r.environment)}`);
       host.replaceChildren();
       const used = new Set(stored.map((f) => f.url));
       const rows = [];

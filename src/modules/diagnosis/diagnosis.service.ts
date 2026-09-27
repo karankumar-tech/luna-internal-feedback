@@ -11,7 +11,7 @@ import { buildExcerpt } from './extract.js';
 import { OpenRouterClient, estimateCost } from './ai/openrouter.js';
 import { buildMessages } from './ai/prompt.js';
 import { VERDICT_JSON_SCHEMA, VerdictSchema, type Verdict } from './ai/schema.js';
-import { FEATURE_DEFINITIONS, type FeatureKey } from '../../schema/registry.js';
+import { ENVIRONMENTS, FEATURE_DEFINITIONS, type Environment, type FeatureKey } from '../../schema/registry.js';
 import { AppError } from '../../lib/errors.js';
 import { todayInZone } from '../../lib/time.js';
 import { runInBackground } from './background.js';
@@ -33,7 +33,13 @@ export interface DiagnosisDeps {
   repo: DiagnosisRepo;
   feedback: FeedbackRepo;
   categories: CategoriesRepo;
+  /** Default logs client, used for every environment that logsByEnv does not name. */
   logs: LogsClient | null;
+  /**
+   * One client per environment's logging host (stage and production differ). An environment set
+   * to null is never looked up: its reports cannot be diagnosed until a host is configured.
+   */
+  logsByEnv?: Partial<Record<Environment, LogsClient | null>>;
   ai: OpenRouterClient | null;
   /** Optional: when present, the model's suggested issue kind is created and linked. */
   kinds?: KindsService | null;
@@ -83,18 +89,53 @@ export class DiagnosisService {
   get auto(): boolean { return this.d.config.auto; }
   private now(): Date { return this.d.now ? this.d.now() : new Date(); }
 
+  /** The logging host for one environment's reports, or null when that environment has none yet. */
+  private logsFor(environment: string): LogsClient | null {
+    const byEnv = this.d.logsByEnv;
+    if (byEnv && environment in byEnv) return byEnv[environment as Environment] ?? null;
+    return this.d.logs;
+  }
+
+  /** Which environments have a logging host, for the dashboard. Whether the AI is configured is `enabled`. */
+  environments(): Record<Environment, boolean> {
+    return Object.fromEntries(ENVIRONMENTS.map((e) => [e, this.logsFor(e) !== null])) as Record<Environment, boolean>;
+  }
+
+  private diagnosableEnvironments(): Environment[] {
+    return ENVIRONMENTS.filter((e) => this.logsFor(e) !== null);
+  }
+
   /** Called from the submit path for negative feedback. Queues and starts the run after the response. */
   async enqueueAndRun(submissionId: string, log: FastifyBaseLogger): Promise<void> {
     if (!this.enabled || !this.d.config.auto) return;
+    const sub = await this.d.feedback.byId(submissionId);
+    if (!sub || !this.logsFor(sub.environment)) return;
     await this.d.repo.enqueue(submissionId);
     await runInBackground(() => this.run(submissionId, 'auto'), log, `diagnose ${submissionId}`);
+  }
+
+  /**
+   * Looks a CX report's ring serial up in the logging service and fills in the Luna user id and
+   * device details the CX tool did not send. Best effort: a miss leaves the report as it was.
+   */
+  async fillDeviceFromLogs(submissionId: string): Promise<void> {
+    const sub = await this.d.feedback.byId(submissionId);
+    const logs = sub ? this.logsFor(sub.environment) : null;
+    if (!sub || !logs || !sub.device_serial) return;
+    const entry = pickEntry(await logs.listBySerial(sub.device_serial), { platform: sub.platform, occurredOn: sub.occurred_on });
+    if (!entry) return;
+    const platform = entry.platform === 'ios' || entry.platform === 'android' ? entry.platform : null;
+    await this.d.feedback.fillDeviceContext(sub.id, {
+      user_id: entry.user_id !== null && entry.user_id > 0 ? entry.user_id : null,
+      platform, app_version: entry.version_name, firmware_version: entry.fv, os_version: entry.os_version,
+    });
   }
 
   /** Process due jobs sequentially (each ~5–20 s). Used by the dashboard sweep and the nightly cron. */
   async runPending(limit = 5): Promise<RunOutcome[]> {
     if (!this.enabled) return [];
     // Automatic mode queues issues that were never diagnosed; on-demand mode only finishes runs someone asked for.
-    if (this.d.config.auto) await this.d.repo.enqueueMissing(limit);
+    if (this.d.config.auto) await this.d.repo.enqueueMissing(limit, 14, this.diagnosableEnvironments());
     const jobs = await this.d.repo.dueJobs(limit, this.d.config.maxAttempts);
     const out: RunOutcome[] = [];
     for (const j of jobs) out.push(await this.run(j.submission_id, 'auto'));
@@ -110,6 +151,15 @@ export class DiagnosisService {
     const repo = this.d.repo;
     const sub = await this.d.feedback.byId(submissionId);
     if (!sub) throw AppError.notFound('Submission not found');
+
+    // No logging host for this environment (UAT until its credentials arrive): nothing is queued,
+    // and no no_logs verdict is recorded, so these reports do not skew "logs found".
+    if (!this.logsFor(sub.environment)) {
+      const reason = `Log lookup isn't set up for ${sub.environment} yet`;
+      if (trigger === 'manual') throw AppError.validation([{ path: 'environment', message: reason }], 'Diagnosis unavailable');
+      await repo.finishJob(submissionId, 'done', { error: reason });
+      return { submission_id: submissionId, status: 'skipped', reason };
+    }
 
     if (trigger === 'manual') await repo.enqueue(submissionId);
     else await repo.ensureJob(submissionId);
@@ -188,14 +238,15 @@ export class DiagnosisService {
 
   private async diagnose(sub: SubmissionRow, trigger: 'auto' | 'manual', started: number): Promise<RunOutcome> {
     const repo = this.d.repo;
-    const logs = this.d.logs!;
+    const logs = this.logsFor(sub.environment)!;
     const ai = this.d.ai!;
 
-    // 1. lookup: serial first, email fallback
+    // 1. lookup: serial first, email fallback (internal testers only; CX reports never carry an email)
     let entries: LogDeviceEntry[] = [];
     let lookedUpBy = '';
     if (sub.device_serial) { entries = await logs.listBySerial(sub.device_serial); lookedUpBy = `serial ${sub.device_serial}`; }
-    if (entries.length === 0) { entries = await logs.listByEmail(sub.email); lookedUpBy = lookedUpBy ? `${lookedUpBy}, then email` : 'email'; }
+    if (entries.length === 0 && sub.email) { entries = await logs.listByEmail(sub.email); lookedUpBy = lookedUpBy ? `${lookedUpBy}, then email` : 'email'; }
+    if (!lookedUpBy) return this.park(sub.id, trigger, started, 'no ring serial or email to look the device up by', {}, sub.occurred_on);
     const entry = pickEntry(entries, { platform: sub.platform, occurredOn: sub.occurred_on });
     if (!entry) return this.park(sub.id, trigger, started, `no device found in logging service (looked up by ${lookedUpBy})`, {}, sub.occurred_on);
 
@@ -240,7 +291,7 @@ export class DiagnosisService {
       submission: {
         occurred_on: sub.occurred_on, is_positive: sub.is_positive,
         issue_categories: sub.issue_categories.map((k) => ({ key: k, label: catLabels.get(k) ?? k })),
-        feedback_text: sub.feedback_text, details: sub.details,
+        feedback_text: sub.feedback_text, details: sub.details, origin: sub.origin,
         detailLabels: Object.fromEntries((feature?.fields ?? []).map((f) => [f.key, f.label])),
         platform: sub.platform, app_version: sub.app_version, firmware_version: sub.firmware_version, os_version: sub.os_version,
       },
@@ -314,11 +365,14 @@ export class DiagnosisService {
    * Lookup for the detail page. With `occurred_on`, only uploads inside that issue's log window are
    * returned and the rest are counted, so a ticket never lists what the tester uploaded weeks later.
    */
-  async lookup(params: { serial_no?: string; email?: string; occurred_on?: string }): Promise<{ items: LogDeviceEntry[]; window: { from: string; to: string } | null; hidden: number }> {
+  async lookup(params: { serial_no?: string; email?: string; occurred_on?: string; environment?: Environment }): Promise<{ items: LogDeviceEntry[]; window: { from: string; to: string } | null; hidden: number }> {
     if (!this.d.logs) throw AppError.validation([{ path: 'logs', message: 'LUNA_LOGS_APIKEY not configured' }], 'Logs lookup unavailable');
+    const environment = params.environment ?? 'stage';
+    const logs = this.logsFor(environment);
+    if (!logs) throw AppError.validation([{ path: 'environment', message: `Log lookup isn't set up for ${environment} yet` }], 'Logs lookup unavailable');
     let entries: LogDeviceEntry[];
-    if (params.serial_no) entries = await this.d.logs.listBySerial(params.serial_no);
-    else if (params.email) entries = await this.d.logs.listByEmail(params.email);
+    if (params.serial_no) entries = await logs.listBySerial(params.serial_no);
+    else if (params.email) entries = await logs.listByEmail(params.email);
     else throw AppError.validation([{ path: 'serial_no', message: 'serial_no or email is required' }]);
 
     if (!params.occurred_on) return { items: entries, window: null, hidden: 0 };

@@ -5,6 +5,8 @@ import { zodIssues } from '../../schema/buildValidator.js';
 import { isValidCalendarDate } from '../../lib/time.js';
 import type { DiagnosisService } from './diagnosis.service.js';
 import type { DiagnosisRepo } from './diagnosis.repo.js';
+import { requirePermission } from '../../plugins/auth.js';
+import { ENVIRONMENTS } from '../../schema/registry.js';
 
 const ReviewBody = z.object({
   verdict: z.enum(['agree', 'disagree', 'unsure']),
@@ -30,12 +32,12 @@ export function registerDiagnosisRoutes(app: FastifyInstance, deps: { service: D
   });
 
   /** Synchronous run (or re-run). Returns the finished diagnosis. */
-  app.post<{ Params: { id: string } }>('/v1/admin/submissions/:id/diagnose', async (req) => {
+  app.post<{ Params: { id: string } }>('/v1/admin/submissions/:id/diagnose', { onRequest: requirePermission('run_diagnosis') }, async (req) => {
     if (!uuid(req.params.id)) throw AppError.notFound('Submission not found');
     return service.run(req.params.id, 'manual');
   });
 
-  app.patch<{ Params: { id: string } }>('/v1/admin/submissions/:id/diagnosis/review', async (req) => {
+  app.patch<{ Params: { id: string } }>('/v1/admin/submissions/:id/diagnosis/review', { onRequest: requirePermission('review_diagnosis') }, async (req) => {
     if (!uuid(req.params.id)) throw AppError.notFound('Submission not found');
     const parsed = ReviewBody.safeParse(req.body);
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
@@ -51,22 +53,25 @@ export function registerDiagnosisRoutes(app: FastifyInstance, deps: { service: D
   app.post('/v1/admin/diagnoses/run-pending', sweep);
   app.get('/v1/admin/diagnoses/run-pending', sweep);
 
-  app.get('/v1/admin/diagnoses/summary', async () => ({ enabled: service.enabled, auto: service.auto, ...(await repo.summary()) }));
+  app.get('/v1/admin/diagnoses/summary', async () => ({ enabled: service.enabled, auto: service.auto, environments: service.environments(), ...(await repo.summary()) }));
 
   app.get('/v1/admin/diagnoses/overview', async (req) => {
-    const q = req.query as { from?: string; to?: string; include_test?: string };
+    const q = req.query as { from?: string; to?: string; include_test?: string; origin?: string };
+    const origin = q.origin === 'internal' || q.origin === 'cx' ? q.origin : undefined;
     const isDate = (v: string | undefined) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
     const to = isDate(q.to) ? q.to! : new Date().toISOString().slice(0, 10);
     const from = isDate(q.from) ? q.from! : new Date(Date.parse(to) - 29 * 86_400_000).toISOString().slice(0, 10);
     if (from > to) throw AppError.validation([{ path: 'from', message: 'must not be after to' }], 'Invalid query');
-    return repo.overview(from, to, q.include_test === 'true');
+    return repo.overview(from, to, q.include_test === 'true', origin);
   });
 
   /** Lists a tester's uploads. Pass occurred_on to get only that issue's log window. */
   app.get('/v1/admin/logs/lookup', async (req) => {
-    const q = req.query as { serial_no?: string; email?: string; occurred_on?: string };
+    const q = req.query as { serial_no?: string; email?: string; occurred_on?: string; environment?: string };
     const occurredOn = q.occurred_on?.trim() || undefined;
     if (occurredOn && !isValidCalendarDate(occurredOn)) throw AppError.validation([{ path: 'occurred_on', message: 'must be YYYY-MM-DD' }]);
-    return service.lookup({ serial_no: q.serial_no?.trim() || undefined, email: q.email?.trim() || undefined, occurred_on: occurredOn });
+    const environment = ENVIRONMENTS.find((e) => e === q.environment);
+    if (q.environment && !environment) throw AppError.validation([{ path: 'environment', message: `must be one of: ${ENVIRONMENTS.join(', ')}` }]);
+    return service.lookup({ serial_no: q.serial_no?.trim() || undefined, email: q.email?.trim() || undefined, occurred_on: occurredOn, environment });
   });
 }

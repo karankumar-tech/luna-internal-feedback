@@ -95,6 +95,7 @@
     </label>
     <label class="field"><span>From</span><input type="date" id="fFrom"></label>
     <label class="field"><span>To</span><input type="date" id="fTo"></label>
+    <label class="field"><span>Source</span><select id="fOrigin"><option value="">CX + internal</option><option value="cx">CX (customers)</option><option value="internal">Internal testers</option></select></label>
     <label class="field"><span>Data</span><select id="fTest"><option value="false">Real only</option><option value="true">Real + test</option></select></label>
   </section>
 
@@ -186,6 +187,7 @@
   $('presets').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; applyPreset(b.dataset.days === 'all' ? 'all' : +b.dataset.days); load(); });
   for (const id of ['fFrom', 'fTo']) $(id).addEventListener('change', () => { for (const b of $('presets').querySelectorAll('button')) b.classList.remove('on'); load(); });
   $('fTest').addEventListener('change', load);
+  $('fOrigin').addEventListener('change', load);
 
   // ---------- freshness ----------
   let loadedAt = 0;
@@ -198,7 +200,7 @@
   async function load() {
     const my = ++inflight; $('content').classList.add('loading');
     try {
-      const o = await api(`/v1/admin/diagnoses/overview?from=${$('fFrom').value}&to=${$('fTo').value}&include_test=${$('fTest').value}`);
+      const o = await api(`/v1/admin/diagnoses/overview?from=${$('fFrom').value}&to=${$('fTo').value}&include_test=${$('fTest').value}${$('fOrigin').value ? '&origin=' + $('fOrigin').value : ''}`);
       if (my !== inflight) return;
       render(o);
       loadedAt = Date.now(); renderFreshness();
@@ -262,9 +264,9 @@
     table($('tReview'), [{ h: 'side', render: (r) => el('span', 'side ' + (r.side || 'other'), SIDE_LABEL[r.side] || r.side || '—') }, { h: 'agree', k: 'agree', num: true }, { h: 'disagree', k: 'disagree', num: true }, { h: 'unsure', k: 'unsure', num: true }], o.review_by_side, 'No reviews yet. Use Agree / Disagree on a submission page to calibrate the model.');
 
     table($('tAttention'), [
-      { h: 'when', render: (r) => shortDate(r.occurred_on) }, { h: 'feature', k: 'feature_key' }, { h: 'status', render: (r) => r.status }, { h: 'side', render: (r) => r.side ? el('span', 'side ' + r.side, SIDE_LABEL[r.side] || r.side) : '—' }, { h: 'severity', render: (r) => el('span', 'sev ' + (r.severity || ''), r.severity || '—') },
+      { h: 'report', render: (r) => el('span', 'mono', r.ref) }, { h: 'when', render: (r) => shortDate(r.occurred_on) }, { h: 'feature', render: (r) => r.origin === 'cx' ? r.feature_key + ' · CX' : r.feature_key }, { h: 'status', render: (r) => r.status }, { h: 'side', render: (r) => r.side ? el('span', 'side ' + r.side, SIDE_LABEL[r.side] || r.side) : '—' }, { h: 'severity', render: (r) => el('span', 'sev ' + (r.severity || ''), r.severity || '—') },
       { h: 'conf', num: true, render: (r) => r.confidence == null ? '—' : Math.round(r.confidence * 100) + '%' }, { h: 'review', render: (r) => r.review_verdict || '—' }, { h: 'summary', render: (r) => (r.summary || '').slice(0, 140) + ((r.summary || '').length > 140 ? '…' : '') },
-    ], o.attention, 'Nothing needs attention right now.', (r) => { location.href = '/dashboard/submissions/' + r.id; });
+    ], o.attention, 'Nothing needs attention right now.', (r) => { location.href = '/dashboard/submissions/' + encodeURIComponent(r.ref); });
 
     table($('tDevices'), [{ h: 'device', k: 'model' }, { h: 'platform', render: (r) => r.platform === 'ios' ? 'iOS' : r.platform === 'android' ? 'Android' : '—' }, { h: 'issues', k: 'issues', num: true }], o.devices, 'No device data yet.');
     table($('tCost'), [{ h: 'day', render: (r) => shortDate(r.day) }, { h: 'runs', k: 'runs', num: true }, { h: 'cost', num: true, render: (r) => '$' + r.cost.toFixed(4) }], o.cost_by_day, 'No runs yet.');

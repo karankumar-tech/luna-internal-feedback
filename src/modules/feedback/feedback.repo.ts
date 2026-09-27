@@ -1,4 +1,5 @@
 import type { Db } from '../../db/pool.js';
+import type { Origin } from '../../schema/registry.js';
 
 export interface Screenshot {
   file_id: string;
@@ -15,11 +16,15 @@ export interface Screenshot {
 
 export interface SubmissionRow {
   id: string;
+  /** Readable reference, LN-00042. The uuid stays the key everything joins on. */
+  ref: string;
   feature_key: string;
   is_positive: boolean;
   occurred_on: string;
-  user_id: string; // bigint comes back as string from pg
-  email: string;
+  /** bigint comes back as string from pg. Null only on a CX report whose serial has not been resolved yet. */
+  user_id: string | null;
+  /** Internal testers only: a real customer's email is never stored. */
+  email: string | null;
   issue_categories: string[];
   created_at: Date;
   feedback_text: string | null;
@@ -38,6 +43,13 @@ export interface SubmissionRow {
   idempotency_key: string | null;
   schema_version: number;
   is_test: boolean;
+  origin: Origin;
+  submitted_via: string | null;
+  cx_ref: string | null;
+  cx_url: string | null;
+  cx_channel: string | null;
+  cx_agent: string | null;
+  cx_transcript: string | null;
   status: string;
   status_note: string | null;
   status_changed_at: Date | null;
@@ -57,13 +69,31 @@ export interface SubmissionRow {
 /** Where a ticket sits in triage. QC owns the transitions; everyone else reads them. */
 export const SUBMISSION_STATUSES = ['open', 'triaged', 'in_progress', 'resolved', 'closed', 'wont_fix'] as const;
 export type SubmissionStatus = (typeof SUBMISSION_STATUSES)[number];
+/** Statuses where nobody needs to do anything more. */
+export const TERMINAL_STATUSES: readonly SubmissionStatus[] = ['resolved', 'closed', 'wont_fix'];
+
+/**
+ * One person, for "how many people" counts. Internal reports always carry the Luna user id; a CX
+ * report carries its ring serial and gets the user id once the logging service resolves it.
+ */
+export function personSql(alias = 's'): string {
+  return `coalesce(${alias}.user_id::text, 'serial:' || ${alias}.device_serial)`;
+}
+
+/** "LN-00042", "ln-42", "LN42", "42" -> 42. Anything else -> null. */
+export function parseSubmissionRef(input: string): number | null {
+  const m = /^(?:ln-?)?0*(\d{1,12})$/i.exec(input.trim());
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
+}
 
 export interface NewSubmission {
   feature_key: string;
   is_positive: boolean;
   occurred_on: string;
-  user_id: number;
-  email: string;
+  user_id: number | null;
+  email: string | null;
   issue_categories: string[];
   feedback_text: string | null;
   device_serial: string | null;
@@ -73,12 +103,18 @@ export interface NewSubmission {
   idempotency_key: string | null;
   schema_version: number;
   is_test: boolean;
+  origin: Origin;
+  submitted_via: 'app' | 'cx_tool' | 'admin';
+  cx: { ref: string; url: string | null; channel: string | null; agent: string | null; transcript: string | null } | null;
 }
 
 /** Filters every list/stats/analytics query shares, so numbers on one screen always agree. */
 export interface CommonFilters {
   feature?: string;
   environment?: string;
+  origin?: Origin;
+  /** Numeric part of a reference (LN-00042 -> 42). */
+  ref_no?: number;
   platform?: string;
   is_test?: boolean;
   status?: string;
@@ -115,6 +151,8 @@ export interface StatsResult {
   by_feature: { feature_key: string; label: string; positive: number; negative: number }[];
   by_category: { feature_key: string; key: string; label: string; count: number }[];
   by_environment: { environment: string; positive: number; negative: number }[];
+  /** Issues by origin, with how many are still open and how old the oldest open one is. */
+  by_origin: { origin: string; issues: number; positive: number; open: number; oldest_open_at: string | null }[];
   by_status: { status: string; count: number }[];
   jira: { linked: number; unlinked: number };
   top_kinds: { id: string; key: string; title: string; count: number }[];
@@ -136,6 +174,8 @@ export function buildWhere(f: Partial<StatsFilters>, alias = 's'): { where: stri
   const add = (sql: string, v: unknown) => { if (v === undefined) { where.push(sql); return; } vals.push(v); where.push(sql.replace('?', `$${vals.length}`)); };
   if (f.feature) add(`${alias}.feature_key = ?`, f.feature);
   if (f.environment) add(`${alias}.environment = ?`, f.environment);
+  if (f.origin) add(`${alias}.origin = ?`, f.origin);
+  if (f.ref_no !== undefined) add(`${alias}.ref_no = ?`, f.ref_no);
   if (f.platform) add(`${alias}.platform = ?`, f.platform);
   if (f.is_test !== undefined) add(`${alias}.is_test = ?`, f.is_test);
   if (f.status) add(`${alias}.status = ?`, f.status);
@@ -155,16 +195,18 @@ export function buildWhere(f: Partial<StatsFilters>, alias = 's'): { where: stri
   return { where: where.length ? 'where ' + where.join(' and ') : '', vals };
 }
 
-const COLUMNS = `id, feature_key, is_positive, occurred_on::text as occurred_on, user_id, email, issue_categories,
+const COLUMNS = `id, ref, feature_key, is_positive, occurred_on::text as occurred_on, user_id, email, issue_categories,
   created_at, feedback_text, device_serial, details, screenshots, environment, platform, app_version, build_number, build_channel, firmware_version, os_version,
-  device_id, session_id, idempotency_key, schema_version, is_test, status, status_note, status_changed_at, status_changed_by,
+  device_id, session_id, idempotency_key, schema_version, is_test,
+  origin, submitted_via, cx_ref, cx_url, cx_channel, cx_agent, cx_transcript, status, status_note, status_changed_at, status_changed_by,
   jira_key, jira_url, jira_status, jira_synced_at, jira_created_by, ai_status, ai_side, ai_severity, ai_event_codes, ai_checked_at`;
 
 export class FeedbackRepo {
   constructor(private readonly db: Db) {}
 
   /**
-   * Inserts one submission. If idempotency_key collides, returns the existing row and `created: false`.
+   * Inserts one submission. A replay returns the existing row and `created: false`: the same
+   * Idempotency-Key from the app, or the same CX ticket and feature from the CX tool.
    */
   async insert(s: NewSubmission): Promise<{ row: SubmissionRow; created: boolean }> {
     const params = [
@@ -174,24 +216,33 @@ export class FeedbackRepo {
       s.client.platform ?? null, s.client.app_version ?? null, s.client.build_number ?? null, s.client.build_channel ?? null,
       s.client.firmware_version ?? null, s.client.os_version ?? null, s.client.device_id ?? null,
       s.client.session_id ?? null, s.idempotency_key, s.schema_version, s.is_test,
+      s.origin, s.submitted_via, s.cx?.ref ?? null, s.cx?.url ?? null, s.cx?.channel ?? null, s.cx?.agent ?? null, s.cx?.transcript ?? null,
     ];
+    // No conflict target: either unique guard (idempotency key, CX ticket + feature) means "already filed".
     const inserted = await this.db.query<SubmissionRow>(
       `insert into luna_feedback.submissions
          (feature_key, is_positive, occurred_on, user_id, email, issue_categories, feedback_text, device_serial, details, screenshots,
           environment, platform, app_version, build_number, build_channel, firmware_version, os_version, device_id, session_id,
-          idempotency_key, schema_version, is_test)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,coalesce($11, 'stage'),$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
-       on conflict (idempotency_key) where idempotency_key is not null do nothing
+          idempotency_key, schema_version, is_test,
+          origin, submitted_via, cx_ref, cx_url, cx_channel, cx_agent, cx_transcript)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,coalesce($11, 'stage'),$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
+               $23,$24,$25,$26,$27,$28,$29)
+       on conflict do nothing
        returning ${COLUMNS}`,
       params,
     );
     if (inserted.rows[0]) return { row: inserted.rows[0], created: true };
 
-    const existing = await this.db.query<SubmissionRow>(
-      `select ${COLUMNS} from luna_feedback.submissions where idempotency_key = $1`,
-      [s.idempotency_key],
-    );
-    return { row: existing.rows[0]!, created: false };
+    const existing = s.idempotency_key
+      ? await this.db.query<SubmissionRow>(`select ${COLUMNS} from luna_feedback.submissions where idempotency_key = $1`, [s.idempotency_key])
+      : s.origin === 'cx' && s.cx
+        ? await this.db.query<SubmissionRow>(
+          `select ${COLUMNS} from luna_feedback.submissions where origin = 'cx' and cx_ref = $1 and feature_key = $2`,
+          [s.cx.ref, s.feature_key],
+        )
+        : { rows: [] as SubmissionRow[] };
+    if (!existing.rows[0]) throw new Error('insert was skipped as a duplicate but no existing submission was found');
+    return { row: existing.rows[0], created: false };
   }
 
   /** Deletes every submission flagged as test data. Real rows are never touched. */
@@ -261,6 +312,28 @@ export class FeedbackRepo {
     return r.rows[0];
   }
 
+  async byRefNo(refNo: number): Promise<SubmissionRow | undefined> {
+    const r = await this.db.query<SubmissionRow>(`select ${COLUMNS} from luna_feedback.submissions where ref_no = $1`, [refNo]);
+    return r.rows[0];
+  }
+
+  /**
+   * Fills what the logging service knows about a CX report's device. Only empty columns are
+   * written, so anything the CX tool sent explicitly is never overwritten.
+   */
+  async fillDeviceContext(id: string, d: { user_id: number | null; platform: string | null; app_version: string | null; firmware_version: string | null; os_version: string | null }): Promise<void> {
+    await this.db.query(
+      `update luna_feedback.submissions
+          set user_id          = coalesce(user_id, $2),
+              platform         = coalesce(platform, $3),
+              app_version      = coalesce(app_version, $4),
+              firmware_version = coalesce(firmware_version, $5),
+              os_version       = coalesce(os_version, $6)
+        where id = $1`,
+      [id, d.user_id, d.platform, d.app_version, d.firmware_version, d.os_version],
+    );
+  }
+
   async list(f: ListFilters): Promise<{ rows: SubmissionRow[]; nextCursor: string | null }> {
     const built = buildWhere(f);
     const clauses = built.where ? [built.where.replace(/^where /, '')] : [];
@@ -290,12 +363,12 @@ export class FeedbackRepo {
     const { where, vals } = buildWhere(f);
     const base = `from luna_feedback.submissions s ${where}`;
 
-    const [totals, byDay, byFeature, byCategory, byEnvironment, byStatus, jira, topKinds, diagTotals, bySide, bySeverity, topTags] = await Promise.all([
+    const [totals, byDay, byFeature, byCategory, byEnvironment, byOrigin, byStatus, jira, topKinds, diagTotals, bySide, bySeverity, topTags] = await Promise.all([
       this.db.query<{ submissions: number; positive: number; negative: number; users: number }>(
         `select count(*)::int as submissions,
                 count(*) filter (where s.is_positive)::int as positive,
                 count(*) filter (where not s.is_positive)::int as negative,
-                count(distinct s.user_id)::int as users
+                count(distinct ${personSql()})::int as users
          ${base}`, vals),
       this.db.query<{ date: string; positive: number; negative: number }>(
         `select s.occurred_on::text as date,
@@ -323,6 +396,13 @@ export class FeedbackRepo {
                 count(*) filter (where s.is_positive)::int as positive,
                 count(*) filter (where not s.is_positive)::int as negative
          ${base} group by s.environment order by s.environment`, vals),
+      this.db.query<{ origin: string; issues: number; positive: number; open: number; oldest_open_at: Date | null }>(
+        `select s.origin,
+                count(*) filter (where not s.is_positive)::int as issues,
+                count(*) filter (where s.is_positive)::int as positive,
+                count(*) filter (where not s.is_positive and s.status not in ('resolved','closed','wont_fix'))::int as open,
+                min(s.created_at) filter (where not s.is_positive and s.status not in ('resolved','closed','wont_fix')) as oldest_open_at
+         ${base} group by s.origin order by s.origin desc`, vals),
       this.db.query<{ status: string; count: number }>(
         `select s.status, count(*)::int as count ${base} group by s.status order by count desc`, vals),
       this.db.query<{ linked: number; unlinked: number }>(
@@ -362,6 +442,7 @@ export class FeedbackRepo {
       by_feature: byFeature.rows,
       by_category: byCategory.rows,
       by_environment: byEnvironment.rows,
+      by_origin: byOrigin.rows.map((r) => ({ ...r, oldest_open_at: r.oldest_open_at ? new Date(r.oldest_open_at).toISOString() : null })),
       by_status: byStatus.rows,
       jira: jira.rows[0] ?? { linked: 0, unlinked: 0 },
       top_kinds: topKinds.rows,

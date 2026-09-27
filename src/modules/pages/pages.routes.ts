@@ -73,7 +73,14 @@ export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
   app.get('/dashboard/kinds', html(PAGES.kinds));
   app.get('/dashboard/kinds/:id', html(PAGES.kinds));
   app.get('/dashboard/users', html(PAGES.users));
+  app.get('/dashboard/attention', html(PAGES.attention));
   app.get('/', async (_req, reply) => reply.redirect('/docs', 302));
+
+  // Short links for sharing: /i/LN-00042 and /k/LNK-0007. The page behind them still needs a sign-in.
+  app.get<{ Params: { ref: string } }>('/i/:ref', async (req, reply) =>
+    reply.redirect(`/dashboard/submissions/${encodeURIComponent(req.params.ref)}`, 302));
+  app.get<{ Params: { ref: string } }>('/k/:ref', async (req, reply) =>
+    reply.redirect(`/dashboard/kinds/${encodeURIComponent(req.params.ref)}`, 302));
 
   /** Is the caller signed in, and who are they? Read by every dashboard page on load. */
   app.get('/dashboard/session', async (req) => {

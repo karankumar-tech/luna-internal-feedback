@@ -17,6 +17,7 @@
     --hero: #1A1A18; --hero-muted: #8A887F;
     --yellow: #F5F85D; --yellow-700: #545500;
     --blue: #2E64E4; --blue-50: #EAF0FD; --blue-100: #C3D5FA;
+    --magenta: #E0237A;
     --ok: #00C37A; --ok-bg: #E6F8F0; --crit: #FF3B3B; --crit-bg: #FFECEC;
     --sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -164,6 +165,11 @@
   .shots a { display: block; width: 96px; height: 96px; border: 1px solid var(--gray-light); border-radius: var(--r-m); overflow: hidden; background: var(--brief); }
   .shots img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .chip.test { background: var(--yellow); color: var(--black); letter-spacing: .08em; font-size: 10px; margin-left: 6px; vertical-align: 1px; }
+  .chip.cx { background: var(--magenta); color: var(--white); letter-spacing: .08em; font-size: 10px; margin-left: 6px; vertical-align: 1px; }
+  td.ref { font-family: var(--mono); font-size: 12px; white-space: nowrap; } td.ref .age { color: var(--gray-mid); font-size: 11px; } td.ref .age.old { color: #A03600; }
+  .goto { width: 120px; border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-s); padding: 3px 8px; font-family: var(--mono); font-size: 12px; line-height: 16px; }
+  .goto:focus-visible { outline: none; border-color: var(--black); box-shadow: 0 0 0 1px var(--black); }
+  .navcount { font-family: var(--mono); font-size: 10px; background: var(--black); color: var(--white); border-radius: 8px; padding: 0 6px; margin-left: 4px; }
   .feat { font-weight: 500; }
   .tfoot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; font-size: 12px; color: var(--gray-dark); flex-wrap: wrap; }
 
@@ -231,6 +237,8 @@
       <span id="freshness" class="tertiary" title="When this data was last fetched from the server"></span>
       <button class="btn small" id="btnRefresh" type="button" title="Reload data without leaving the page"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px;margin-right:5px"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3h-3"/></svg>Refresh</button>
       <span id="whoami" class="tertiary" hidden></span>
+      <input class="goto" id="goRef" type="search" placeholder="Go to LN-…" aria-label="Go to a report (LN-00042) or problem (LNK-0007)" autocomplete="off">
+      <a class="btn small" href="/dashboard/attention" id="navAttention" style="text-decoration:none">Needs attention<span class="navcount" id="navAttentionN" hidden></span> →</a>
       <a class="btn small" href="/dashboard/analytics" style="text-decoration:none">Analytics →</a>
       <a class="btn small" href="/dashboard/kinds" style="text-decoration:none">Issue kinds →</a>
       <a class="btn small" href="/dashboard/diagnosis" style="text-decoration:none">Diagnosis →</a>
@@ -321,6 +329,13 @@
           <option value="production">Production</option>
         </select>
       </label>
+      <label class="field"><span>Source</span>
+        <select id="fOrigin">
+          <option value="">CX + internal</option>
+          <option value="cx">CX (customers)</option>
+          <option value="internal">Internal testers</option>
+        </select>
+      </label>
       <label class="field"><span>Platform</span>
         <select id="fPlatform">
           <option value="">iOS + Android</option>
@@ -406,8 +421,8 @@
         <div class="kpi hero"><div class="v" id="kSub">–</div><div class="l">Submissions</div><div class="d" id="kSubD"></div></div>
         <div class="kpi"><div class="v" id="kNeg">–</div><div class="l"><span class="sw" style="background:var(--crit)"></span>Reported issues</div><div class="d" id="kNegD"></div></div>
         <div class="kpi"><div class="v" id="kPos">–</div><div class="l"><span class="sw" style="background:var(--ok)"></span>Working fine</div><div class="d" id="kPosD"></div></div>
-        <div class="kpi"><div class="v" id="kUsers">–</div><div class="l">Testers reporting</div><div class="d">distinct user IDs</div></div>
-        <div class="kpi"><div class="v" id="kRate">–</div><div class="l">Issue rate</div><div class="d">issues ÷ submissions</div></div>
+        <div class="kpi"><div class="v" id="kUsers">–</div><div class="l">People reporting</div><div class="d">testers, and customers by ring</div></div>
+        <div class="kpi"><div class="v" id="kCx">–</div><div class="l"><span class="sw" style="background:var(--magenta)"></span>From CX</div><div class="d" id="kCxD">customer problems filed by CX</div></div>
         <div class="kpi"><div class="v" id="kAi">–</div><div class="l">AI checked</div><div class="d" id="kAiD">of reported issues</div></div>
       </section>
 
@@ -453,7 +468,7 @@
         <div class="tbl-wrap">
           <table>
             <thead><tr>
-              <th>When (IST)</th><th>Feature</th><th>Result</th><th>Categories</th><th>User</th><th>Feedback</th><th>Platform · App · FW</th>
+              <th>Report</th><th>When (IST)</th><th>Feature</th><th>Result</th><th>Categories</th><th>Reporter</th><th>Feedback</th><th>Platform · App · FW</th>
             </tr></thead>
             <tbody id="rows"></tbody>
           </table>
@@ -519,6 +534,10 @@
   const niceScale = (v, ticks) => { const raw = Math.max(1, v) / ticks; const p = Math.pow(10, Math.floor(Math.log10(raw))); const m = raw / p; const step = Math.max(1, Math.ceil((m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p)); return { step, top: step * ticks }; };
   const niceMax = (v) => niceScale(v, 4).top;
   const shortDate = (iso) => { const [y, m, d] = iso.split('-'); return `${d} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m - 1]}`; };
+  /** Statuses where nobody needs to do anything more. */
+  const TERMINAL = ['resolved', 'closed', 'wont_fix'];
+  /** "5h", "6d" since an ISO timestamp. */
+  const ageLabel = (iso) => { if (!iso) return '–'; const h = (Date.now() - Date.parse(iso)) / 3_600_000; return h < 24 ? `${Math.max(1, Math.round(h))}h` : `${Math.round(h / 24)}d`; };
   let toastT; const toast = (msg) => { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', 2200); };
 
   // Session cookie carries auth (HttpOnly). The x-requested-with header is what lets the
@@ -663,7 +682,8 @@
     loadDiagOps(true);
     // deep link after sign-in (detail pages redirect here when the session is missing)
     const next = new URLSearchParams(location.search).get('next');
-    if (next && /^\/dashboard\/(submissions\/[0-9a-f-]{36}|diagnosis)$/.test(next)) location.replace(next);
+    // Only our own pages: a detail page by id or reference, or a top-level page. Never an absolute URL.
+    if (next && /^\/dashboard\/(?:(?:submissions|kinds)\/[A-Za-z0-9-]{1,40}|diagnosis|analytics|kinds|users|attention)$/.test(next)) location.replace(next);
   }
 
   function fillFeatureSelect() {
@@ -693,6 +713,7 @@
     const f = { from: $('fFrom').value, to: $('fTo').value };
     if ($('fFeature').value) f.feature = $('fFeature').value;
     if ($('fEnv').value) f.environment = $('fEnv').value;
+    if ($('fOrigin').value) f.origin = $('fOrigin').value;
     if ($('fStatus').value) f.status = $('fStatus').value;
     if ($('fJira').value) f.jira = $('fJira').value;
     if ($('fKind').value) f.kind_id = $('fKind').value;
@@ -714,11 +735,11 @@
   $('fResult').addEventListener('change', refresh);
   $('fPlatform').addEventListener('change', refresh);
   $('fTest').addEventListener('change', refresh);
-  for (const fid of ['fAi', 'fSide', 'fSev', 'fEnv', 'fStatus', 'fJira', 'fKind']) $(fid).addEventListener('change', refresh);
+  for (const fid of ['fAi', 'fSide', 'fSev', 'fEnv', 'fOrigin', 'fStatus', 'fJira', 'fKind']) $(fid).addEventListener('change', refresh);
   $('fCategory').addEventListener('change', refresh);
   let userT; $('fUser').addEventListener('input', () => { clearTimeout(userT); userT = setTimeout(refresh, 400); });
   $('btnReset').addEventListener('click', () => {
-    for (const fid of ['fFeature', 'fPlatform', 'fTest', 'fAi', 'fSide', 'fSev', 'fResult', 'fUser', 'fEnv', 'fStatus', 'fJira', 'fKind']) $(fid).value = '';
+    for (const fid of ['fFeature', 'fPlatform', 'fTest', 'fAi', 'fSide', 'fSev', 'fResult', 'fUser', 'fEnv', 'fOrigin', 'fStatus', 'fJira', 'fKind']) $(fid).value = '';
     fillCategorySelect(); applyPreset(30); refresh();
   });
 
@@ -749,11 +770,31 @@
       state.loadedAt = Date.now(); renderFreshness();
       renderKpis(); renderCharts(); renderTable(false);
       $('rangeLabel').textContent = `${shortDate(stats.range.from)} – ${shortDate(stats.range.to)}`;
+      loadAttentionCount();
     } catch (err) {
       if (err.status === 401) { showGate('Your key stopped working. Enter it again.'); return; }
       toast('Could not load data: ' + err.message);
     } finally { if (my === inflight) $('content').classList.remove('loading'); }
   }
+
+  /** How many reports need someone now, on the "Needs attention" link. Not filtered: it is about the whole backlog. */
+  async function loadAttentionCount() {
+    try {
+      const a = await api('/v1/attention');
+      const n = a.counts.untouched + a.counts.stale;
+      $('navAttentionN').hidden = n === 0; $('navAttentionN').textContent = String(n);
+      $('navAttention').title = `${a.counts.untouched} untouched too long · ${a.counts.stale} stale · ${a.counts.cx_waiting} CX reports open`;
+    } catch { /* the link still works without a count */ }
+  }
+
+  // ---------- go to a reference ----------
+  $('goRef').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const v = $('goRef').value.trim();
+    if (/^(ln-?)?\d{1,9}$/i.test(v)) location.href = '/dashboard/submissions/' + encodeURIComponent(v.toUpperCase());
+    else if (/^lnk-?\d{1,9}$/i.test(v)) location.href = '/dashboard/kinds/' + encodeURIComponent(v.toUpperCase());
+    else toast('Type a report (LN-00042) or a problem (LNK-0007)');
+  });
 
   // ---------- freshness / manual refresh ----------
   function renderFreshness() {
@@ -777,7 +818,9 @@
     $('kNeg').textContent = fmtN(t.negative); $('kNegD').textContent = pct(t.negative, t.submissions) + ' of submissions';
     $('kPos').textContent = fmtN(t.positive); $('kPosD').textContent = pct(t.positive, t.submissions) + ' of submissions';
     $('kUsers').textContent = fmtN(t.users);
-    $('kRate').textContent = pct(t.negative, t.submissions);
+    const cx = (state.stats.by_origin || []).find((o) => o.origin === 'cx');
+    $('kCx').textContent = fmtN(cx ? cx.issues : 0);
+    $('kCxD').textContent = cx && cx.open ? `${fmtN(cx.open)} open · oldest ${ageLabel(cx.oldest_open_at)}` : cx && cx.issues ? 'none open' : 'customer problems filed by CX';
     const dg = state.stats.diagnosis || { checked: 0, with_verdict: 0, waiting: 0, failed: 0 };
     $('kAi').textContent = t.negative ? pct(dg.checked, t.negative) : '–';
     $('kAiD').textContent = `${fmtN(dg.with_verdict)} diagnosed · ${fmtN(dg.waiting)} waiting${dg.failed ? ' · ' + fmtN(dg.failed) + ' failed' : ''}`;
@@ -920,13 +963,19 @@
     const rows = append ? state.rows.slice(-state.lastBatch) : state.rows;
     for (const r of rows) {
       const tr = el('tr'); tr.tabIndex = 0;
+      const refTd = el('td', 'ref'); refTd.appendChild(el('div', null, r.ref));
+      if (!r.is_positive && !TERMINAL.includes(r.status)) { const days = (Date.now() - Date.parse(r.created_at)) / 86_400_000; refTd.appendChild(el('div', 'age' + (days >= (r.origin === 'cx' ? 1 : 3) ? ' old' : ''), 'open ' + ageLabel(r.created_at))); }
+      tr.appendChild(refTd);
       const when = el('td', 'when'); const [d, t] = r.created_at_ist.split(' '); when.appendChild(el('div', 'd', shortDate(d))); when.appendChild(el('div', 't', t)); tr.appendChild(when);
       tr.appendChild(el('td', 'feat', featLabelOf(r.feature_key)));
-      const res = el('td', 'nowrap'); res.appendChild(el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue')); if (r.is_test) res.appendChild(el('span', 'chip test', 'TEST'));
+      const res = el('td', 'nowrap'); res.appendChild(el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue')); if (r.origin === 'cx') res.appendChild(el('span', 'chip cx', 'CX')); if (r.is_test) res.appendChild(el('span', 'chip test', 'TEST'));
       if (!r.is_positive) { const ai = el('div', 'aibadge ' + (r.ai_side ? sideOf(r.ai_side) : (r.ai_status || 'none')), r.ai_side ? SIDE_LABEL[r.ai_side] || r.ai_side : r.ai_status === 'waiting_logs' ? 'waiting for logs' : r.ai_status === 'no_logs' ? 'no logs' : r.ai_status === 'failed' ? 'AI failed' : r.ai_status ? 'AI ' + r.ai_status : 'not checked'); res.appendChild(ai); }
       tr.appendChild(res);
       const cats = el('td'); const chips = el('div', 'chips'); for (const c of r.issue_categories) chips.appendChild(el('span', 'chip', catLabelOf(r.feature_key, c))); cats.appendChild(chips); tr.appendChild(cats);
-      const user = el('td', 'num'); user.appendChild(el('div', null, String(r.user_id))); const em = el('div', 'tertiary', r.email); em.style.fontSize = '11px'; user.appendChild(em); tr.appendChild(user);
+      const user = el('td', 'num');
+      if (r.origin === 'cx') { user.appendChild(el('div', null, r.user_id ? String(r.user_id) : r.device_serial)); const sub = el('div', 'tertiary', 'CX ' + (r.cx_ref || '')); sub.style.fontSize = '11px'; user.appendChild(sub); }
+      else { user.appendChild(el('div', null, String(r.user_id))); const em = el('div', 'tertiary', r.email); em.style.fontSize = '11px'; user.appendChild(em); }
+      tr.appendChild(user);
       const txt = el('td', 'text'); txt.appendChild(el('span', null, r.feedback_text || '—')); if (r.screenshots && r.screenshots.length) txt.appendChild(el('span', 'chip shots', r.screenshots.length + (r.screenshots.length === 1 ? ' screenshot' : ' screenshots'))); tr.appendChild(txt);
       tr.appendChild(el('td', 'num', [r.platform === 'ios' ? 'iOS' : r.platform === 'android' ? 'Android' : null, r.app_version, r.firmware_version && 'fw ' + r.firmware_version].filter(Boolean).join(' · ') || '—'));
       const open = () => openDrawer(r); tr.addEventListener('click', open); tr.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
@@ -944,7 +993,7 @@
   });
   $('btnCsv').addEventListener('click', () => {
     if (!state.rows.length) { toast('Nothing to export'); return; }
-    const cols = ['id', 'created_at_ist', 'feature_key', 'is_positive', 'occurred_on', 'user_id', 'email', 'issue_categories', 'feedback_text', 'device_serial', 'details', 'screenshots', 'is_test', 'ai_status', 'ai_side', 'ai_severity', 'platform', 'app_version', 'build_number', 'build_channel', 'firmware_version', 'os_version', 'device_id', 'session_id'];
+    const cols = ['ref', 'id', 'created_at_ist', 'origin', 'environment', 'status', 'feature_key', 'is_positive', 'occurred_on', 'user_id', 'email', 'cx_ref', 'cx_channel', 'cx_agent', 'issue_categories', 'feedback_text', 'device_serial', 'details', 'screenshots', 'is_test', 'ai_status', 'ai_side', 'ai_severity', 'platform', 'app_version', 'build_number', 'build_channel', 'firmware_version', 'os_version', 'device_id', 'session_id'];
     const esc = (v) => { const s = v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const csv = [cols.join(','), ...state.rows.map((r) => cols.map((c) => esc(c === 'issue_categories' ? r[c].join('|') : r[c])).join(','))].join('\n');
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = `luna-feedback-${state.filters.from}-to-${state.filters.to}.csv`; a.click(); URL.revokeObjectURL(a.href);
@@ -953,10 +1002,10 @@
   // ---------- drawer ----------
   function openDrawer(r) {
     const d = $('drawer'); d.replaceChildren();
-    const head = el('div', 'head'); const hl = el('div'); hl.appendChild(el('div', 'overline', featLabelOf(r.feature_key) + ' · ' + shortDate(r.occurred_on)));
-    const h2 = el('h2'); h2.appendChild(el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue')); if (r.is_test) h2.appendChild(el('span', 'chip test', 'TEST')); hl.appendChild(h2); head.appendChild(hl);
+    const head = el('div', 'head'); const hl = el('div'); hl.appendChild(el('div', 'overline', r.ref + ' · ' + featLabelOf(r.feature_key) + ' · ' + shortDate(r.occurred_on)));
+    const h2 = el('h2'); h2.appendChild(el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue')); if (r.origin === 'cx') h2.appendChild(el('span', 'chip cx', 'CX')); if (r.is_test) h2.appendChild(el('span', 'chip test', 'TEST')); hl.appendChild(h2); head.appendChild(hl);
     const actions = el('div'); actions.style.display = 'flex'; actions.style.gap = '6px';
-    const open = el('a', 'btn small primary', 'Open detail →'); open.href = '/dashboard/submissions/' + r.id; open.style.textDecoration = 'none'; actions.appendChild(open);
+    const open = el('a', 'btn small primary', 'Open detail →'); open.href = '/dashboard/submissions/' + encodeURIComponent(r.ref); open.style.textDecoration = 'none'; actions.appendChild(open);
     const flag = el('button', 'btn small', r.is_test ? 'Mark as real' : 'Mark as test'); flag.type = 'button'; flag.title = r.is_test ? 'Count this row as real tester feedback' : 'Exclude this row from real feedback; it can be deleted with other test data';
     flag.addEventListener('click', async () => {
       flag.disabled = true;
@@ -975,9 +1024,10 @@
     const order = fields.map((f) => f.key);
     const details = Object.entries(r.details || {}).sort(([a], [b]) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999));
     if (details.length) dl('Feature details', details.map(([k, v]) => [fieldLabel(k), v, true]));
-    dl('Reporter', [['User ID', r.user_id, true], ['Email', r.email], ['Device serial', r.device_serial, true], ['Occurred on', r.occurred_on, true], ['Submitted (IST)', r.created_at_ist, true], ['Submitted (UTC)', r.created_at, true]]);
+    if (r.origin === 'cx') dl('Reported through CX', [['CX ticket', r.cx_ref, true], ['Channel', r.cx_channel], ['Agent', r.cx_agent], ['Ring serial', r.device_serial, true], ['Luna user ID', r.user_id || 'not resolved from the ring yet', true], ['Occurred on', r.occurred_on, true], ['Submitted (IST)', r.created_at_ist, true]]);
+    else dl('Reporter', [['User ID', r.user_id, true], ['Email', r.email], ['Device serial', r.device_serial, true], ['Occurred on', r.occurred_on, true], ['Submitted (IST)', r.created_at_ist, true], ['Submitted (UTC)', r.created_at, true]]);
     dl('Client', [['Platform', r.platform === 'ios' ? 'iOS' : r.platform === 'android' ? 'Android' : null], ['App version', r.app_version, true], ['Build', r.build_number, true], ['Channel', r.build_channel, true], ['Firmware', r.firmware_version, true], ['OS', r.os_version], ['Device ID', r.device_id, true], ['Session', r.session_id, true]]);
-    dl('Record', [['ID', r.id, true], ['Schema version', r.schema_version, true], ['Test data', r.is_test ? 'yes' : 'no']]);
+    dl('Record', [['Reference', r.ref, true], ['ID', r.id, true], ['Environment', r.environment], ['Schema version', r.schema_version, true], ['Test data', r.is_test ? 'yes' : 'no']]);
     d.classList.add('open'); $('scrim').classList.add('open'); close.focus();
   }
   function closeDrawer() { $('drawer').classList.remove('open'); $('scrim').classList.remove('open'); }

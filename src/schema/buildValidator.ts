@@ -1,6 +1,6 @@
 import { z, type ZodTypeAny } from 'zod';
 import type { FieldDef } from './fieldTypes.js';
-import { COMMON_FIELDS, FEATURE_DEFINITIONS, CLIENT_CONTEXT_FIELDS, type FeatureKey } from './registry.js';
+import { COMMON_FIELDS, FEATURE_DEFINITIONS, CLIENT_CONTEXT_FIELDS, CX_CHANNELS, type FeatureKey } from './registry.js';
 import { isValidCalendarDate, isValidTime12h, normalizeTime12h, todayInZone } from '../lib/time.js';
 
 export interface ValidatorContext {
@@ -107,11 +107,8 @@ function clientContextSchema(ctx: ValidatorContext) {
   return z.object(shape).strict();
 }
 
-/**
- * Builds the full POST body validator for a feature.
- * `details` keys outside the registry are rejected so typos surface immediately.
- */
-export function buildSubmissionValidator(feature: FeatureKey, ctx: ValidatorContext) {
+/** Body keys every caller shares: feature details, client context, screenshots and the test flag. */
+function sharedExtras(feature: FeatureKey, ctx: ValidatorContext) {
   const def = FEATURE_DEFINITIONS[feature];
 
   let details = fieldsToObject(def.fields, ctx);
@@ -140,7 +137,7 @@ export function buildSubmissionValidator(feature: FeatureKey, ctx: ValidatorCont
     original_width: z.number().int().positive().optional().nullable(),
     original_height: z.number().int().positive().optional().nullable(),
   }).strict();
-  const extra = {
+  return {
     details: details.optional().default({}),
     client: clientContextSchema(ctx).optional().nullable(),
     /** Images uploaded to ImageKit via GET /v1/uploads/screenshot-auth, then referenced here. */
@@ -148,19 +145,68 @@ export function buildSubmissionValidator(feature: FeatureKey, ctx: ValidatorCont
     /** Marks integration/demo submissions so they can be filtered and deleted without touching real feedback. */
     is_test: z.boolean().optional().default(false),
   };
-  // Two variants of the same shape: positive feedback relaxes the requiredIf fields (issue_categories, occurred_on);
-  // anything else, including a missing is_positive, gets the strict one so every mandatory field is reported.
-  const strict = fieldsToObject(COMMON_FIELDS, ctx).extend(extra);
-  const lenient = fieldsToObject(COMMON_FIELDS, ctx, true).extend(extra);
+}
+
+/**
+ * Two variants of the same shape: positive feedback relaxes the requiredIf fields (issue_categories, occurred_on);
+ * anything else, including a missing is_positive, gets the strict one so every mandatory field is reported.
+ */
+function withPositiveVariant<S extends z.AnyZodObject>(strict: S, lenient: S) {
   const pick = (input: unknown) => (input && typeof input === 'object' && (input as { is_positive?: unknown }).is_positive === true ? lenient : strict);
   return {
     strict,
     lenient,
-    safeParse: (input: unknown) => pick(input).safeParse(input) as ReturnType<typeof strict.safeParse>,
+    safeParse: (input: unknown) => pick(input).safeParse(input) as ReturnType<S['safeParse']>,
   };
 }
 
+/**
+ * Builds the full POST body validator for a feature, as the app sends it.
+ * `details` keys outside the registry are rejected so typos surface immediately.
+ */
+export function buildSubmissionValidator(feature: FeatureKey, ctx: ValidatorContext) {
+  const extra = sharedExtras(feature, ctx);
+  return withPositiveVariant(
+    fieldsToObject(COMMON_FIELDS, ctx).extend(extra),
+    fieldsToObject(COMMON_FIELDS, ctx, true).extend(extra),
+  );
+}
+
 export type SubmissionInput = z.infer<ReturnType<typeof buildSubmissionValidator>['strict']>;
+
+/** Common fields as the CX tool sends them: no email, and the Luna user id is optional (resolved from the serial). */
+const CX_COMMON_FIELDS: readonly FieldDef[] = COMMON_FIELDS
+  .filter((f) => f.key !== 'email' && f.key !== 'device_serial')
+  .map((f) => (f.key === 'user_id' ? { ...f, required: false } : f));
+
+export const CX_EMAIL_REFUSED = 'is not accepted on CX reports: customer email addresses are never stored';
+
+/**
+ * The CX tool's contract (POST /v1/cx/feedback/:feature). The same feature fields as the app, but
+ * the report is identified by the ring serial and the CX ticket, never by the customer's email.
+ */
+export function buildCxSubmissionValidator(feature: FeatureKey, ctx: ValidatorContext) {
+  const extra = {
+    ...sharedExtras(feature, ctx),
+    // Named explicitly rather than left to .strict(), so the integration is told why.
+    email: z.undefined({ errorMap: () => ({ message: CX_EMAIL_REFUSED }) }),
+    device_serial: z.string({ required_error: 'is required: the ring or band serial identifies a CX report' })
+      .trim().min(3, 'must be at least 3 characters').max(64, 'must be at most 64 characters'),
+    cx: z.object({
+      ref: z.string({ required_error: 'is required: the ticket id in the CX tool' }).trim().min(1, 'is required').max(100, 'must be at most 100 characters'),
+      url: z.string().trim().url('must be a URL').max(1000).optional().nullable(),
+      channel: z.enum(CX_CHANNELS).optional().nullable(),
+      agent: z.string().trim().max(120, 'must be at most 120 characters').optional().nullable(),
+      transcript: z.string().trim().max(5000, 'must be at most 5000 characters').optional().nullable(),
+    }, { required_error: 'is required: { ref, url?, channel?, agent?, transcript? }' }).strict(),
+  };
+  return withPositiveVariant(
+    fieldsToObject(CX_COMMON_FIELDS, ctx).extend(extra),
+    fieldsToObject(CX_COMMON_FIELDS, ctx, true).extend(extra),
+  );
+}
+
+export type CxSubmissionInput = z.infer<ReturnType<typeof buildCxSubmissionValidator>['strict']>;
 
 /** Flattens a ZodError into the API's issue list. */
 export function zodIssues(error: z.ZodError): { path: string; message: string }[] {

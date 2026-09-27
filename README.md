@@ -11,13 +11,20 @@ anything in `public`. See [PLAN.md](PLAN.md) for the full design.
 |---|---|---|
 | API reference for front-end teams | `/docs` | public |
 | Review dashboard (filters, charts, table, category management) | `/dashboard` | signed-in account |
+| Needs attention (untouched, stale, CX waiting, stuck diagnoses) | `/dashboard/attention` | signed-in account |
 | Analytics (what kind of issues, where the fault sits) | `/dashboard/analytics` | signed-in account |
 | Issue kinds (recurring problems and how often) | `/dashboard/kinds` | signed-in account |
 | Diagnosis overview | `/dashboard/diagnosis` | signed-in account |
 | People (accounts, roles, passwords) | `/dashboard/users` | admin |
 
 Reports are tagged `stage`, `uat` or `production`, defaulting to `stage`, and every screen
-filters by it.
+filters by it. They also carry an origin: `internal` (testers, through the app) or `cx` (customer
+problems filed by CX from its own tool), with its own filter on every screen.
+
+Every report has a readable reference, `LN-00042`, and every issue kind one of its own, `LNK-0007`.
+Existing rows were numbered oldest first; numbers are never reused. `/i/LN-00042` and `/k/LNK-0007`
+are short links to share (the page behind them needs a sign-in), and `GET /v1/feedback/{id}` accepts
+a reference as well as the uuid.
 
 The pages are plain HTML in `src/pages/` and are embedded into the server bundle by
 `npm run pages:embed` (runs automatically before dev/build/test; the generated
@@ -48,6 +55,7 @@ npm run dev               # http://localhost:3000
 | header | grants |
 |---|---|
 | `x-api-key: <APP_API_KEY>` | app routes under `/v1/feedback` |
+| `x-api-key: <CX_API_KEY>` | the CX tool: `/v1/cx/*`, the form schema and screenshot uploads, nothing else. Every report it files is a CX report |
 | `x-admin-key: <ADMIN_API_KEY>` | everything, for automation and scripts. Not tied to a person |
 | dashboard session cookie + `x-requested-with: dashboard` | whatever the signed-in account's role allows |
 
@@ -79,6 +87,7 @@ removed or disabled, so a deployment can never become unreachable. Two more ways
 | `qc` | Jira, triage and issue status, issue kinds, diagnosis and review |
 | `developer` | issue kinds, diagnosis and review. No Jira, triage or people |
 | `business` | read-only across the dashboard |
+| `cx` | read-only, plus the AI on a report (diagnose, chat). CX files reports from its own tool, not the dashboard |
 
 The permission table lives in [`src/lib/actor.ts`](src/lib/actor.ts) and is enforced per
 route; the dashboard hides what a role cannot use, and the server refuses it either way.
@@ -167,6 +176,25 @@ curl -X PATCH -H "x-admin-key: $ADMIN_API_KEY" -H "content-type: application/jso
 Categories are never deleted. Deactivating removes them from the schema and rejects
 them on new submissions; old rows keep their keys.
 
+## CX reports
+
+CX files customer problems from its own tool: an agent checks the problem is real, then presses a
+button that calls `POST /v1/cx/feedback/{feature}` with `CX_API_KEY`. The ring serial and the CX
+ticket (`cx.ref`) identify the report; **a customer's email is never accepted or stored**, and any
+address or phone number in the free text is redacted first. The Luna user id and device details
+are filled in afterwards from the production logging service by serial. Pressing the button twice
+for the same ticket and feature returns the first report. `GET /v1/cx/feedback/{ref}` tells the
+tool where a report stands. Contract: [docs/API.md §5b](docs/API.md).
+
+## Needs attention
+
+`/dashboard/attention` (`GET /v1/attention`) lists what someone should look at now: reports nobody
+has touched (CX after 1 day, internal after 3), reports that went stale (CX 3 days, internal 7),
+every open CX report, stuck diagnoses, and problems big enough for a Jira ticket that have none.
+Critical severity halves the limits. Within a list, items sort by severity × (1 + log2(people
+affected)) × (1 + age / 7), where a customer counts twice. The limits live in
+`src/modules/attention/attention.service.ts`.
+
 ## AI diagnosis
 
 Diagnosis runs on demand from a submission's page (Diagnose now), or automatically for every negative
@@ -189,6 +217,11 @@ returns a structured verdict
   nightly (needs `CRON_SECRET`). A finished diagnosis is never re-run unless someone presses Re-run.
 - Detail page: `/dashboard/submissions/{id}` (verdict, evidence linked to the excerpt, log file links,
   Diagnose now / Re-run, Agree / Disagree review).
+- **Log hosts per environment.** Stage reports are looked up on `LUNA_LOGS_BASE_URL_STAGE`
+  (or the older `LUNA_LOGS_BASE_URL`), production ones on `LUNA_LOGS_BASE_URL_PRODUCTION`
+  (`https://app.gonoise.com`), with the same `LUNA_LOGS_APIKEY`. UAT has no host until
+  `LUNA_LOGS_BASE_URL_UAT` is set: its reports are never looked up and Diagnose is disabled for them.
+  Do not use `/logging/falcon/admin/list`: it ignores the email filter and returns other users' uploads.
 - Env: `LUNA_LOGS_APIKEY`, `OPEN_ROUTER_KEY`, `OPENROUTER_MODEL`, `DIAGNOSIS_AUTO`,
   `DIAGNOSIS_DAILY_BUDGET_USD`, `DIAGNOSIS_SYNC_HOUR_IST`, `CRON_SECRET`. Missing keys disable
   diagnosis without affecting submissions.

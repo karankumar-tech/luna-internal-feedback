@@ -42,7 +42,11 @@ export interface DescriptionInput {
   /** Link back to this ticket in the feedback dashboard. */
   dashboardUrl: string;
   summaryLine: string;
-  reporter: { user_id: number; email: string; environment: string; platform: string | null };
+  reporter: {
+    user_id: number | null; email: string | null; environment: string; platform: string | null;
+    /** CX reports name the CX ticket and the ring, never the customer. */
+    origin?: 'internal' | 'cx'; cx_ref?: string | null; cx_url?: string | null; device_serial?: string | null;
+  };
   occurredOn: string;
   feature: string;
   categories: string[];
@@ -73,16 +77,23 @@ export function buildDescription(input: DescriptionInput): object {
   const content: object[] = [];
   content.push(paragraph(input.summaryLine));
 
+  const r = input.reporter;
+  const cx = r.origin === 'cx';
   content.push(heading('Reported by'));
   content.push(bullets([
-    `User ${input.reporter.user_id} (${input.reporter.email})`,
-    `Environment: ${input.reporter.environment}${input.reporter.platform ? ` · ${input.reporter.platform}` : ''}`,
+    ...(cx
+      ? [
+          `Customer support, CX ticket ${r.cx_ref ?? 'unknown'}${r.cx_url ? ` (${r.cx_url})` : ''}`,
+          `Ring ${r.device_serial ?? 'unknown'}${r.user_id ? ` · Luna user ${r.user_id}` : ''}`,
+        ]
+      : [`User ${r.user_id ?? 'unknown'}${r.email ? ` (${r.email})` : ''}`]),
+    `Environment: ${r.environment}${r.platform ? ` · ${r.platform}` : ''}`,
     `Occurred on: ${input.occurredOn} (IST)`,
     `Feature: ${input.feature}${input.categories.length ? ` — ${input.categories.join(', ')}` : ''}`,
   ]));
 
   if (input.testerWords) {
-    content.push(heading('In the tester’s words'));
+    content.push(heading(cx ? 'CX summary of the customer’s problem' : 'In the tester’s words'));
     content.push({ type: 'blockquote', content: [paragraph(input.testerWords)] });
   }
 

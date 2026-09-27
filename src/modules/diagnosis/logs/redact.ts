@@ -3,6 +3,8 @@
  * Conservative by design: it targets shapes that appear in the Luna app's API dumps.
  */
 const RULES: [RegExp, string][] = [
+  // Production customers' logs and CX transcripts carry their email; we never keep one.
+  [/\b[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b/gi, '[REDACTED_EMAIL]'],
   [/(authorization\s*[:=]\s*)bearer\s+[a-z0-9\-._~+/]+=*/gi, '$1Bearer [REDACTED]'],
   [/("?(?:access_?token|refresh_?token|id_?token|token|api[_-]?key|secret|password|passcode|otp|pin)"?\s*[:=]\s*"?)([^",\s}]{3,})/gi, '$1[REDACTED]'],
   [/\beyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\b/g, '[REDACTED_JWT]'],

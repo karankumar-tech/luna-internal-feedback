@@ -1,7 +1,8 @@
 import { AppError } from '../../lib/errors.js';
 import { isKnownEventCode } from '../diagnosis/knowledge/catalog.js';
+import { z } from 'zod';
 import {
-  KindsRepo, normalizeTitle, slugify,
+  KindsRepo, normalizeTitle, parseKindRef, slugify,
   type IssueKindRow, type KindLinkSource, type KindStatus,
 } from './kinds.repo.js';
 import type { CommonFilters } from '../feedback/feedback.repo.js';
@@ -24,14 +25,21 @@ export class KindsService {
     return this.repo.list(filters);
   }
 
-  async get(id: string) {
-    const kind = await this.repo.byId(id);
+  /** By uuid or by reference (LNK-0007). */
+  async get(idOrRef: string) {
+    let kind: IssueKindRow | undefined;
+    if (z.string().uuid().safeParse(idOrRef).success) kind = await this.repo.byId(idOrRef);
+    else {
+      const refNo = parseKindRef(idOrRef);
+      if (refNo !== null) kind = await this.repo.byRefNo(refNo);
+    }
     if (!kind) throw AppError.notFound('Issue kind not found');
     return kind;
   }
 
-  async detail(id: string, filters: Partial<CommonFilters> & { from?: string; to?: string }) {
-    const kind = await this.get(id);
+  async detail(idOrRef: string, filters: Partial<CommonFilters> & { from?: string; to?: string }) {
+    const kind = await this.get(idOrRef);
+    const id = kind.id;
     const [withCounts, trend] = await Promise.all([
       this.repo.list({ ...filters, includeArchived: true }),
       this.repo.trend(id, filters),
@@ -43,6 +51,8 @@ export class KindsService {
       users: counts?.users ?? 0,
       open_count: counts?.open_count ?? 0,
       ai_count: counts?.ai_count ?? 0,
+      cx_count: counts?.cx_count ?? 0,
+      cx_users: counts?.cx_users ?? 0,
       first_seen: counts?.first_seen ?? null,
       last_seen: counts?.last_seen ?? null,
       trend,
@@ -78,8 +88,8 @@ export class KindsService {
     });
   }
 
-  async update(id: string, patch: Parameters<KindsRepo['update']>[1]): Promise<IssueKindRow> {
-    await this.get(id);
+  async update(idOrRef: string, patch: Parameters<KindsRepo['update']>[1]): Promise<IssueKindRow> {
+    const { id } = await this.get(idOrRef);
     if (patch.event_codes) {
       const unknown = patch.event_codes.filter((c) => !isKnownEventCode(c));
       if (unknown.length) throw AppError.validation([{ path: 'event_codes', message: `unknown event code(s): ${unknown.join(', ')}` }]);
@@ -90,8 +100,8 @@ export class KindsService {
     return row;
   }
 
-  async link(submissionId: string, kindId: string, source: KindLinkSource, confidence: number | null, by: string | null) {
-    await this.get(kindId);
+  async link(submissionId: string, kindIdOrRef: string, source: KindLinkSource, confidence: number | null, by: string | null) {
+    const { id: kindId } = await this.get(kindIdOrRef);
     await this.repo.link(submissionId, kindId, source, confidence, by);
     return this.repo.forSubmission(submissionId);
   }

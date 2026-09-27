@@ -148,6 +148,13 @@
         <option value="production">Production</option>
       </select>
     </label>
+    <label class="field"><span>Source</span>
+      <select id="fOrigin">
+        <option value="">CX + internal</option>
+        <option value="cx">CX (customers)</option>
+        <option value="internal">Internal testers</option>
+      </select>
+    </label>
     <label class="field"><span>Feature</span><select id="fFeature"><option value="">All features</option></select></label>
     <label class="field"><span>Platform</span>
       <select id="fPlatform"><option value="">iOS + Android</option><option value="ios">iOS</option><option value="android">Android</option></select>
@@ -164,7 +171,7 @@
       <div class="kpi"><div class="v" id="kOpen">–</div><div class="l"><span class="sw" style="background:var(--crit)"></span>Still open</div><div class="d">open, triaged or in progress</div></div>
       <div class="kpi"><div class="v" id="kClosed">–</div><div class="l"><span class="sw" style="background:var(--ok)"></span>Closed out</div><div class="d">resolved, closed or won't fix</div></div>
       <div class="kpi"><div class="v" id="kKinds">–</div><div class="l">Recurring kinds</div><div class="d" id="kKindsD">distinct problems seen</div></div>
-      <div class="kpi"><div class="v" id="kUsers">–</div><div class="l">Testers reporting</div><div class="d">distinct user IDs</div></div>
+      <div class="kpi"><div class="v" id="kUsers">–</div><div class="l">People reporting</div><div class="d">testers, and customers by ring</div></div>
       <div class="kpi"><div class="v" id="kJira">–</div><div class="l">In Jira</div><div class="d" id="kJiraD"></div></div>
     </section>
 
@@ -201,6 +208,8 @@
         <div class="chart" id="cSide"></div>
         <div class="card-head" style="margin:16px 0 8px"><div><h2 style="font-size:14px">Environment</h2></div></div>
         <div class="chart" id="cEnv"></div>
+        <div class="card-head" style="margin:16px 0 8px"><div><h2 style="font-size:14px">Source</h2><div class="sub">Internal testers, or customers through CX</div></div></div>
+        <div class="chart" id="cOrigin"></div>
       </div>
     </div>
 
@@ -210,7 +219,7 @@
         <div class="chart" id="cStatus"></div>
       </div>
       <div class="card">
-        <div class="card-head"><div><h2>Who is reporting</h2><div class="sub">Most active testers in this window</div></div></div>
+        <div class="card-head"><div><h2>Who is reporting</h2><div class="sub">Most active testers and customers in this window. Customers show by Luna user ID or ring, never by email.</div></div></div>
         <div id="tReporters"></div>
       </div>
     </div>
@@ -273,6 +282,7 @@
   function readFilters() {
     const f = { from: $('fFrom').value, to: $('fTo').value };
     if ($('fEnv').value) f.environment = $('fEnv').value;
+    if ($('fOrigin').value) f.origin = $('fOrigin').value;
     if ($('fFeature').value) f.feature = $('fFeature').value;
     if ($('fPlatform').value) f.platform = $('fPlatform').value;
     if ($('fTest').value) f.is_test = $('fTest').value;
@@ -382,7 +392,7 @@
       { label: 'Issue kind', render: (r) => { const a = el('a', 'row-link', r.title); a.href = '/dashboard/kinds/' + r.id; return a; } },
       { label: 'Reports', cls: 'num', render: (r) => fmtN(r.count) },
       { label: 'Share', cls: 'bar-cell num', render: (r, td) => { const f = el('div', 'fill'); f.style.width = Math.round(r.share * 100) + '%'; td.appendChild(f); return el('span', null, pct(r.count, state.data.totals.issues)); } },
-      { label: 'Testers', cls: 'num', render: (r) => fmtN(r.users) },
+      { label: 'People', cls: 'num', render: (r) => fmtN(r.users) },
       { label: 'Last seen', cls: 'code', render: (r) => r.last_seen || '—' },
       { label: 'Jira', cls: 'code', render: (r) => r.jira_key || '—' },
     ], d.by_kind, { empty: 'No issues grouped into kinds yet. Diagnose a few tickets, or group them by hand from a ticket page.' });
@@ -403,7 +413,8 @@
     });
     barRows($('cSide'), sideRows, { label: 'Root cause side', padL: 130, empty: 'Nothing diagnosed in this window.' });
 
-    barRows($('cEnv'), d.by_environment.map((e) => ({ label: e.environment, value: e.issues, color: e.environment === 'production' ? '#E0237A' : e.environment === 'uat' ? BLUE : '#9E9E9E', title: `${e.issues} issue(s), ${e.positive} working fine, ${e.users} tester(s)` })), { label: 'Issues by environment', padL: 110, rowH: 28 });
+    barRows($('cEnv'), d.by_environment.map((e) => ({ label: e.environment, value: e.issues, color: e.environment === 'production' ? '#E0237A' : e.environment === 'uat' ? BLUE : '#9E9E9E', title: `${e.issues} issue(s), ${e.positive} working fine, ${e.users} people` })), { label: 'Issues by environment', padL: 110, rowH: 28 });
+    barRows($('cOrigin'), (d.by_origin || []).map((o) => ({ label: o.origin === 'cx' ? 'CX' : 'Internal', value: o.issues, color: o.origin === 'cx' ? '#E0237A' : '#000', title: `${o.issues} issue(s), ${o.positive} working fine, ${o.users} people` })), { label: 'Issues by source', padL: 110, rowH: 28 });
 
     barRows($('cStatus'), d.by_status.map((s) => ({
       label: STATUS_LABEL[s.status] || s.status, value: s.count,
@@ -411,8 +422,9 @@
     })), { label: 'Triage status', padL: 120, rowH: 28, empty: 'No issues in this window.' });
 
     table($('tReporters'), [
-      { label: 'Tester', cls: 'code', render: (r) => String(r.user_id) },
-      { label: 'Email', render: (r) => r.email },
+      { label: 'Who', cls: 'code', render: (r) => r.user_id ? String(r.user_id) : r.device_serial || '—' },
+      { label: 'Source', render: (r) => r.origin === 'cx' ? 'CX customer' : 'Internal' },
+      { label: 'Email', render: (r) => r.email || '—' },
       { label: 'Issues', cls: 'num', render: (r) => fmtN(r.issues) },
       { label: 'Features', cls: 'num', render: (r) => fmtN(r.features) },
     ], d.top_reporters);
@@ -449,8 +461,8 @@
 
   $('presets').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; applyPreset(b.dataset.days === 'all' ? 'all' : +b.dataset.days); refresh(); });
   for (const id of ['fFrom', 'fTo']) $(id).addEventListener('change', () => { for (const b of $('presets').querySelectorAll('button')) b.classList.remove('on'); refresh(); });
-  for (const id of ['fEnv', 'fFeature', 'fPlatform', 'fTest']) $(id).addEventListener('change', refresh);
-  $('btnReset').addEventListener('click', () => { for (const id of ['fEnv', 'fFeature', 'fPlatform']) $(id).value = ''; $('fTest').value = 'false'; applyPreset(30); refresh(); });
+  for (const id of ['fEnv', 'fOrigin', 'fFeature', 'fPlatform', 'fTest']) $(id).addEventListener('change', refresh);
+  $('btnReset').addEventListener('click', () => { for (const id of ['fEnv', 'fOrigin', 'fFeature', 'fPlatform']) $(id).value = ''; $('fTest').value = 'false'; applyPreset(30); refresh(); });
 
   async function boot() {
     const s = await api('/dashboard/session').catch(() => ({ authenticated: false }));

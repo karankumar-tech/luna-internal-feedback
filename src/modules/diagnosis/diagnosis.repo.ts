@@ -112,17 +112,18 @@ export class DiagnosisRepo {
   }
 
   /** Queue recent negative submissions that were never diagnosed (e.g. arrived before diagnosis was enabled). */
-  async enqueueMissing(limit = 20, days = 14): Promise<number> {
+  async enqueueMissing(limit = 20, days = 14, environments: readonly string[] = ['stage', 'uat', 'production']): Promise<number> {
     const r = await this.db.query<{ id: string }>(
       `insert into luna_feedback.diagnosis_jobs (submission_id, state)
        select s.id, 'queued' from luna_feedback.submissions s
         where not s.is_positive
+          and s.environment = any($3::text[])
           and s.created_at > now() - ($2::int * interval '1 day')
           and not exists (select 1 from luna_feedback.diagnoses d where d.submission_id = s.id)
           and not exists (select 1 from luna_feedback.diagnosis_jobs j where j.submission_id = s.id)
         order by s.created_at desc limit $1
        returning submission_id as id`,
-      [limit, days],
+      [limit, days, environments],
     );
     for (const row of r.rows) {
       await this.db.query(`insert into luna_feedback.diagnoses (submission_id, status) values ($1, 'pending') on conflict (submission_id) do nothing`, [row.id]);
@@ -216,8 +217,9 @@ export class DiagnosisRepo {
   }
 
   /** Aggregates for the diagnosis overview page, over submissions with occurred_on in [from, to]. Excludes test data unless asked. */
-  async overview(from: string, to: string, includeTest: boolean): Promise<Record<string, unknown>> {
-    const where = `where s.occurred_on >= $1 and s.occurred_on <= $2 and not s.is_positive ${includeTest ? '' : 'and not s.is_test'}`;
+  async overview(from: string, to: string, includeTest: boolean, origin?: 'internal' | 'cx'): Promise<Record<string, unknown>> {
+    // origin is one of two literals, validated by the route, so it is safe to inline.
+    const where = `where s.occurred_on >= $1 and s.occurred_on <= $2 and not s.is_positive ${includeTest ? '' : 'and not s.is_test'} ${origin ? `and s.origin = '${origin}'` : ''}`;
     const vals = [from, to];
     const q = <T extends Record<string, any>>(sql: string) => this.db.query<T>(sql, vals);
     const [totals, sideByFeature, fwVersions, appVersions, tags, confidence, review, costByDay, attention, devices] = await Promise.all([
@@ -269,8 +271,8 @@ export class DiagnosisRepo {
         `select (r.created_at at time zone 'Asia/Kolkata')::date::text as day, count(*)::int as runs, coalesce(sum(r.cost_usd), 0)::text as cost
            from luna_feedback.diagnosis_runs r join luna_feedback.submissions s on s.id = r.submission_id
           ${where} group by 1 order by 1 desc limit 30`),
-      q<{ id: string; feature_key: string; occurred_on: string; user_id: string; status: string; side: string | null; severity: string | null; confidence: string | null; summary: string | null; review_verdict: string | null; is_test: boolean }>(
-        `select s.id, s.feature_key, s.occurred_on::text as occurred_on, s.user_id, d.status, d.root_cause_side as side, d.severity, d.confidence::text as confidence, d.summary, d.review_verdict, s.is_test
+      q<{ id: string; ref: string; origin: string; feature_key: string; occurred_on: string; user_id: string | null; status: string; side: string | null; severity: string | null; confidence: string | null; summary: string | null; review_verdict: string | null; is_test: boolean }>(
+        `select s.id, s.ref, s.origin, s.feature_key, s.occurred_on::text as occurred_on, s.user_id, d.status, d.root_cause_side as side, d.severity, d.confidence::text as confidence, d.summary, d.review_verdict, s.is_test
            from luna_feedback.submissions s join luna_feedback.diagnoses d on d.submission_id = s.id
           ${where} and (d.root_cause_side = 'insufficient_logs' or d.review_verdict = 'disagree' or d.severity = 'critical' or d.status = 'failed')
           order by case when d.severity = 'critical' then 0 when d.review_verdict = 'disagree' then 1 else 2 end, s.created_at desc limit 20`),
@@ -281,7 +283,7 @@ export class DiagnosisRepo {
     ]);
     const t = totals.rows[0]!;
     return {
-      range: { from, to, include_test: includeTest },
+      range: { from, to, include_test: includeTest, origin: origin ?? null },
       totals: { ...t, avg_conf: t.avg_conf === null ? null : Number(t.avg_conf), cost: Number(t.cost), avg_ms: t.avg_ms === null ? null : Number(t.avg_ms) },
       side_by_feature: sideByFeature.rows,
       firmware_versions: fwVersions.rows,
@@ -290,7 +292,7 @@ export class DiagnosisRepo {
       confidence_hist: confidence.rows,
       review_by_side: review.rows,
       cost_by_day: costByDay.rows.map((r) => ({ ...r, cost: Number(r.cost) })),
-      attention: attention.rows.map((r) => ({ ...r, confidence: r.confidence === null ? null : Number(r.confidence), user_id: Number(r.user_id) })),
+      attention: attention.rows.map((r) => ({ ...r, confidence: r.confidence === null ? null : Number(r.confidence), user_id: r.user_id === null ? null : Number(r.user_id) })),
       devices: devices.rows,
     };
   }

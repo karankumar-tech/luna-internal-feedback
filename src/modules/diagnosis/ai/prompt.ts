@@ -10,6 +10,8 @@ export interface PromptInput {
     issue_categories: { key: string; label: string }[];
     feedback_text: string | null;
     details: Record<string, unknown>;
+    /** 'cx' when customer support relayed a customer's problem rather than a tester reporting their own. */
+    origin?: 'internal' | 'cx';
     detailLabels: Record<string, string>;
     platform: string | null;
     app_version: string | null;
@@ -63,13 +65,14 @@ function fmtDetails(details: Record<string, unknown>, labels: Record<string, str
 export function buildMessages(input: PromptInput): ChatMessage[] {
   const s = input.submission;
   const d = input.device;
+  const cx = s.origin === 'cx';
   const user = `# Feedback
-Feature: ${input.feature.label} (${input.feature.key})
-Result reported by tester: ${s.is_positive ? 'working fine' : 'ISSUE'}
+${cx ? 'Source: relayed by customer support from a customer\'s message; the wording is second-hand and the date may be approximate.\n' : ''}Feature: ${input.feature.label} (${input.feature.key})
+Result reported by ${cx ? 'the customer' : 'tester'}: ${s.is_positive ? 'working fine' : 'ISSUE'}
 Issue categories: ${s.issue_categories.map((c) => `${c.label} [${c.key}]`).join(', ') || '(none)'}
 Date the issue occurred (IST): ${s.occurred_on}
-Tester's words: ${s.feedback_text ? JSON.stringify(s.feedback_text) : '(none)'}
-Feature details the tester entered:
+${cx ? 'Support agent\'s summary' : 'Tester\'s words'}: ${s.feedback_text ? JSON.stringify(s.feedback_text) : '(none)'}
+Feature details ${cx ? 'support entered' : 'the tester entered'}:
 ${fmtDetails(s.details, s.detailLabels)}
 
 # App-reported context

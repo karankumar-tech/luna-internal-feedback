@@ -1,4 +1,5 @@
 // Inserts realistic demo submissions flagged is_test=true (emails @luna-demo.invalid) so they can be removed
+// About a quarter of the issues are CX reports: no email, a ring serial, a DEMO- CX ticket, production.
 // with --clean (deletes every is_test row) or from the dashboard, without touching real feedback.
 // Usage: node scripts/seed-demo.mjs [count]   |   node scripts/seed-demo.mjs --clean
 import 'dotenv/config';
@@ -36,8 +37,10 @@ for (let i = 0; i < n; i++) {
     : { screen: rnd(['Settings', 'Onboarding', 'Ring pairing', 'Insights tab', 'Profile']) };
   const user = rnd(users);
   const platform = Math.random() < 0.7 ? 'ios' : 'android';
-  const serial = Math.random() < 0.8 ? 'R2N0825060' + String(user).slice(-4) : null;
-  rows.push([feature, positive, occurred, user, `tester${user}@luna-demo.invalid`, picks, positive ? rnd(['All good today.', 'Worked as expected.', '']) : rnd(texts), serial, JSON.stringify(details), platform, '2.4.0', String(500 + Math.floor(Math.random() * 15)), 'stage', rnd(fw), platform === 'ios' ? 'iOS 19.1' : 'Android 16', crypto.randomUUID().toUpperCase(), crypto.randomUUID(), new Date(d.getTime() + Math.floor(Math.random() * 86400000)).toISOString()]);
+  const cx = !positive && Math.random() < 0.25;
+  const serial = cx ? 'R2N0925' + String(Math.floor(Math.random() * 1e7)).padStart(7, '0') : Math.random() < 0.8 ? 'R2N0825060' + String(user).slice(-4) : null;
+  rows.push([feature, positive, occurred, cx ? null : user, cx ? null : `tester${user}@luna-demo.invalid`, picks, positive ? rnd(['All good today.', 'Worked as expected.', '']) : cx ? 'Customer says: ' + (rnd(texts) || 'data looks wrong') : rnd(texts), serial, JSON.stringify(details), platform, cx ? '2.3.8' : '2.4.0', String(500 + Math.floor(Math.random() * 15)), cx ? 'production' : 'stage', rnd(fw), platform === 'ios' ? 'iOS 19.1' : 'Android 16', crypto.randomUUID().toUpperCase(), crypto.randomUUID(), new Date(d.getTime() + Math.floor(Math.random() * 86400000)).toISOString(),
+    cx ? 'cx' : 'internal', cx ? 'cx_tool' : 'app', cx ? 'DEMO-' + (40000 + i) : null, cx ? rnd(['email', 'chat', 'call', 'whatsapp', 'play_store']) : null, cx ? rnd(['Asha (CX)', 'Rohit (CX)', 'Meera (CX)']) : null, cx ? 'production' : 'stage']);
 }
-for (const r of rows) await c.query(`insert into luna_feedback.submissions (feature_key,is_positive,occurred_on,user_id,email,issue_categories,feedback_text,device_serial,details,platform,app_version,build_number,build_channel,firmware_version,os_version,device_id,session_id,created_at,is_test) values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13,$14,$15,$16,$17,$18,true)`, r);
+for (const r of rows) await c.query(`insert into luna_feedback.submissions (feature_key,is_positive,occurred_on,user_id,email,issue_categories,feedback_text,device_serial,details,platform,app_version,build_number,build_channel,firmware_version,os_version,device_id,session_id,created_at,origin,submitted_via,cx_ref,cx_channel,cx_agent,environment,is_test) values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,true)`, r);
 console.log('inserted', rows.length); await c.end();

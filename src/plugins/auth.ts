@@ -18,9 +18,19 @@ function header(req: { headers: Record<string, unknown> }, name: string): string
 /** Routes that serve HTML pages or handle the dashboard sign-in. Data behind them still needs auth. */
 export const PUBLIC_PATHS = new Set([
   '/', '/healthz', '/docs',
-  '/dashboard', '/dashboard/diagnosis', '/dashboard/analytics', '/dashboard/kinds', '/dashboard/users',
+  '/dashboard', '/dashboard/diagnosis', '/dashboard/analytics', '/dashboard/kinds', '/dashboard/users', '/dashboard/attention',
   '/dashboard/login', '/dashboard/logout', '/dashboard/session', '/dashboard/bootstrap',
 ]);
+
+/** Detail pages and the short share links (/i/LN-00042, /k/LNK-0007) that redirect to them. */
+const PUBLIC_PAGE = /^\/(?:dashboard\/(?:submissions|kinds)|i|k)\/[^/]+$/;
+
+/** What the CX tool's key may call: its own routes, plus the form schema and screenshot upload credentials. */
+function cxKeyMayCall(url: string): boolean {
+  return url.startsWith('/v1/cx/')
+    || url === '/v1/feedback/schema' || url.startsWith('/v1/feedback/schema/')
+    || url === '/v1/uploads/screenshot-auth';
+}
 
 /** Header the dashboard sends on every fetch. Cross-site forms cannot set it, which blocks CSRF on the cookie session. */
 export const DASHBOARD_HEADER = 'x-requested-with';
@@ -46,19 +56,21 @@ export interface ActorResolver {
  * public paths          → open
  * user session cookie   → the signed-in account's own role
  * legacy key session    → admin, but only while no account exists
+ * CX key (x-api-key)    → /v1/cx/**, the form schema and screenshot uploads; nothing else
+ * /v1/cx/**             → the CX key or x-admin-key only
  * /v1/admin/**          → x-admin-key, or a session whose role allows the route
  * everything else /v1   → x-api-key (admin key also accepted)
  */
 export function registerAuth(
   app: FastifyInstance,
-  keys: { app: string; admin: string; sessionSecret: string; cronSecret?: string; keyLogin?: boolean },
+  keys: { app: string; admin: string; cx?: string; sessionSecret: string; cronSecret?: string; keyLogin?: boolean },
   users?: ActorResolver,
 ) {
   app.decorateRequest('actor', undefined);
 
   app.addHook('onRequest', async (req) => {
     const url = req.url.split('?')[0] ?? '';
-    if (PUBLIC_PATHS.has(url) || /^\/dashboard\/(?:submissions|kinds)\/[^/]+$/.test(url)) return;
+    if (PUBLIC_PATHS.has(url) || PUBLIC_PAGE.test(url)) return;
 
     const apiKey = header(req, 'x-api-key');
     const adminKey = header(req, 'x-admin-key');
@@ -76,11 +88,24 @@ export function registerAuth(
       }
     }
 
+    // The CX tool's key: it decides that a report is a CX report, so it is kept to its own lane.
+    if (!actor && keys.cx && apiKey !== undefined && safeEqual(apiKey, keys.cx)) {
+      if (!cxKeyMayCall(url)) throw AppError.forbidden('The CX key can only file and read CX reports');
+      req.actor = { id: null, email: null, name: 'CX tool', role: 'cx', via: 'cx_key' };
+      return;
+    }
+
     if (!actor && header(req, DASHBOARD_HEADER) === 'dashboard') {
       actor = await sessionActor(req, keys.sessionSecret, keys.keyLogin !== false, users);
     }
 
     if (actor) req.actor = actor;
+
+    // Only the CX tool files CX reports; the app key or a dashboard session never can.
+    if (url.startsWith('/v1/cx/')) {
+      if (actor?.via !== 'admin_key') throw AppError.unauthorized('Missing or invalid CX key');
+      return;
+    }
 
     if (url.startsWith('/v1/admin/')) {
       if (!actor) throw AppError.unauthorized('Missing or invalid x-admin-key');

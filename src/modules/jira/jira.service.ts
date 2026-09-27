@@ -96,9 +96,12 @@ export class JiraService {
 
     const summary = buildSummary(sub, featureLabel, categories, kinds.map((k) => k.title));
     const description = buildDescription({
-      dashboardUrl: `${this.d.publicBaseUrl.replace(/\/+$/, '')}/dashboard/submissions/${sub.id}`,
-      summaryLine: `Reported through Luna internal feedback on ${sub.occurred_on} (IST).`,
-      reporter: { user_id: Number(sub.user_id), email: sub.email, environment: sub.environment, platform: sub.platform },
+      dashboardUrl: `${this.d.publicBaseUrl.replace(/\/+$/, '')}/dashboard/submissions/${sub.ref}`,
+      summaryLine: `${sub.ref}: reported ${sub.origin === 'cx' ? 'by customer support' : 'through Luna internal feedback'} for ${sub.occurred_on} (IST).`,
+      reporter: {
+        user_id: sub.user_id === null ? null : Number(sub.user_id), email: sub.email, environment: sub.environment, platform: sub.platform,
+        origin: sub.origin, cx_ref: sub.cx_ref, cx_url: sub.cx_url, device_serial: sub.device_serial,
+      },
       occurredOn: sub.occurred_on,
       feature: featureLabel,
       categories,
@@ -121,8 +124,10 @@ export class JiraService {
     });
 
     const labels = [
+      sub.ref,
       `luna-${sub.feature_key}`,
       `env-${sub.environment}`,
+      `origin-${sub.origin}`,
       ...(sub.platform ? [`platform-${sub.platform}`] : []),
       ...(diagnosis?.root_cause_side ? [`side-${diagnosis.root_cause_side}`] : []),
     ];
@@ -156,18 +161,19 @@ export class JiraService {
     }
 
     const [counts] = await this.d.kinds.list({ includeArchived: true, is_test: false }).then((rows) => [rows.find((k) => k.id === kindId)]);
-    const dashboardUrl = `${this.d.publicBaseUrl.replace(/\/+$/, '')}/dashboard/kinds/${kind.id}`;
+    const dashboardUrl = `${this.d.publicBaseUrl.replace(/\/+$/, '')}/dashboard/kinds/${kind.ref}`;
     const description = buildDescription({
       dashboardUrl,
       summaryLine: kind.description ?? `Recurring issue tracked in Luna internal feedback: ${kind.title}.`,
-      reporter: { user_id: 0, email: by ?? 'luna-feedback', environment: 'stage', platform: null },
+      reporter: { user_id: null, email: by ?? 'luna-feedback', environment: 'stage', platform: null },
       occurredOn: counts?.first_seen ?? new Date().toISOString().slice(0, 10),
       feature: kind.feature_key ?? 'multiple',
       categories: [],
       testerWords: null,
       details: [
         ['Reports so far', String(counts?.count ?? 0)],
-        ['Distinct testers', String(counts?.users ?? 0)],
+        ['Distinct people', String(counts?.users ?? 0)],
+        ['Of which via CX', `${counts?.cx_count ?? 0} reports, ${counts?.cx_users ?? 0} customers`],
         ['First seen', counts?.first_seen ?? 'unknown'],
         ['Last seen', counts?.last_seen ?? 'unknown'],
         ...(kind.tags.length ? ([['Tags', kind.tags.join(', ')]] as [string, string][]) : []),
@@ -179,9 +185,9 @@ export class JiraService {
     });
 
     const issue = await client.createIssue({
-      summary: kind.title.slice(0, 250),
+      summary: `[${kind.ref}] ${kind.title}`.slice(0, 250),
       description,
-      labels: ['luna-issue-kind', ...(kind.feature_key ? [`luna-${kind.feature_key}`] : []), ...kind.tags],
+      labels: [kind.ref, 'luna-issue-kind', ...(kind.feature_key ? [`luna-${kind.feature_key}`] : []), ...kind.tags],
     });
     await this.d.kinds.update(kind.id, { jira_key: issue.key, jira_url: issue.url });
     return { issue, created: true };
@@ -213,5 +219,6 @@ export class JiraService {
 function buildSummary(sub: SubmissionRow, featureLabel: string, categories: string[], kinds: string[]): string {
   const lead = kinds[0] ?? categories[0] ?? sub.feedback_text?.trim().split(/\s+/).slice(0, 10).join(' ') ?? 'Issue reported';
   const env = sub.environment === 'production' ? '' : ` [${sub.environment}]`;
-  return `[Luna${env}] ${featureLabel}: ${lead}`.slice(0, 250);
+  const cx = sub.origin === 'cx' ? ' [CX]' : '';
+  return `[${sub.ref}] [Luna${env}]${cx} ${featureLabel}: ${lead}`.slice(0, 250);
 }
