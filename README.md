@@ -196,7 +196,9 @@ report as the one to read first. **Ask AI to check** (about $0.002) labels them 
 different and ticks the same ones.
 
 When a report arrives it is matched against open problems; a clear match shows on it as "Looks like
-LNK-0007 … Confirm / Not this", and the CX API returns it as `likely_problem`. Links are *suggested*,
+LNK-0007 … Confirm / Not this", and the CX API returns it as `likely_problem`. "Clear" means two
+symptoms agree (say the same category and similar wording, or shared log tags): a shared build or
+platform is only a tie-breaker, and a catch-all category such as "Something else" never counts. Links are *suggested*,
 *linked* or *rejected*: only linked ones count anywhere, and a rejection is remembered so no rule or
 diagnosis puts it back. CX can suggest a problem for QC to confirm. A problem's page lists more
 reports like it, lets you pick the reference report, and merges duplicates (the merged title becomes

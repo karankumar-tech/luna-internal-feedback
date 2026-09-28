@@ -67,4 +67,31 @@ describe('compare', () => {
     expect(isShown(m)).toBe(true);
     expect(isSuggested(m)).toBe(false);
   });
+
+  it('does not suggest on a shared category and the same build alone', () => {
+    // Most testers run the same app on the same phone: that must not turn one shared category into "the same problem".
+    const m = compare(base, other({ text: 'Completely different words here' }));
+    expect(m.signals).toBe(1);
+    expect(m.reasons.map((r) => r.kind)).toEqual(expect.arrayContaining(['firmware', 'app', 'platform']));
+    expect(isShown(m)).toBe(true);
+    expect(isSuggested(m)).toBe(false);
+  });
+
+  it('suggests when two symptom signals agree', () => {
+    const m = compare(base, other({ text: 'Sleep start recorded 3 hours late, I slept at 11pm', firmware_version: null, app_version: null, platform: null }));
+    expect(m.signals).toBe(2);
+    expect(isSuggested(m)).toBe(true);
+  });
+
+  it('ignores "something else" as a shared symptom', () => {
+    const other1 = { ...base, feature_key: 'other', issue_categories: ['something_else'], text: 'HRV is 78 which is way off' };
+    const other2 = { ...base, id: 'b', feature_key: 'other', issue_categories: ['something_else'], text: 'Device got disconnected and needed a Bluetooth repair' };
+    const m = compare(other1, other2);
+    expect(m.reasons.map((r) => r.kind)).not.toContain('categories');
+    expect(m.substantive).toBe(false);
+    expect(isShown(m)).toBe(false);
+    // A specific category next to it still counts.
+    const m2 = compare({ ...other1, issue_categories: ['something_else', 'ring_pairing_sync'] }, { ...other2, issue_categories: ['ring_pairing_sync', 'something_else'] });
+    expect(m2.reasons.find((r) => r.kind === 'categories')!.label).toBe('ring_pairing_sync');
+  });
 });

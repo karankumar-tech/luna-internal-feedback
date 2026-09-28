@@ -32,10 +32,19 @@ export interface Match {
   strength: number;
   /** True when something beyond "same screen, same build" lines up: categories, tags, events or wording. */
   substantive: boolean;
+  /** How many of those symptom signals line up (categories, wording, diagnosis tags, catalog events). */
+  signals: number;
   reasons: Reason[];
 }
 
-export const WEIGHTS = { feature: 3, categories: 2, tags: 2, events: 3, text: 2, firmware: 1, app: 1, platform: 0.5 } as const;
+/**
+ * Firmware, app version and platform are tie-breakers: most testers run the same build on the
+ * same phone, so a shared build says little about whether two reports are the same problem.
+ */
+export const WEIGHTS = { feature: 3, categories: 2, tags: 2, events: 3, text: 2, firmware: 0.5, app: 0.5, platform: 0.25 } as const;
+
+/** "None of the above" categories: two reports both picking one says nothing about a shared symptom. */
+export const CATCH_ALL_CATEGORIES: ReadonlySet<string> = new Set(['something_else']);
 const BEST = Object.values(WEIGHTS).reduce((a, b) => a + b, 0);
 
 /** Wording below this trigram similarity is noise; at TEXT_FULL and above it earns the full text weight. */
@@ -44,10 +53,15 @@ const TEXT_FULL = 0.5;
 /** Up to one point is lost as the reports' dates drift apart, reaching the full penalty at this many days. */
 const DATE_SPAN_DAYS = 30;
 
-/** Shown in the "Similar reports" panel. */
+/** Shown in the "Similar reports" panel, where a person decides. */
 export const SHOW_MIN_SCORE = 3.5;
-/** Proposed automatically as "Looks like: …" on a new report. Same screen and category alone is not enough. */
+/**
+ * Proposed automatically as "Looks like: …" on a new report. Needs this score and at least two
+ * symptom signals agreeing (say, the same category and similar wording): a shared category on the
+ * same build is not enough on its own.
+ */
 export const SUGGEST_MIN_SCORE = 6;
+export const SUGGEST_MIN_SIGNALS = 2;
 
 /** Trigrams the way Postgres pg_trgm builds them: lowercase words, padded with two spaces before and one after. */
 export function trigrams(text: string | null | undefined): Set<string> {
@@ -105,28 +119,29 @@ export function compare(
 ): Match {
   const reasons: Reason[] = [];
   let score = 0;
-  let substantive = false;
+  let signals = 0;
 
   if (a.feature_key === b.feature_key) { score += WEIGHTS.feature; reasons.push({ kind: 'feature', label: 'same feature' }); }
 
-  const cats = jaccard(a.issue_categories, b.issue_categories);
+  const specific = (cs: string[]) => cs.filter((c) => !CATCH_ALL_CATEGORIES.has(c));
+  const cats = jaccard(specific(a.issue_categories), specific(b.issue_categories));
   if (cats.value > 0 && a.feature_key === b.feature_key) {
     score += WEIGHTS.categories * cats.value;
-    substantive = true;
+    signals += 1;
     const label = opts.labelOf ? cats.shared.map((c) => opts.labelOf!(a.feature_key, c)) : cats.shared;
     reasons.push({ kind: 'categories', label: label.join(', ') });
   }
 
   const tags = jaccard(a.tags, b.tags);
-  if (tags.value > 0) { score += WEIGHTS.tags * tags.value; substantive = true; reasons.push({ kind: 'tags', label: tags.shared.join(', ') }); }
+  if (tags.value > 0) { score += WEIGHTS.tags * tags.value; signals += 1; reasons.push({ kind: 'tags', label: tags.shared.join(', ') }); }
 
   const events = jaccard(a.event_codes, b.event_codes);
-  if (events.shared.length) { score += WEIGHTS.events; substantive = true; reasons.push({ kind: 'events', label: events.shared.join(', ') }); }
+  if (events.shared.length) { score += WEIGHTS.events; signals += 1; reasons.push({ kind: 'events', label: events.shared.join(', ') }); }
 
   const text = textSimilarity(a.text, b.text, opts.cache);
   if (text >= TEXT_MIN) {
     score += WEIGHTS.text * Math.min(1, text / TEXT_FULL);
-    substantive = true;
+    signals += 1;
     reasons.push({ kind: 'text', label: `wording ${Math.round(text * 100)}% alike` });
   }
 
@@ -136,7 +151,7 @@ export function compare(
 
   score -= Math.min(dayGap(a.occurred_on, b.occurred_on), DATE_SPAN_DAYS) / DATE_SPAN_DAYS;
 
-  return { score: round(score), strength: round(Math.max(0, score) / BEST), substantive, reasons };
+  return { score: round(score), strength: round(Math.max(0, score) / BEST), substantive: signals > 0, signals, reasons };
 }
 
 /** Worth showing as a look-alike. */
@@ -146,5 +161,5 @@ export function isShown(m: Match): boolean {
 
 /** Strong enough to propose on its own when a report arrives. */
 export function isSuggested(m: Match): boolean {
-  return m.substantive && m.score >= SUGGEST_MIN_SCORE;
+  return m.signals >= SUGGEST_MIN_SIGNALS && m.score >= SUGGEST_MIN_SCORE;
 }
