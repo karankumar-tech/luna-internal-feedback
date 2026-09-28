@@ -16,6 +16,14 @@ export function registerAttentionRoutes(app: FastifyInstance, deps: { service: A
     return deps.service.overview(filters, req.actor?.email ?? null);
   });
 
+  /** The badge and My queue numbers only: one query instead of the whole page. */
+  app.get('/v1/attention/counts', async (req) => {
+    const parsed = AttentionQuery.safeParse(req.query);
+    if (!parsed.success) throw AppError.validation(zodIssues(parsed.error), 'Invalid query');
+    const filters = resolveMe({ ...parsed.data, is_test: parsed.data.is_test ?? false }, req);
+    return deps.service.counts(filters, req.actor?.email ?? null);
+  });
+
   /** Other problem reports from the same ring (or reporter) in the 14 days up to this one. */
   app.get<{ Params: { id: string } }>('/v1/feedback/:id/same-device', async (req) => {
     const sub = await deps.feedback.row(req.params.id);

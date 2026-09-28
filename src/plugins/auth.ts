@@ -37,9 +37,12 @@ export const DASHBOARD_HEADER = 'x-requested-with';
 
 /** Resolves a signed-in user id into the actor for this request. */
 export interface ActorResolver {
-  actorFor(userId: string): Promise<Actor | null>;
-  /** Password timestamp, so rotating a password ends that account's other sessions. */
-  passwordEpochFor(userId: string): Promise<number | null>;
+  /**
+   * The signed-in account as this request's actor, with its password timestamp (rotating a password
+   * ends the account's other sessions). Null when the account is gone or disabled. One lookup:
+   * it runs before every dashboard request.
+   */
+  sessionFor(userId: string): Promise<{ actor: Actor; passwordEpoch: number } | null>;
   /**
    * Whether an enabled admin account exists.
    *
@@ -125,9 +128,9 @@ async function sessionActor(req: FastifyRequest, secret: string, keyLogin: boole
   if (session && users) {
     // The role comes from the database on every request, so a demotion or a disable
     // takes effect immediately rather than when the cookie happens to expire.
-    const epoch = await users.passwordEpochFor(session.userId);
-    if (epoch === null || epoch !== session.passwordEpoch) return undefined;
-    return (await users.actorFor(session.userId)) ?? undefined;
+    const found = await users.sessionFor(session.userId);
+    if (!found || found.passwordEpoch !== session.passwordEpoch) return undefined;
+    return found.actor;
   }
 
   // Master-key session. While DASHBOARD_KEY_LOGIN is on it is always an admin; with it off it

@@ -178,11 +178,7 @@ export function buildApp(opts: BuildOptions = {}): App {
   });
 
   registerAuth(app, { app: config.APP_API_KEY, admin: config.ADMIN_API_KEY, cx: config.CX_API_KEY, sessionSecret, cronSecret: config.CRON_SECRET, keyLogin: config.DASHBOARD_KEY_LOGIN }, {
-    actorFor: (id) => users.actorFor(id),
-    passwordEpochFor: async (id) => {
-      const row = await usersRepo.byId(id);
-      return row ? new Date(row.password_set_at).getTime() : null;
-    },
+    sessionFor: (id) => users.sessionFor(id),
     anyAdminExists: () => users.anyAdminExists(),
     superAdminEmail: () => users.superAdminEmail,
   });

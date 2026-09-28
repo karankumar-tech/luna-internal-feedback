@@ -85,23 +85,23 @@ export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
   /** Is the caller signed in, and who are they? Read by every dashboard page on load. */
   app.get('/dashboard/session', async (req) => {
     const token = readCookie(req.headers.cookie, SESSION_COOKIE);
-    const needsBootstrap = deps.users ? await deps.users.needsBootstrap() : false;
+    const session = token && deps.users ? verifyUserSessionToken(deps.sessionSecret, token) : null;
+    // Every page waits on this before loading anything, so its two reads run side by side.
+    const [needsBootstrap, account] = await Promise.all([
+      deps.users ? deps.users.needsBootstrap() : Promise.resolve(false),
+      session && deps.users ? deps.users.sessionState(session.userId) : Promise.resolve(null),
+    ]);
     // `key_login` tells the sign-in page whether to offer the key at all.
     const base = { needs_bootstrap: needsBootstrap, accounts_enabled: !needsBootstrap, key_login: deps.keyLogin };
 
-    if (token && deps.users) {
-      const session = verifyUserSessionToken(deps.sessionSecret, token);
-      if (session) {
-        const actor = await deps.users.actorFor(session.userId);
-        const password = await deps.users.passwordState(session.userId);
-        if (actor) {
-          return {
-            ...base, authenticated: true, expires_at: new Date(session.expiresAt).toISOString(),
-            user: { id: actor.id, email: actor.email, name: actor.name, role: actor.role },
-            password,
-          };
-        }
-      }
+    // A cookie from before a password change is signed out here too, as the API already treats it.
+    if (session && account && account.passwordEpoch === session.passwordEpoch) {
+      const { actor, password } = account;
+      return {
+        ...base, authenticated: true, expires_at: new Date(session.expiresAt).toISOString(),
+        user: { id: actor.id, email: actor.email, name: actor.name, role: actor.role },
+        password,
+      };
     }
 
     // Master-key session: always valid while DASHBOARD_KEY_LOGIN is on, otherwise only until

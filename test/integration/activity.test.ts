@@ -105,6 +105,11 @@ describe('owners and priority', () => {
     expect(none.some((x: { id: string }) => x.id === r.id)).toBe(false);
     const a = (await app.inject({ method: 'GET', url: '/v1/attention?is_test=true&environment=uat', headers: as('dev') })).json();
     expect(a.counts.mine).toBeGreaterThanOrEqual(1);
+
+    // The dashboard's badge reads the cheap counts: the same numbers as the full page.
+    const c = (await app.inject({ method: 'GET', url: '/v1/attention/counts?is_test=true&environment=uat', headers: as('dev') })).json();
+    const { open, mine: m, untouched, stale, cx_waiting, needs_info, diagnosis_stuck } = a.counts;
+    expect(c).toEqual({ open, mine: m, untouched, stale, cx_waiting, needs_info, diagnosis_stuck });
   });
 
   it('a P0 is flagged after four hours untouched; a P3 gets twice the usual time', async () => {

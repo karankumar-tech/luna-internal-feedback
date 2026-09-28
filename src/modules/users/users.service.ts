@@ -7,6 +7,9 @@ import {
   PASSWORD_RULES, checkPasswordStrength, generatePassword, hashPassword, verifyPassword,
 } from './password.js';
 
+/** Whether an account must set a new password before doing anything else, and why. */
+export interface PasswordState { must_change: boolean; reason: 'admin_issued' | 'expired' | null; age_days: number }
+
 export interface UsersConfig {
   /** Days before a password must be changed. 0 disables expiry. */
   maxAgeDays: number;
@@ -120,20 +123,43 @@ export class UsersService {
 
   /** The actor a signed-in session carries, rebuilt from the database on every request. */
   async actorFor(userId: string): Promise<Actor | null> {
+    return (await this.sessionFor(userId))?.actor ?? null;
+  }
+
+  /** The account as a request's actor, and its password timestamp, from one read. */
+  async sessionFor(userId: string): Promise<{ actor: Actor; passwordEpoch: number } | null> {
     const user = await this.repo.byId(userId);
     if (!user || user.is_disabled) return null;
-    return { id: user.id, email: user.email, name: user.name, role: user.role, via: 'session' };
+    return {
+      actor: { id: user.id, email: user.email, name: user.name, role: user.role, via: 'session' },
+      passwordEpoch: new Date(user.password_set_at).getTime(),
+    };
   }
 
   /** Whether this user still has to rotate before they can do anything else. */
-  async passwordState(userId: string): Promise<{ must_change: boolean; reason: 'admin_issued' | 'expired' | null; age_days: number }> {
+  async passwordState(userId: string): Promise<PasswordState> {
     const user = await this.repo.byId(userId);
     if (!user) return { must_change: false, reason: null, age_days: 0 };
+    return this.passwordStateOf(user);
+  }
+
+  private passwordStateOf(user: UserRow): PasswordState {
     const expired = this.expired(user);
     return {
       must_change: user.must_change || expired,
       reason: user.must_change ? 'admin_issued' : expired ? 'expired' : null,
       age_days: Math.floor((Date.now() - new Date(user.password_set_at).getTime()) / 86_400_000),
+    };
+  }
+
+  /** What the dashboard's session check needs about an account, from one read. Null when it cannot sign in. */
+  async sessionState(userId: string): Promise<{ actor: Actor; passwordEpoch: number; password: PasswordState } | null> {
+    const user = await this.repo.byId(userId);
+    if (!user || user.is_disabled) return null;
+    return {
+      actor: { id: user.id, email: user.email, name: user.name, role: user.role, via: 'session' },
+      passwordEpoch: new Date(user.password_set_at).getTime(),
+      password: this.passwordStateOf(user),
     };
   }
 

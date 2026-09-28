@@ -204,6 +204,12 @@ describe('rotating a password', () => {
     expect(changed.statusCode).toBe(200);
     expect(changed.json().user.must_change).toBe(false);
 
+    // A cookie from before the change is signed out: on the API, and on the pages' session check.
+    expect((await app.inject({ method: 'GET', url: '/v1/me', headers: asUser(cookie) })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: '/dashboard/session', headers: asUser(cookie) })).json().authenticated).toBe(false);
+    const fresh = String(changed.headers['set-cookie'] ?? '').split(';')[0] ?? '';
+    if (fresh) expect((await app.inject({ method: 'GET', url: '/dashboard/session', headers: asUser(fresh) })).json()).toMatchObject({ authenticated: true, user: { email: address } });
+
     // The new password works; the old one does not.
     expect((await signIn(address, first)).res.statusCode).toBe(200);
     expect((await app.inject({ method: 'POST', url: '/dashboard/login', headers: dash, payload: { email: address, password: issued } })).statusCode).toBe(401);

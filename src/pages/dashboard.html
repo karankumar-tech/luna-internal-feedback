@@ -706,7 +706,8 @@
     if (state.features.some((f) => f.key === pre.get('feature'))) { $('fFeature').value = pre.get('feature'); fillCategorySelect(); }
     if (pre.get('category') && [...$('fCategory').options].some((o) => o.value === pre.get('category'))) $('fCategory').value = pre.get('category');
     await refresh();
-    loadManage();
+    // The category editor sits in a closed panel: load it the first time someone opens it.
+    $('manage').addEventListener('toggle', () => { if ($('manage').open && !state.manageLoaded) { state.manageLoaded = true; loadManage(); } });
     loadTestCount();
     loadDiagOps(true);
     // deep link after sign-in (detail pages redirect here when the session is missing)
@@ -809,15 +810,21 @@
     } finally { if (my === inflight) $('content').classList.remove('loading'); }
   }
 
-  /** How many reports need someone now, on the "Needs attention" link. Not filtered: it is about the whole backlog. */
-  async function loadAttentionCount() {
+  /**
+   * How many reports need someone now, on the "Needs attention" link. Not filtered: it is about the
+   * whole backlog, so changing a filter doesn't refetch it; a minute old is fine, and a bulk change forces it.
+   */
+  let attentionAt = 0;
+  async function loadAttentionCount(force) {
+    if (!force && Date.now() - attentionAt < 60_000) return;
+    attentionAt = Date.now();
     try {
-      const a = await api('/v1/attention');
-      const n = a.counts.untouched + a.counts.stale;
-      $('mineN').hidden = !a.counts.mine; $('mineN').textContent = String(a.counts.mine || 0);
+      const c = await api('/v1/attention/counts');
+      const n = c.untouched + c.stale;
+      $('mineN').hidden = !c.mine; $('mineN').textContent = String(c.mine || 0);
       $('navAttentionN').hidden = n === 0; $('navAttentionN').textContent = String(n);
-      $('navAttention').title = `${a.counts.untouched} untouched too long · ${a.counts.stale} stale · ${a.counts.cx_waiting} CX reports open`;
-    } catch { /* the link still works without a count */ }
+      $('navAttention').title = `${c.untouched} untouched too long · ${c.stale} stale · ${c.cx_waiting} CX reports open`;
+    } catch { attentionAt = 0; /* the link still works without a count */ }
   }
 
   // ---------- my queue, owners, bulk changes ----------
@@ -844,7 +851,7 @@
     try {
       const out = await api('/v1/admin/submissions/bulk', { method: 'POST', body: JSON.stringify(Object.assign({ ids }, change)) });
       toast(`${done} · ${out.updated} updated${out.failed.length ? ` · ${out.failed.length} failed` : ''}`);
-      state.picked.clear(); await refresh(); renderBulk();
+      state.picked.clear(); await refresh(); renderBulk(); loadAttentionCount(true);
     } catch (err) { toast('Could not apply: ' + err.message); }
   }
   $('btnBulk').addEventListener('click', () => {

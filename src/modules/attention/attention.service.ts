@@ -107,6 +107,36 @@ function section(items: AttentionItem[]) {
   return { total: sorted.length, items: sorted.slice(0, SECTION_LIMIT) };
 }
 
+/** Sorts open issues into the page's lists, and counts them by origin and age. */
+function classify(rows: OpenIssueRow[], me: string | null) {
+  const untouched: AttentionItem[] = [];
+  const stale: AttentionItem[] = [];
+  const needsInfo: AttentionItem[] = [];
+  let mine = 0;
+  const cxWaiting: AttentionItem[] = [];
+  const diagnosisStuck: AttentionItem[] = [];
+  const buckets = new Map<string, number>();
+
+  for (const row of rows) {
+    const t = thresholdsFor(row);
+    if (me && row.assigned_to === me) mine += 1;
+    if (row.status === 'needs_info') {
+      // Waiting on the reporter: not our move, so neither untouched nor stale — until it has waited too long.
+      if (row.idle_days >= NEEDS_INFO_DAYS) needsInfo.push(toItem(row, row.idle_days - NEEDS_INFO_DAYS));
+    } else {
+      if (row.untouched && row.age_days >= t.untouched) untouched.push(toItem(row, row.age_days - t.untouched));
+      if (!row.untouched && row.idle_days >= t.stale) stale.push(toItem(row, row.idle_days - t.stale));
+    }
+    if (row.origin === 'cx') cxWaiting.push(toItem(row, row.age_days - t.untouched));
+    if (row.ai_status === 'failed' || (row.ai_status === 'waiting_logs' && row.age_days >= WAITING_LOGS_STUCK_DAYS)) diagnosisStuck.push(toItem(row, 0));
+
+    const bucket = AGE_BUCKETS.find((b) => row.age_days < b.max)!.key;
+    const key = `${row.origin}|${bucket}`;
+    buckets.set(key, (buckets.get(key) ?? 0) + 1);
+  }
+  return { open: rows.length, untouched, stale, needsInfo, mine, cxWaiting, diagnosisStuck, buckets };
+}
+
 export class AttentionService {
   constructor(private readonly repo: AttentionRepo, private readonly timeZone = 'Asia/Kolkata') {}
 
@@ -152,6 +182,18 @@ export class AttentionService {
     return { ...out, count: out.items.length, window_days: REPEAT.days, min_reports: REPEAT.min_reports, flagged: out.items.length >= REPEAT.min_reports };
   }
 
+  /**
+   * Just the numbers the dashboard's badge and My queue need: one query, where the full page runs
+   * six. The dashboard asks for these on every load, so they have to be cheap.
+   */
+  async counts(filters: Partial<CommonFilters>, me: string | null = null) {
+    const c = classify(await this.repo.openIssues(filters), me);
+    return {
+      open: c.open, mine: c.mine, untouched: c.untouched.length, stale: c.stale.length,
+      cx_waiting: c.cxWaiting.length, needs_info: c.needsInfo.length, diagnosis_stuck: c.diagnosisStuck.length,
+    };
+  }
+
   /** Everything someone should look at now, in one read. Not windowed by date: an old open report is exactly the point. */
   async overview(filters: Partial<CommonFilters>, me: string | null = null) {
     const [rows, kinds, growing, repeatDevices] = await Promise.all([
@@ -160,32 +202,7 @@ export class AttentionService {
       this.growing(filters),
       this.repeatDevices(filters),
     ]);
-
-    const untouched: AttentionItem[] = [];
-    const stale: AttentionItem[] = [];
-    const needsInfo: AttentionItem[] = [];
-    let mine = 0;
-    const cxWaiting: AttentionItem[] = [];
-    const diagnosisStuck: AttentionItem[] = [];
-    const buckets = new Map<string, number>();
-
-    for (const row of rows) {
-      const t = thresholdsFor(row);
-      if (me && row.assigned_to === me) mine += 1;
-      if (row.status === 'needs_info') {
-        // Waiting on the reporter: not our move, so neither untouched nor stale — until it has waited too long.
-        if (row.idle_days >= NEEDS_INFO_DAYS) needsInfo.push(toItem(row, row.idle_days - NEEDS_INFO_DAYS));
-      } else {
-        if (row.untouched && row.age_days >= t.untouched) untouched.push(toItem(row, row.age_days - t.untouched));
-        if (!row.untouched && row.idle_days >= t.stale) stale.push(toItem(row, row.idle_days - t.stale));
-      }
-      if (row.origin === 'cx') cxWaiting.push(toItem(row, row.age_days - t.untouched));
-      if (row.ai_status === 'failed' || (row.ai_status === 'waiting_logs' && row.age_days >= WAITING_LOGS_STUCK_DAYS)) diagnosisStuck.push(toItem(row, 0));
-
-      const bucket = AGE_BUCKETS.find((b) => row.age_days < b.max)!.key;
-      const key = `${row.origin}|${bucket}`;
-      buckets.set(key, (buckets.get(key) ?? 0) + 1);
-    }
+    const { untouched, stale, needsInfo, mine, cxWaiting, diagnosisStuck, buckets } = classify(rows, me);
 
     const sections = {
       untouched: section(untouched),

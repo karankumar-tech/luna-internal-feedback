@@ -646,6 +646,7 @@ List, stats and the attention page accept `assigned_to` (an email, `me` or `none
 | `GET` | `/v1/feedback/{id}/kinds` | each link carries `regression: true` when the report ran the fix version or later |
 | `GET` | `/v1/feedback/{id}/same-device` | the problem reports from this report's ring (or, without a serial, its reporter) in the 14 days up to it → `{ by, count, flagged, items }`; flagged at 3 |
 | `GET` | `/v1/attention` | adds `growing` (`kind_spikes`, `category_spikes`, `regressions`) and `repeat_devices`, with `counts.growing` and `counts.repeat_devices` |
+| `GET` | `/v1/attention/counts` | just `{ open, mine, untouched, stale, cx_waiting, needs_info, diagnosis_stuck }`, from one query: what the dashboard's badge and My queue read |
 | `GET` | `/v1/analytics/overview` | adds `caught_first`: problems whose first customer report is in range, how many an internal report reached first, the median lead, by feature, and the ones customers found first |
 
 A **regression**: a report is linked to a problem that has a fix version, and it ran that version or later (every fix version set must be met; versions compare as dotted numbers, so 2.10 is newer than 2.9). The link is flagged, a `fixed` problem reopens as `watching`, and the report's history records why. Test data, positive feedback and reports with no readable version never count. App versions are compared across iOS and Android as one number.
