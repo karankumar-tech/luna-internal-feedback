@@ -42,6 +42,7 @@ export function registerUserRoutes(app: FastifyInstance, deps: { service: UsersS
         manage_triage: can(actor, 'manage_triage'),
         manage_kinds: can(actor, 'manage_kinds'),
         suggest_kinds: can(actor, 'suggest_kinds'),
+        add_notes: can(actor, 'add_notes'),
         run_diagnosis: can(actor, 'run_diagnosis'),
         review_diagnosis: can(actor, 'review_diagnosis'),
         manage_categories: can(actor, 'manage_categories'),

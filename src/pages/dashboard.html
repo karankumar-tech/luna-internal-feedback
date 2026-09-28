@@ -167,6 +167,13 @@
   .chip.test { background: var(--yellow); color: var(--black); letter-spacing: .08em; font-size: 10px; margin-left: 6px; vertical-align: 1px; }
   .chip.cx { background: var(--magenta); color: var(--white); letter-spacing: .08em; font-size: 10px; margin-left: 6px; vertical-align: 1px; }
   td .problem { font-family: var(--mono); font-size: 11px; line-height: 16px; color: #0C3AAA; margin-top: 4px; white-space: nowrap; }
+  td.ref .owner { font-family: var(--sans); font-size: 11px; color: var(--gray-dark); white-space: nowrap; }
+  .prio { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; padding: 0 5px; border-radius: var(--r-xs); margin-left: 4px; vertical-align: 1px; }
+  .prio.p0 { background: var(--crit); color: var(--white); } .prio.p1 { background: var(--orange, #EF7432); color: var(--white); }
+  .prio.p2 { background: var(--brief); color: var(--black); } .prio.p3 { background: var(--brief); color: var(--gray-dark); }
+  td.pick, th.pick { width: 28px; padding-right: 0; }
+  .bulkbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; margin-bottom: 10px; border: 1px solid var(--black); border-radius: var(--r-l); background: var(--yellow, #F5F85D); font-size: 13px; }
+  .bulkbar select { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-s); padding: 3px 6px; font-size: 12px; }
   td.ref { font-family: var(--mono); font-size: 12px; white-space: nowrap; } td.ref .age { color: var(--gray-mid); font-size: 11px; } td.ref .age.old { color: #A03600; }
   .goto { width: 120px; border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-s); padding: 3px 8px; font-family: var(--mono); font-size: 12px; line-height: 16px; }
   .goto:focus-visible { outline: none; border-color: var(--black); box-shadow: 0 0 0 1px var(--black); }
@@ -239,6 +246,7 @@
       <button class="btn small" id="btnRefresh" type="button" title="Reload data without leaving the page"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px;margin-right:5px"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3h-3"/></svg>Refresh</button>
       <span id="whoami" class="tertiary" hidden></span>
       <input class="goto" id="goRef" type="search" placeholder="Go to LN-…" aria-label="Go to a report (LN-00042) or problem (LNK-0007)" autocomplete="off">
+      <button class="btn small" id="btnMine" type="button" title="Open reports assigned to you">My queue<span class="navcount" id="mineN" hidden></span></button>
       <a class="btn small" href="/dashboard/attention" id="navAttention" style="text-decoration:none">Needs attention<span class="navcount" id="navAttentionN" hidden></span> →</a>
       <a class="btn small" href="/dashboard/analytics" style="text-decoration:none">Analytics →</a>
       <a class="btn small" href="/dashboard/kinds" style="text-decoration:none">Issue kinds →</a>
@@ -350,10 +358,17 @@
           <option value="open">Open</option>
           <option value="triaged">Triaged</option>
           <option value="in_progress">In progress</option>
+          <option value="needs_info">Needs info</option>
           <option value="resolved">Resolved</option>
           <option value="closed">Closed</option>
           <option value="wont_fix">Won't fix</option>
         </select>
+      </label>
+      <label class="field"><span>Owner</span>
+        <select id="fOwner"><option value="">Anyone</option><option value="me">Me</option><option value="none">Unassigned</option></select>
+      </label>
+      <label class="field"><span>Priority</span>
+        <select id="fPrio"><option value="">Any</option><option value="p0">P0</option><option value="p1">P1</option><option value="p2">P2</option><option value="p3">P3</option><option value="none">Not set</option></select>
       </label>
       <label class="field"><span>Jira</span>
         <select id="fJira">
@@ -466,10 +481,19 @@
             <button class="btn small" id="btnCsv" type="button">Export CSV</button>
           </div>
         </div>
+        <div class="bulkbar" id="bulkbar" hidden>
+          <b id="bulkN">0 selected</b>
+          <select id="bStatus"><option value="">Status…</option><option value="triaged">Triaged</option><option value="in_progress">In progress</option><option value="needs_info">Needs info</option><option value="resolved">Resolved</option><option value="closed">Closed</option><option value="wont_fix">Won't fix</option></select>
+          <select id="bOwner"><option value="">Owner…</option><option value="__none">Unassign</option></select>
+          <select id="bPrio"><option value="">Priority…</option><option value="p0">P0</option><option value="p1">P1</option><option value="p2">P2</option><option value="p3">P3</option><option value="__none">Clear</option></select>
+          <button class="btn small primary" id="btnBulk" type="button">Apply</button>
+          <button class="btn small" id="btnBulkTest" type="button">Mark as test</button>
+          <button class="btn small ghost" id="btnBulkClear" type="button">Clear selection</button>
+        </div>
         <div class="tbl-wrap">
           <table>
             <thead><tr>
-              <th>Report</th><th>When (IST)</th><th>Feature</th><th>Result</th><th>Categories</th><th>Reporter</th><th>Feedback</th><th>Platform · App · FW</th>
+              <th class="pick"><input type="checkbox" id="pickAll" aria-label="Select all shown" title="Select all shown"></th><th>Report</th><th>When (IST)</th><th>Feature</th><th>Result</th><th>Categories</th><th>Reporter</th><th>Feedback</th><th>Platform · App · FW</th>
             </tr></thead>
             <tbody id="rows"></tbody>
           </table>
@@ -522,7 +546,7 @@
   'use strict';
   const $ = (id) => document.getElementById(id);
   const OK = '#00C37A', CRIT = '#FF3B3B', BLUE = '#2E64E4';
-  const state = { schema: null, features: [], catsByFeature: {}, filters: null, stats: null, rows: [], cursor: null, admin: null, me: null, keyLogin: false };
+  const state = { schema: null, features: [], catsByFeature: {}, filters: null, stats: null, rows: [], cursor: null, admin: null, me: null, keyLogin: false, picked: new Set(), people: [] };
 
   // ---------- helpers ----------
   const istToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -675,7 +699,7 @@
     $('conn').className = 'pill on'; $('conn').textContent = 'connected';
     $('btnKey').hidden = false;
     $('gate').hidden = true; $('app').hidden = false;
-    fillFeatureSelect(); fillCategorySelect(); await fillKindSelect();
+    fillFeatureSelect(); fillCategorySelect(); await fillKindSelect(); await loadPeople();
     if (!state.filters) applyPreset(30);
     await refresh();
     loadManage();
@@ -715,6 +739,8 @@
     if ($('fFeature').value) f.feature = $('fFeature').value;
     if ($('fEnv').value) f.environment = $('fEnv').value;
     if ($('fOrigin').value) f.origin = $('fOrigin').value;
+    if ($('fOwner').value) f.assigned_to = $('fOwner').value;
+    if ($('fPrio').value) f.priority = $('fPrio').value;
     if ($('fStatus').value) f.status = $('fStatus').value;
     if ($('fJira').value) f.jira = $('fJira').value;
     if ($('fKind').value) f.kind_id = $('fKind').value;
@@ -736,11 +762,11 @@
   $('fResult').addEventListener('change', refresh);
   $('fPlatform').addEventListener('change', refresh);
   $('fTest').addEventListener('change', refresh);
-  for (const fid of ['fAi', 'fSide', 'fSev', 'fEnv', 'fOrigin', 'fStatus', 'fJira', 'fKind']) $(fid).addEventListener('change', refresh);
+  for (const fid of ['fAi', 'fSide', 'fSev', 'fEnv', 'fOrigin', 'fOwner', 'fPrio', 'fStatus', 'fJira', 'fKind']) $(fid).addEventListener('change', refresh);
   $('fCategory').addEventListener('change', refresh);
   let userT; $('fUser').addEventListener('input', () => { clearTimeout(userT); userT = setTimeout(refresh, 400); });
   $('btnReset').addEventListener('click', () => {
-    for (const fid of ['fFeature', 'fPlatform', 'fTest', 'fAi', 'fSide', 'fSev', 'fResult', 'fUser', 'fEnv', 'fOrigin', 'fStatus', 'fJira', 'fKind']) $(fid).value = '';
+    for (const fid of ['fFeature', 'fPlatform', 'fTest', 'fAi', 'fSide', 'fSev', 'fResult', 'fUser', 'fEnv', 'fOrigin', 'fOwner', 'fPrio', 'fStatus', 'fJira', 'fKind']) $(fid).value = '';
     fillCategorySelect(); applyPreset(30); refresh();
   });
 
@@ -784,10 +810,49 @@
     try {
       const a = await api('/v1/attention');
       const n = a.counts.untouched + a.counts.stale;
+      $('mineN').hidden = !a.counts.mine; $('mineN').textContent = String(a.counts.mine || 0);
       $('navAttentionN').hidden = n === 0; $('navAttentionN').textContent = String(n);
       $('navAttention').title = `${a.counts.untouched} untouched too long · ${a.counts.stale} stale · ${a.counts.cx_waiting} CX reports open`;
     } catch { /* the link still works without a count */ }
   }
+
+  // ---------- my queue, owners, bulk changes ----------
+  $('btnMine').addEventListener('click', () => { $('fOwner').value = 'me'; $('fStatus').value = ''; refresh(); $('tableCard').scrollIntoView({ behavior: 'smooth' }); });
+  const personLabel = (email) => { const p = (state.people || []).find((x) => x.email === email); return p && p.name ? p.name : email.split('@')[0]; };
+  async function loadPeople() {
+    try { state.people = (await api('/v1/admin/assignees')).items || []; } catch { state.people = []; }
+    for (const [selId, extra] of [['fOwner', 3], ['bOwner', 2]]) {
+      const sel = $(selId); while (sel.options.length > extra) sel.remove(extra);
+      for (const p of state.people) { const o = el('option', null, p.name ? `${p.name} (${p.role})` : p.email); o.value = p.email; sel.appendChild(o); }
+    }
+  }
+  function renderBulk() {
+    const n = state.picked.size; const canTriage = !!(state.me && state.me.permissions && state.me.permissions.manage_triage);
+    $('bulkbar').hidden = n === 0 || !canTriage; $('bulkN').textContent = `${n} selected`;
+    const boxes = [...document.querySelectorAll('.rowpick')];
+    $('pickAll').checked = boxes.length > 0 && boxes.every((b) => b.checked);
+    for (const b of boxes) b.disabled = !canTriage; $('pickAll').disabled = !canTriage;
+  }
+  $('pickAll').addEventListener('change', (ev) => { for (const b of document.querySelectorAll('.rowpick')) { b.checked = ev.target.checked; b.checked ? state.picked.add(b.value) : state.picked.delete(b.value); } renderBulk(); });
+  $('btnBulkClear').addEventListener('click', () => { state.picked.clear(); for (const b of document.querySelectorAll('.rowpick')) b.checked = false; renderBulk(); });
+  async function bulk(change, done) {
+    const ids = [...state.picked]; if (!ids.length) return;
+    try {
+      const out = await api('/v1/admin/submissions/bulk', { method: 'POST', body: JSON.stringify(Object.assign({ ids }, change)) });
+      toast(`${done} · ${out.updated} updated${out.failed.length ? ` · ${out.failed.length} failed` : ''}`);
+      state.picked.clear(); await refresh(); renderBulk();
+    } catch (err) { toast('Could not apply: ' + err.message); }
+  }
+  $('btnBulk').addEventListener('click', () => {
+    const change = {};
+    if ($('bStatus').value) change.status = $('bStatus').value;
+    if ($('bOwner').value) change.assigned_to = $('bOwner').value === '__none' ? null : $('bOwner').value;
+    if ($('bPrio').value) change.priority = $('bPrio').value === '__none' ? null : $('bPrio').value;
+    if (!Object.keys(change).length) { toast('Pick a status, owner or priority to apply'); return; }
+    bulk(change, 'Applied');
+    $('bStatus').value = ''; $('bOwner').value = ''; $('bPrio').value = '';
+  });
+  $('btnBulkTest').addEventListener('click', () => bulk({ is_test: true }, 'Marked as test'));
 
   // ---------- go to a reference ----------
   $('goRef').addEventListener('keydown', (e) => {
@@ -965,7 +1030,11 @@
     const rows = append ? state.rows.slice(-state.lastBatch) : state.rows;
     for (const r of rows) {
       const tr = el('tr'); tr.tabIndex = 0;
-      const refTd = el('td', 'ref'); refTd.appendChild(el('div', null, r.ref));
+      const pickTd = el('td', 'pick'); const cb = el('input'); cb.type = 'checkbox'; cb.className = 'rowpick'; cb.value = r.id; cb.checked = state.picked.has(r.id); cb.setAttribute('aria-label', 'Select ' + r.ref);
+      cb.addEventListener('click', (ev) => ev.stopPropagation()); cb.addEventListener('change', () => { cb.checked ? state.picked.add(r.id) : state.picked.delete(r.id); renderBulk(); });
+      pickTd.appendChild(cb); pickTd.addEventListener('click', (ev) => ev.stopPropagation()); tr.appendChild(pickTd);
+      const refTd = el('td', 'ref'); const refLine = el('div', null, r.ref); if (r.priority) refLine.appendChild(el('span', 'prio ' + r.priority, r.priority.toUpperCase())); refTd.appendChild(refLine);
+      if (r.assigned_to) refTd.appendChild(el('div', 'owner', '→ ' + personLabel(r.assigned_to)));
       if (!r.is_positive && !TERMINAL.includes(r.status)) { const days = (Date.now() - Date.parse(r.created_at)) / 86_400_000; refTd.appendChild(el('div', 'age' + (days >= (r.origin === 'cx' ? 1 : 3) ? ' old' : ''), 'open ' + ageLabel(r.created_at))); }
       tr.appendChild(refTd);
       const when = el('td', 'when'); const [d, t] = r.created_at_ist.split(' '); when.appendChild(el('div', 'd', shortDate(d))); when.appendChild(el('div', 't', t)); tr.appendChild(when);
@@ -988,6 +1057,7 @@
       const open = () => openDrawer(r); tr.addEventListener('click', open); tr.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
       tb.appendChild(tr);
     }
+    renderBulk();
     $('tableEmpty').hidden = state.rows.length > 0;
     $('btnMore').hidden = !state.cursor;
     const total = state.stats.totals.submissions;

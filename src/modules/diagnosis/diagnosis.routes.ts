@@ -6,6 +6,7 @@ import { isValidCalendarDate } from '../../lib/time.js';
 import type { DiagnosisService } from './diagnosis.service.js';
 import type { DiagnosisRepo } from './diagnosis.repo.js';
 import { requirePermission } from '../../plugins/auth.js';
+import { actorOf } from '../../lib/actor.js';
 import { ENVIRONMENTS } from '../../schema/registry.js';
 
 const ReviewBody = z.object({
@@ -16,8 +17,12 @@ const ReviewBody = z.object({
 
 const uuid = (v: string) => z.string().uuid().safeParse(v).success;
 
-export function registerDiagnosisRoutes(app: FastifyInstance, deps: { service: DiagnosisService; repo: DiagnosisRepo }) {
-  const { service, repo } = deps;
+export function registerDiagnosisRoutes(app: FastifyInstance, deps: {
+  service: DiagnosisService; repo: DiagnosisRepo;
+  /** A diagnosis someone ran goes in the report's history, and counts as the team responding. */
+  activity?: { record(e: { submissionId: string; actor: string | null; action: 'diagnosis'; to: string; touch: boolean }): Promise<unknown> } | null;
+}) {
+  const { service, repo, activity } = deps;
 
   app.get<{ Params: { id: string } }>('/v1/feedback/:id/diagnosis', async (req) => {
     if (!uuid(req.params.id)) throw AppError.notFound('Submission not found');
@@ -34,7 +39,9 @@ export function registerDiagnosisRoutes(app: FastifyInstance, deps: { service: D
   /** Synchronous run (or re-run). Returns the finished diagnosis. */
   app.post<{ Params: { id: string } }>('/v1/admin/submissions/:id/diagnose', { onRequest: requirePermission('run_diagnosis') }, async (req) => {
     if (!uuid(req.params.id)) throw AppError.notFound('Submission not found');
-    return service.run(req.params.id, 'manual');
+    const out = await service.run(req.params.id, 'manual');
+    await activity?.record({ submissionId: req.params.id, actor: actorOf(req), action: 'diagnosis', to: out.status, touch: true });
+    return out;
   });
 
   app.patch<{ Params: { id: string } }>('/v1/admin/submissions/:id/diagnosis/review', { onRequest: requirePermission('review_diagnosis') }, async (req) => {

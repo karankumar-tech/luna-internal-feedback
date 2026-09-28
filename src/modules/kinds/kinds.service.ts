@@ -8,6 +8,10 @@ import {
 
 /** A link on a report, with how big that problem is overall. */
 export interface KindLinkWithCounts extends KindLink { counts: KindCounts | null }
+
+type KindEvent = 'kind_link' | 'kind_suggest' | 'kind_confirm' | 'kind_reject';
+/** Where grouping decisions go in a report's history. */
+export interface KindActivity { record(e: { submissionId: string; actor: string | null; action: KindEvent; to: string; touch: boolean }): Promise<unknown> }
 import type { CommonFilters } from '../feedback/feedback.repo.js';
 
 export interface NewKind {
@@ -22,7 +26,15 @@ export interface NewKind {
 }
 
 export class KindsService {
+  private activity: KindActivity | null = null;
   constructor(private readonly repo: KindsRepo) {}
+
+  setActivity(a: KindActivity | null) { this.activity = a; }
+
+  /** People's grouping decisions count as the team responding; the AI's and the matcher's do not. */
+  private async log(submissionId: string, kind: { ref: string }, action: KindEvent, by: string | null, touch: boolean) {
+    await this.activity?.record({ submissionId, actor: by, action, to: kind.ref, touch });
+  }
 
   list(filters: Partial<CommonFilters> & { from?: string; to?: string; includeArchived?: boolean; status?: string }) {
     return this.repo.list(filters);
@@ -111,6 +123,7 @@ export class KindsService {
   async link(submissionId: string, kindIdOrRef: string, source: KindLinkSource, confidence: number | null, by: string | null) {
     const kind = await this.get(kindIdOrRef);
     await this.repo.link(submissionId, kind.id, source, confidence, by, 'linked');
+    await this.log(submissionId, kind, 'kind_link', by, source === 'manual');
     if (source === 'manual') await this.repo.clearRuleSuggestions(submissionId, kind.id);
     if (!kind.reference_submission_id && source === 'manual') await this.repo.update(kind.id, { reference_submission_id: submissionId });
     return this.repo.forSubmission(submissionId);
@@ -120,19 +133,28 @@ export class KindsService {
   async suggest(submissionId: string, kindIdOrRef: string, by: string | null) {
     const kind = await this.get(kindIdOrRef);
     await this.repo.link(submissionId, kind.id, 'manual', null, by, 'suggested');
+    await this.log(submissionId, kind, 'kind_suggest', by, false);
     return this.repo.forSubmission(submissionId);
   }
 
   /** A rule matched a new report to this problem: shown as a suggestion until a person decides. */
   async suggestByRule(submissionId: string, kindId: string, confidence: number) {
     await this.repo.link(submissionId, kindId, 'rule', Math.min(1, Math.max(0, confidence)), 'rule', 'suggested');
+    const kind = await this.repo.byId(kindId);
+    if (kind) await this.log(submissionId, kind, 'kind_suggest', 'rule', false);
   }
 
   /** Confirm a suggestion, or reject it (or an existing link) so it is never suggested again. */
   async decide(submissionId: string, kindIdOrRef: string, decision: 'confirm' | 'reject', by: string | null) {
     const kind = await this.get(kindIdOrRef);
-    if (decision === 'confirm') return this.link(submissionId, kind.id, 'manual', null, by);
+    if (decision === 'confirm') {
+      await this.repo.link(submissionId, kind.id, 'manual', null, by, 'linked');
+      await this.repo.clearRuleSuggestions(submissionId, kind.id);
+      await this.log(submissionId, kind, 'kind_confirm', by, true);
+      return this.repo.forSubmission(submissionId);
+    }
     if (!(await this.repo.reject(submissionId, kind.id, by))) throw AppError.notFound('That submission is not linked to this issue kind');
+    await this.log(submissionId, kind, 'kind_reject', by, true);
     return this.repo.forSubmission(submissionId);
   }
 
@@ -180,6 +202,7 @@ export class KindsService {
     for (const id of submissionIds) {
       await this.repo.link(id, kind.id, 'manual', null, by, 'linked');
       await this.repo.clearRuleSuggestions(id, kind.id);
+      await this.log(id, kind, 'kind_link', by, true);
     }
     if (!kind.reference_submission_id && submissionIds[0]) await this.repo.update(kind.id, { reference_submission_id: submissionIds[0] });
     return (await this.repo.byId(kind.id))!;
@@ -226,6 +249,7 @@ export class KindsService {
 
     // A diagnosis link counts straight away, but never overrides a person's "not this".
     await this.repo.link(submissionId, kind.id, 'ai', null, 'ai', 'linked');
+    if ((await this.repo.forSubmission(submissionId)).some((l) => l.kind_id === kind.id)) await this.log(submissionId, kind, 'kind_link', 'ai', false);
     if (!kind.reference_submission_id) await this.repo.update(kind.id, { reference_submission_id: submissionId });
     return kind;
   }

@@ -621,6 +621,19 @@ Not for the app. Listed so the front-end team knows how categories change.
 | `PATCH` | `/v1/admin/kinds/{id}` | also `{ "reference_submission_id" }`: the report to read first (id or `LN-` reference; `null` clears) |
 
 Every new issue is matched against open problems when it arrives; a clear match is added as a *suggested* link.
+
+**Owners, priority, notes and history** (dashboard).
+
+| method | path | body / notes |
+|---|---|---|
+| `PATCH` | `/v1/admin/submissions/{id}` | also `{ "assigned_to": email \| null, "priority": "p0".."p3" \| null }`, and status `needs_info` (`manage_triage`). The owner must have a dashboard account |
+| `GET` | `/v1/feedback/{id}/activity` | the report's history, oldest first: arrival, status, owner, priority, grouping, Jira, diagnosis runs and notes |
+| `POST` | `/v1/admin/submissions/{id}/notes` | `{ "body", "visibility": "internal" \| "customer" }` (`add_notes`: admin, QC, developer, CX). `customer` notes are ones CX may pass on |
+| `POST` | `/v1/admin/submissions/{id}/ask-reporter` | `{ "questions": [...] }` posts the questions as a note (customer-safe on CX reports) and sets `needs_info` |
+| `POST` | `/v1/admin/submissions/bulk` | `{ "ids": [...], "status"?, "assigned_to"?, "priority"?, "is_test"?, "kind_id"? }` → `{ updated, failed: [{ id, error }] }` |
+| `GET` | `/v1/admin/assignees` | everyone a report can be assigned to |
+
+List, stats and the attention page accept `assigned_to` (an email, `me` or `none`) and `priority` (`p0`..`p3` or `none`). Reports carry `first_touched_at` (the team's first action), `last_activity_at` and `resolved_at`; the analytics overview adds `response_times` and `time_in_status`.
 | `GET` | `/v1/admin/test-data` | → `{ "count" }` of rows flagged `is_test` |
 | `DELETE` | `/v1/admin/test-data?confirm=delete` | deletes only `is_test` rows → `{ "deleted" }`; `422` without the confirm parameter |
 
@@ -671,15 +684,22 @@ curl -X POST https://luna-feedback.buildsage.tech/v1/cx/feedback/sleep \
   "created_at": "2026-09-27T10:02:11.000Z", "created_at_ist": "2026-09-27 15:32:11 +05:30",
   "problems": [],
   "likely_problem": { "ref": "LNK-0007", "title": "Sleep start recorded hours late", "report_count": 14 },
+  "latest_update": { "body": "We found the cause; the fix ships in 2.5.1.", "at": "2026-10-02T09:12:00.000Z" },
   "dashboard_url": "https://luna-feedback.buildsage.tech/i/LN-00042"
 }
 ```
+
+`latest_update` is the team's newest customer-safe note, written to be passed on to the customer as is, or `null`. When the team needs something from the customer, `status` is `needs_info` and `latest_update` holds the questions.
 
 Store `ref` on the CX ticket. `problems` lists the recurring problems (`LNK-0007`) the report is confirmed as part of, with how many reports each has. `likely_problem` is the open problem it most looks like, not yet confirmed by QC: show it to the agent as "Looks like …", or `null`.
 
 ### `GET /v1/cx/feedback/{ref}`
 
 Where a CX report stands, by reference or id, in the same shape as above. Internal tester reports are not readable with the CX key (`404`).
+
+### `POST /v1/cx/feedback/{ref}/notes`
+
+`{ "body": "…", "agent"?: "Asha" }` adds a note from the CX tool to a CX report, such as what the customer replied. It is redacted like everything else CX sends. If the report was waiting on the customer (`needs_info`), it goes back to the status it had before. Returns the report in the shape above, with `201`.
 
 ### What the CX key can reach
 

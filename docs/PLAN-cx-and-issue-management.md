@@ -605,6 +605,14 @@ merge, reference report, "more reports like this" on a problem, and the AI same-
 forward from Phase 5. Deviations: wording similarity is computed in the app (pg_trgm's algorithm,
 no database extension); a problem's Jira ticket is not updated with new counts yet.
 
+**Phase 3 status (2026-09-28, branch `cx-phase-3`, not merged):** built and tested locally. Migration
+`20260930000000_activity_owner_priority.sql` (submission_events with notes, assigned_to, priority,
+first_touched_at / last_activity_at / resolved_at, needs_info, problem owner, partial history
+backfill). Decisions: anyone with a dashboard account can own a report or problem; CX can write
+notes (team-only or customer-safe), the CX tool reads the latest customer-safe note and posts replies,
+which reopen a needs_info report; priority sets both ordering and time limits (P0 4 h / 1 d, P1 1 d /
+3 d, P2 defaults, P3 double); assignment shows as My queue and a count, no notifications.
+
 | phase | scope | size |
 |---|---|---|
 | **1** | Origin + CX API (`/v1/cx/feedback`, `CX_API_KEY`, serial required, no email) + serial → device lookup + `cx` role + email redaction + origin filter/pill/KPIs + **`LN-`/`LNK-` references, lookup, copy link/text, sign-in return** (§1b.1–1b.2) + per-environment logs host (production on, UAT off) + ship-now ageing (§2.1) + attention page v1 + CX prompt line | M |

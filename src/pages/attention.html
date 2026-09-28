@@ -40,7 +40,10 @@
   .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
   .card-head .sub { font-size: 12px; line-height: 18px; color: var(--gray-dark); }
   .count { font-family: var(--mono); font-size: 12px; color: var(--gray-dark); }
-  .kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .kpis { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .prio { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; padding: 0 5px; border-radius: var(--r-xs); margin-left: 4px; }
+  .prio.p0 { background: var(--crit); color: var(--white); } .prio.p1 { background: var(--orange); color: var(--white); } .prio.p2, .prio.p3 { background: var(--brief); }
+  .miss { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: #A03600; }
   .kpi { background: var(--white); border: 1px solid var(--gray-light); border-radius: var(--r-l); padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; text-decoration: none; }
   a.kpi:hover { border-color: var(--black); }
   .kpi .v { font-family: var(--mono); font-size: 28px; line-height: 32px; } .kpi .l { font-size: 12px; line-height: 16px; color: var(--gray-dark); } .kpi .d { font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--gray-mid); }
@@ -91,6 +94,9 @@
     <label class="field"><span>Environment</span>
       <select id="fEnv"><option value="">All environments</option><option value="stage">Stage</option><option value="uat">UAT</option><option value="production">Production</option></select>
     </label>
+    <label class="field"><span>Owner</span>
+      <select id="fOwner"><option value="">Anyone</option><option value="me">Mine</option><option value="none">Unassigned</option></select>
+    </label>
     <label class="field"><span>Data</span>
       <select id="fTest"><option value="false">Real only</option><option value="true">Test only</option></select>
     </label>
@@ -102,8 +108,9 @@
       <a class="kpi" href="#untouched"><div class="v" id="kUntouched">–</div><div class="l">Untouched too long</div><div class="d" id="kUntouchedD"></div></a>
       <a class="kpi" href="#cx"><div class="v" id="kCx">–</div><div class="l">CX waiting on us</div><div class="d" id="kCxD"></div></a>
       <a class="kpi" href="#stale"><div class="v" id="kStale">–</div><div class="l">Stale</div><div class="d" id="kStaleD"></div></a>
+      <a class="kpi" href="#needs"><div class="v" id="kNeeds">–</div><div class="l">Waiting on reporter</div><div class="d" id="kNeedsD"></div></a>
       <a class="kpi" href="#stuck"><div class="v" id="kStuck">–</div><div class="l">Diagnosis stuck</div><div class="d">failed, or waiting &gt; 2 days</div></a>
-      <a class="kpi" href="#kinds"><div class="v" id="kKinds">–</div><div class="l">Problems with no Jira</div><div class="d" id="kKindsD"></div></a>
+      <a class="kpi" href="#kinds"><div class="v" id="kKinds">–</div><div class="l">Problems missing owner/ticket</div><div class="d" id="kKindsD"></div></a>
     </section>
 
     <section class="card" id="untouched">
@@ -121,13 +128,18 @@
       <div class="table-scroll" id="tStale"></div>
     </section>
 
+    <section class="card" id="needs">
+      <div class="card-head"><div><h2>Waiting on the reporter too long</h2><div class="sub" id="subNeeds">Marked Needs info, and nothing has come back for a week. Chase it, or close it.</div></div><span class="count" id="cNeeds"></span></div>
+      <div class="table-scroll" id="tNeeds"></div>
+    </section>
+
     <section class="card" id="stuck">
       <div class="card-head"><div><h2>Diagnosis stuck</h2><div class="sub">The AI run failed, or has waited more than two days for logs.</div></div><span class="count" id="cStuck"></span></div>
       <div class="table-scroll" id="tStuck"></div>
     </section>
 
     <section class="card" id="kinds">
-      <div class="card-head"><div><h2>Problems with no Jira ticket</h2><div class="sub" id="subKinds">Recurring problems with enough reports, or any from a customer, and still no ticket.</div></div><span class="count" id="cKinds"></span></div>
+      <div class="card-head"><div><h2>Problems missing an owner or a ticket</h2><div class="sub" id="subKinds">Recurring problems with enough reports, or any from a customer, that have no owner or no Jira ticket yet.</div></div><span class="count" id="cKinds"></span></div>
       <div class="table-scroll" id="tKinds"></div>
     </section>
 
@@ -179,12 +191,13 @@
 
   function issueCols(extra) {
     return [
-      { h: 'report', cls: 'nowrap', render: (r) => el('span', 'mono', r.ref) },
+      { h: 'report', cls: 'nowrap', render: (r) => { const w = el('span', 'mono', r.ref); if (r.priority) w.appendChild(el('span', 'prio ' + r.priority, r.priority.toUpperCase())); return w; } },
       { h: 'source', render: (r) => originPill(r.origin) },
       { h: 'feature', render: (r) => FEATURE[r.feature_key] || r.feature_key },
       { h: 'age', num: true, render: (r) => days(r.age_days) },
       ...extra,
       { h: 'severity', render: (r) => el('span', 'sev ' + (r.severity || ''), r.severity || '—') },
+      { h: 'owner', render: (r) => r.assigned_to ? r.assigned_to.split('@')[0] : el('span', 'tertiary', '—') },
       { h: 'problem', render: kindsCell },
       { h: 'what they said', render: (r) => el('span', 'snippet', r.feedback_text || '') },
       { h: 'priority', num: true, render: scoreCell },
@@ -203,10 +216,11 @@
     $('kCxD').textContent = c.cx_waiting ? `oldest ${days(oldestCx)}` : 'none open';
     $('kStale').textContent = fmtN(c.stale); $('kStaleD').textContent = `idle: CX > ${t.cx.stale_days}d · internal > ${t.internal.stale_days}d`;
     $('kStuck').textContent = fmtN(c.diagnosis_stuck);
+    $('kNeeds').textContent = fmtN(c.needs_info); $('kNeedsD').textContent = `quiet > ${t.needs_info_days} days`;
     $('kKinds').textContent = fmtN(c.kinds_without_jira); $('kKindsD').textContent = `${t.kind_ticket_min_reports}+ reports, or any from CX`;
-    for (const [id, n] of [['kUntouched', c.untouched], ['kCx', c.cx_waiting], ['kStale', c.stale], ['kStuck', c.diagnosis_stuck], ['kKinds', c.kinds_without_jira]]) $(id).parentElement.classList.toggle('warn', n > 0);
+    for (const [id, n] of [['kUntouched', c.untouched], ['kCx', c.cx_waiting], ['kStale', c.stale], ['kNeeds', c.needs_info], ['kStuck', c.diagnosis_stuck], ['kKinds', c.kinds_without_jira]]) $(id).parentElement.classList.toggle('warn', n > 0);
 
-    $('subUntouched').textContent = `Still open, and nobody has changed its status, filed a ticket or grouped it. Flagged after ${t.cx.untouched_days} day for CX and ${t.internal.untouched_days} days for internal reports; critical ones after half that.`;
+    $('subUntouched').textContent = `Nobody on the team has acted on it yet. Flagged after ${t.cx.untouched_days} day for CX and ${t.internal.untouched_days} days for internal reports; P0 after 4 hours, P1 after a day, P3 after twice as long.`;
     $('subStale').textContent = `Someone picked it up, but nothing has moved for ${t.cx.stale_days} days (CX) or ${t.internal.stale_days} days (internal).`;
 
     const shown = (s) => s.total > s.items.length ? `${s.items.length} of ${fmtN(s.total)}` : fmtN(s.total);
@@ -214,6 +228,7 @@
     $('cCx').textContent = shown(o.sections.cx_waiting);
     $('cStale').textContent = shown(o.sections.stale);
     $('cStuck').textContent = shown(o.sections.diagnosis_stuck);
+    $('cNeeds').textContent = shown(o.sections.needs_info);
     $('cKinds').textContent = fmtN(o.kinds_without_jira.length);
 
     table($('tUntouched'), issueCols([overdueCol]), o.sections.untouched.items, 'Nothing has been left untouched past its limit.', openReport);
@@ -227,10 +242,13 @@
       overdueCol,
     ]), o.sections.stale.items, 'Nothing is stale.', openReport);
     table($('tStuck'), issueCols([{ h: 'AI', render: (r) => (r.ai_status || '').replace('_', ' ') }]), o.sections.diagnosis_stuck.items, 'No stuck diagnoses.', openReport);
+    table($('tNeeds'), issueCols([{ h: 'waiting', num: true, render: (r) => days(r.idle_days) }]), o.sections.needs_info.items, 'Nothing has been waiting on a reporter for more than a week.', openReport);
 
     table($('tKinds'), [
       { h: 'problem', cls: 'nowrap', render: (r) => el('span', 'mono', r.ref) },
       { h: 'title', k: 'title' },
+      { h: 'owner', render: (r) => r.owner ? r.owner.split('@')[0] : el('span', 'miss', 'no owner') },
+      { h: 'jira', render: (r) => r.jira_key ? el('span', 'mono', r.jira_key) : el('span', 'miss', 'no ticket') },
       { h: 'status', k: 'status' },
       { h: 'reports', k: 'reports', num: true },
       { h: 'open', k: 'open_reports', num: true },
@@ -262,6 +280,7 @@
     const q = new URLSearchParams({ is_test: $('fTest').value });
     if ($('fOrigin').value) q.set('origin', $('fOrigin').value);
     if ($('fEnv').value) q.set('environment', $('fEnv').value);
+    if ($('fOwner').value) q.set('assigned_to', $('fOwner').value);
     try {
       const o = await api('/v1/attention?' + q);
       if (my !== inflight) return;
@@ -272,7 +291,7 @@
       $('freshness').textContent = 'Could not load: ' + err.message;
     } finally { if (my === inflight) $('content').classList.remove('loading'); }
   }
-  for (const id of ['fOrigin', 'fEnv', 'fTest']) $(id).addEventListener('change', load);
+  for (const id of ['fOrigin', 'fEnv', 'fOwner', 'fTest']) $(id).addEventListener('change', load);
   $('btnRefresh').addEventListener('click', async () => { const b = $('btnRefresh'); b.disabled = true; try { await load(); } finally { b.disabled = false; } });
 
   api('/dashboard/session').then((s) => { if (!s.authenticated) { location.replace('/dashboard?next=' + encodeURIComponent(HERE)); return; } load(); })

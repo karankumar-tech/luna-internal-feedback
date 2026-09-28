@@ -24,6 +24,17 @@ export interface AnalyticsResult {
   firmware_versions: { version: string; issues: number; firmware_side: number }[];
   app_versions: { version: string; platform: string | null; issues: number; app_side: number }[];
   jira: { linked: number; unlinked: number; by_status: { status: string; count: number }[] };
+  /**
+   * How fast the team responds, per origin: hours from a report arriving to the team's first action,
+   * and to it being resolved. Medians and 90th percentiles over the reports that got there.
+   */
+  response_times: {
+    origin: string; issues: number;
+    touched: number; first_response_p50_h: number | null; first_response_p90_h: number | null;
+    resolved: number; resolve_p50_h: number | null; resolve_p90_h: number | null;
+  }[];
+  /** Average and median hours reports spend in each open status, from the activity log. */
+  time_in_status: { status: string; stints: number; avg_hours: number; p50_hours: number }[];
 }
 
 /**
@@ -44,6 +55,7 @@ export class AnalyticsRepo {
     const [
       totals, byDay, byEnvironment, byOrigin, byStatus, byFeature, byCategory,
       bySide, bySeverity, byTag, byEvent, byKind, topReporters, fwVersions, appVersions, jiraByStatus,
+      responseTimes, timeInStatus,
     ] = await Promise.all([
       q<{ submissions: number; issues: number; positive: number; users: number; with_jira: number; open_issues: number; closed_issues: number; diagnosed: number }>(
         `select count(*)::int as submissions,
@@ -51,7 +63,7 @@ export class AnalyticsRepo {
                 count(*) filter (where s.is_positive)::int as positive,
                 count(distinct ${personSql()})::int as users,
                 count(*) filter (where s.jira_key is not null)::int as with_jira,
-                count(*) filter (where not s.is_positive and s.status in ('open','triaged','in_progress'))::int as open_issues,
+                count(*) filter (where not s.is_positive and s.status in ('open','triaged','in_progress','needs_info'))::int as open_issues,
                 count(*) filter (where not s.is_positive and s.status in ('resolved','closed','wont_fix'))::int as closed_issues,
                 count(*) filter (where s.ai_status = 'done')::int as diagnosed
          ${base}`),
@@ -148,6 +160,35 @@ export class AnalyticsRepo {
       q<{ status: string; count: number }>(
         `select coalesce(s.jira_status, 'unknown') as status, count(*)::int as count
          ${base} ${where ? 'and' : 'where'} s.jira_key is not null group by 1 order by count desc`),
+
+      q<{ origin: string; issues: number; touched: number; first_response_p50_h: number | null; first_response_p90_h: number | null; resolved: number; resolve_p50_h: number | null; resolve_p90_h: number | null }>(
+        `with t as (
+           select s.origin,
+                  extract(epoch from s.first_touched_at - s.created_at) / 3600 as first_h,
+                  extract(epoch from s.resolved_at - s.created_at) / 3600 as resolve_h
+             from luna_feedback.submissions s ${issuesOnly})
+         select origin, count(*)::int as issues,
+                count(first_h)::int as touched,
+                percentile_cont(0.5) within group (order by first_h) filter (where first_h is not null) as first_response_p50_h,
+                percentile_cont(0.9) within group (order by first_h) filter (where first_h is not null) as first_response_p90_h,
+                count(resolve_h)::int as resolved,
+                percentile_cont(0.5) within group (order by resolve_h) filter (where resolve_h is not null) as resolve_p50_h,
+                percentile_cont(0.9) within group (order by resolve_h) filter (where resolve_h is not null) as resolve_p90_h
+           from t group by origin order by origin desc`),
+
+      q<{ status: string; stints: number; avg_hours: number; p50_hours: number }>(
+        `with st as (
+           select case when e.action = 'created' then 'open' else e.to_value end as status,
+                  e.created_at as since,
+                  lead(e.created_at) over (partition by e.submission_id order by e.created_at, e.id) as until
+             from luna_feedback.submission_events e
+             join luna_feedback.submissions s on s.id = e.submission_id
+            ${issuesOnly} and e.action in ('created', 'status'))
+         select status, count(*)::int as stints,
+                (avg(extract(epoch from coalesce(until, now()) - since)) / 3600)::float8 as avg_hours,
+                (percentile_cont(0.5) within group (order by extract(epoch from coalesce(until, now()) - since)) / 3600)::float8 as p50_hours
+           from st where status in ('open', 'triaged', 'in_progress', 'needs_info')
+          group by status order by array_position(array['open','triaged','in_progress','needs_info'], status)`),
     ]);
 
     const t = totals.rows[0]!;
@@ -183,6 +224,14 @@ export class AnalyticsRepo {
         unlinked: t.submissions - t.with_jira,
         by_status: jiraByStatus.rows,
       },
+      response_times: responseTimes.rows.map((r) => ({
+        ...r,
+        first_response_p50_h: r.first_response_p50_h === null ? null : Number(r.first_response_p50_h),
+        first_response_p90_h: r.first_response_p90_h === null ? null : Number(r.first_response_p90_h),
+        resolve_p50_h: r.resolve_p50_h === null ? null : Number(r.resolve_p50_h),
+        resolve_p90_h: r.resolve_p90_h === null ? null : Number(r.resolve_p90_h),
+      })),
+      time_in_status: timeInStatus.rows,
     };
   }
 }

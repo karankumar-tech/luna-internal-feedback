@@ -8,7 +8,9 @@ import { zodIssues } from '../../schema/buildValidator.js';
 import { isValidCalendarDate, todayInZone } from '../../lib/time.js';
 import { ENVIRONMENTS, ORIGINS, PLATFORMS } from '../../schema/registry.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
-import { SUBMISSION_STATUSES, parseSubmissionRef } from './feedback.repo.js';
+import { PRIORITIES, SUBMISSION_STATUSES, parseSubmissionRef } from './feedback.repo.js';
+import { isTeamAction } from '../../lib/actor.js';
+import type { FastifyRequest } from 'fastify';
 import type { FeedbackService } from './feedback.service.js';
 
 const IsTest = z.enum(['true', 'false']).transform((v) => v === 'true').optional();
@@ -30,6 +32,9 @@ export const CommonQuery = z.object({
   ai_tag: z.string().max(60).optional(),
   event_code: z.string().max(20).optional(),
   kind_id: z.string().uuid().optional(),
+  /** An owner's email, 'me' for the signed-in person, or 'none' for unassigned. */
+  assigned_to: z.string().trim().toLowerCase().max(254).optional(),
+  priority: z.enum([...PRIORITIES, 'none']).optional(),
   user_id: z.coerce.number().int().positive().optional(),
   is_positive: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
   category: z.string().optional(),
@@ -53,6 +58,12 @@ const ListQuery = CommonQuery.extend({
 });
 
 const StatsQuery = CommonQuery.extend(DateRange);
+
+/** "assigned_to=me" becomes the signed-in person's email (or nobody's, for a key without one). */
+export function resolveMe<T extends { assigned_to?: string }>(q: T, req: FastifyRequest): T {
+  if (q.assigned_to !== 'me') return q;
+  return { ...q, assigned_to: req.actor?.email ?? 'nobody@invalid' };
+}
 
 function shiftDate(iso: string, days: number): string {
   const d = new Date(iso + 'T00:00:00Z');
@@ -81,9 +92,11 @@ export function registerFeedbackRoutes(
     service: FeedbackService; categories: CategoriesRepo; timeZone: string; uploads: ScreenshotUploads | null;
     /** The problems each listed report is confirmed as part of, so the list can show them. */
     kindsFor?: (ids: string[]) => Promise<Map<string, { id: string; ref: string; title: string }[]>>;
+    /** Whether an email belongs to an enabled dashboard account, for assigning. */
+    isAssignable?: (email: string) => Promise<boolean>;
   },
 ) {
-  const { service, categories, timeZone, uploads, kindsFor } = deps;
+  const { service, categories, timeZone, uploads, kindsFor, isAssignable } = deps;
   const uploadsDescriptor = () => ({
     screenshots: uploads
       ? { enabled: true, auth_endpoint: '/v1/uploads/screenshot-auth', upload_url: 'https://upload.imagekit.io/api/v1/files/upload', max_count: uploads.maxCount, max_bytes: uploads.maxBytes, accepted_types: [...SCREENSHOT_TYPES], url_endpoint: uploads.urlEndpoint, client_resize: SCREENSHOT_CLIENT_RESIZE }
@@ -115,7 +128,7 @@ export function registerFeedbackRoutes(
     const to = q.to ?? todayInZone(timeZone);
     const from = q.from ?? shiftDate(to, -29);
     if (from > to) throw AppError.validation([{ path: 'from', message: 'must not be after to' }], 'Invalid query');
-    return service.stats({ ...q, from, to });
+    return service.stats(resolveMe({ ...q, from, to }, req));
   });
 
   // ---- schema for form building -------------------------------------------
@@ -149,7 +162,7 @@ export function registerFeedbackRoutes(
   app.get('/v1/feedback', async (req) => {
     const parsed = ListQuery.safeParse(req.query);
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error), 'Invalid query');
-    const { ref, ...filters } = parsed.data;
+    const { ref, ...filters } = resolveMe(parsed.data, req);
     const page = await service.list({ ...filters, ref_no: ref });
     if (!kindsFor) return page;
     const kinds = await kindsFor(page.items.map((i) => i.id));
@@ -159,20 +172,29 @@ export function registerFeedbackRoutes(
   /** By uuid or by reference (LN-00042, ln-42, 42). */
   app.get<{ Params: { id: string } }>('/v1/feedback/:id', async (req) => service.get(req.params.id));
 
-  // ---- mark one submission as test / real, or move it through triage (admin) ----
+  // ---- triage: status, owner, priority, test flag (QC) ----
   app.patch<{ Params: { id: string } }>('/v1/admin/submissions/:id', { onRequest: requirePermission('manage_triage') }, async (req) => {
     const parsed = z.object({
       is_test: z.boolean().optional(),
       status: z.enum(SUBMISSION_STATUSES).optional(),
       status_note: z.string().trim().max(500).nullish(),
-    }).strict().refine((b) => b.is_test !== undefined || b.status !== undefined, {
-      message: 'send is_test, status, or both',
+      /** Any dashboard user's email; null unassigns. */
+      assigned_to: z.string().trim().toLowerCase().email().max(254).nullable().optional(),
+      priority: z.enum(PRIORITIES).nullable().optional(),
+    }).strict().refine((b) => Object.values(b).some((v) => v !== undefined), {
+      message: 'send is_test, status, assigned_to or priority',
     }).safeParse(req.body);
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
-    const { is_test, status, status_note } = parsed.data;
+    const { is_test, status, status_note, assigned_to, priority } = parsed.data;
+    const by = actorOf(req);
 
-    let dto = is_test === undefined ? null : await service.setTestFlag(req.params.id, is_test);
-    if (status !== undefined) dto = await service.setStatus(req.params.id, status, status_note ?? null, actorOf(req));
+    if (assigned_to && isAssignable && !(await isAssignable(assigned_to))) {
+      throw AppError.validation([{ path: 'assigned_to', message: `${assigned_to} has no dashboard account` }]);
+    }
+    let dto = is_test === undefined ? null : await service.setTestFlag(req.params.id, is_test, by);
+    if (assigned_to !== undefined) dto = await service.assign(req.params.id, assigned_to, by);
+    if (priority !== undefined) dto = await service.setPriority(req.params.id, priority, by);
+    if (status !== undefined) dto = await service.setStatus(req.params.id, status, status_note ?? null, by, isTeamAction(req));
     return dto ?? service.get(req.params.id);
   });
 

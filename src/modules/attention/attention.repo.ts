@@ -11,10 +11,12 @@ export interface OpenIssueRow {
   status: string;
   created_at: Date;
   age_days: number;
-  /** Days since anyone last did something with it (status change or linking it to a problem by hand). */
+  /** Days since the team last did something with it. */
   idle_days: number;
-  /** Nobody has done anything with it: still open, no status change, no Jira ticket, no manual link. */
+  /** Nobody on the team has done anything with it yet. */
   untouched: boolean;
+  assigned_to: string | null;
+  priority: string | null;
   ai_severity: string | null;
   ai_status: string | null;
   cx_ref: string | null;
@@ -30,6 +32,8 @@ export interface KindWithoutJiraRow {
   ref: string;
   title: string;
   status: string;
+  owner: string | null;
+  jira_key: string | null;
   reports: number;
   open_reports: number;
   people: number;
@@ -58,20 +62,14 @@ export class AttentionRepo {
           group by sk.kind_id
        )
        select s.id, s.ref, s.feature_key, s.origin, s.environment, s.status, s.created_at,
-              s.ai_severity, s.ai_status, s.cx_ref, s.jira_key, left(s.feedback_text, 160) as feedback_text,
+              s.ai_severity, s.ai_status, s.cx_ref, s.jira_key, s.assigned_to, s.priority, left(s.feedback_text, 160) as feedback_text,
               (extract(epoch from now() - s.created_at) / 86400)::float8 as age_days,
-              (extract(epoch from now() - greatest(s.created_at, s.status_changed_at, m.last_link)) / 86400)::float8 as idle_days,
-              (s.status = 'open' and s.status_changed_at is null and s.jira_key is null and m.last_link is null) as untouched,
+              (extract(epoch from now() - coalesce(s.last_activity_at, s.created_at)) / 86400)::float8 as idle_days,
+              (s.first_touched_at is null) as untouched,
               -- Ungrouped: just this reporter, and a customer counts twice, as they do on a problem.
               coalesce(ki.impact, case when s.origin = 'cx' then 2 else 1 end)::int as impact,
               coalesce(ki.kinds, '[]'::json) as kinds
          from luna_feedback.submissions s
-         left join lateral (
-           -- A person linking, confirming or rejecting a problem counts as touching the report.
-           select max(greatest(sk.created_at, sk.decided_at)) as last_link
-             from luna_feedback.submission_issue_kinds sk
-            where sk.submission_id = s.id and sk.source = 'manual'
-         ) m on true
          left join lateral (
            select max(kim.impact) as impact,
                   json_agg(json_build_object('ref', k.ref, 'title', k.title) order by k.ref) as kinds
@@ -89,14 +87,14 @@ export class AttentionRepo {
   }
 
   /**
-   * Problems big enough to deserve their own ticket but without one: at least `minReports` reports,
-   * or any report from a customer through CX, with at least one still open.
+   * Problems big enough to need an owner and their own ticket, but missing one or both: at least
+   * `minReports` reports, or any report from a customer through CX, with at least one still open.
    */
   async kindsWithoutJira(f: Partial<CommonFilters>, minReports: number): Promise<KindWithoutJiraRow[]> {
     const { where, vals } = buildWhere(f);
     vals.push(minReports);
     const r = await this.db.query<KindWithoutJiraRow>(
-      `select k.id, k.ref, k.title, k.status,
+      `select k.id, k.ref, k.title, k.status, k.owner, k.jira_key,
               count(*)::int as reports,
               count(*) filter (where s.status not in ${TERMINAL})::int as open_reports,
               count(distinct ${personSql()})::int as people,
@@ -106,8 +104,8 @@ export class AttentionRepo {
          join luna_feedback.submission_issue_kinds sk on sk.kind_id = k.id and sk.state = 'linked'
          join luna_feedback.submissions s on s.id = sk.submission_id
         ${where ? where + ' and' : 'where'} not s.is_positive
-          and not k.is_archived and k.status in ('open', 'watching') and k.jira_key is null
-        group by k.id, k.ref, k.title, k.status
+          and not k.is_archived and k.status in ('open', 'watching') and (k.jira_key is null or k.owner is null)
+        group by k.id, k.ref, k.title, k.status, k.owner, k.jira_key
        having count(*) filter (where s.status not in ${TERMINAL}) > 0
           and (count(*) >= $${vals.length} or count(*) filter (where s.origin = 'cx') > 0)
         order by count(*) filter (where s.origin = 'cx') desc, count(*) desc

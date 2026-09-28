@@ -5,7 +5,8 @@ import { buildCxSubmissionValidator, buildSubmissionValidator, zodIssues, type V
 import { DEFAULT_CX_ENVIRONMENT, SCHEMA_VERSION, isFeatureKey, type FeatureKey } from '../../schema/registry.js';
 import { redact } from '../diagnosis/logs/redact.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
-import { parseSubmissionRef, type FeedbackRepo, type NewSubmission, type SubmissionRow, type ListFilters, type StatsFilters, type Screenshot, type SubmissionStatus } from './feedback.repo.js';
+import { parseSubmissionRef, type FeedbackRepo, type NewSubmission, type Priority, type SubmissionRow, type ListFilters, type StatsFilters, type Screenshot, type SubmissionStatus } from './feedback.repo.js';
+import type { ActivityRepo, NoteVisibility } from '../activity/activity.repo.js';
 import type { FastifyBaseLogger } from 'fastify';
 
 /** Minimal hook so the feedback module does not depend on the diagnosis module directly. */
@@ -20,8 +21,11 @@ export interface DeviceHook { onCxSubmission(submissionId: string, log: FastifyB
  */
 export interface SimilarityHook { onNewIssue(submissionId: string, log: FastifyBaseLogger, wait: boolean): Promise<void> }
 
-export interface SubmissionDto extends Omit<SubmissionRow, 'created_at' | 'user_id' | 'idempotency_key' | 'ai_checked_at' | 'status_changed_at' | 'jira_synced_at'> {
+export interface SubmissionDto extends Omit<SubmissionRow, 'created_at' | 'user_id' | 'idempotency_key' | 'ai_checked_at' | 'status_changed_at' | 'jira_synced_at' | 'first_touched_at' | 'last_activity_at' | 'resolved_at'> {
   user_id: number | null;
+  first_touched_at: string | null;
+  last_activity_at: string | null;
+  resolved_at: string | null;
   created_at: string;      // ISO 8601 UTC
   created_at_ist: string;  // "YYYY-MM-DD HH:mm:ss +05:30"
   ai_checked_at: string | null;
@@ -33,6 +37,7 @@ export class FeedbackService {
   private diagnosis: DiagnosisHook | null = null;
   private device: DeviceHook | null = null;
   private similarity: SimilarityHook | null = null;
+  private activity: ActivityRepo | null = null;
   /** Screenshot URL validator + cleanup, wired when ImageKit is configured. */
   private screenshots: { isOurUrl: (u: string) => boolean; maxCount: number; deleteFile: (id: string) => Promise<boolean> } | null = null;
 
@@ -45,6 +50,7 @@ export class FeedbackService {
   setDiagnosisHook(hook: DiagnosisHook | null) { this.diagnosis = hook; }
   setDeviceHook(hook: DeviceHook | null) { this.device = hook; }
   setSimilarityHook(hook: SimilarityHook | null) { this.similarity = hook; }
+  setActivity(repo: ActivityRepo | null) { this.activity = repo; }
   setScreenshotSupport(s: { isOurUrl: (u: string) => boolean; maxCount: number; deleteFile: (id: string) => Promise<boolean> } | null) { this.screenshots = s; }
 
   toDto(row: SubmissionRow): SubmissionDto {
@@ -55,6 +61,9 @@ export class FeedbackService {
       ai_checked_at: row.ai_checked_at ? new Date(row.ai_checked_at).toISOString() : null,
       status_changed_at: row.status_changed_at ? new Date(row.status_changed_at).toISOString() : null,
       jira_synced_at: row.jira_synced_at ? new Date(row.jira_synced_at).toISOString() : null,
+      first_touched_at: row.first_touched_at ? new Date(row.first_touched_at).toISOString() : null,
+      last_activity_at: row.last_activity_at ? new Date(row.last_activity_at).toISOString() : null,
+      resolved_at: row.resolved_at ? new Date(row.resolved_at).toISOString() : null,
       created_at: row.created_at.toISOString(),
       created_at_ist: formatInZone(row.created_at, this.timeZone),
     };
@@ -164,6 +173,7 @@ export class FeedbackService {
 
   private async store(input: NewSubmission, log: FastifyBaseLogger | undefined, waitForSuggestion: boolean) {
     const { row, created } = await this.feedback.insert(input);
+    if (created && this.activity) await this.activity.record({ submissionId: row.id, actor: input.submitted_via, action: 'created', to: row.origin, touch: false });
     if (created && !row.is_positive && this.diagnosis && log) {
       // Queue + start after the response; never let diagnosis problems break the submit.
       try { await this.diagnosis.onNegativeSubmission(row.id, log); } catch (err) { log.error({ err }, 'could not queue diagnosis'); }
@@ -200,18 +210,73 @@ export class FeedbackService {
     return this.feedback.stats(filters);
   }
 
-  async setTestFlag(id: string, isTest: boolean): Promise<SubmissionDto> {
-    if (!z.string().uuid().safeParse(id).success) throw AppError.notFound('Submission not found');
-    const row = await this.feedback.setTestFlag(id, isTest);
+  async setTestFlag(id: string, isTest: boolean, by: string | null = null): Promise<SubmissionDto> {
+    const before = await this.row(id);
+    const row = await this.feedback.setTestFlag(before.id, isTest);
     if (!row) throw AppError.notFound('Submission not found');
+    if (before.is_test !== isTest) await this.activity?.record({ submissionId: row.id, actor: by, action: 'test_flag', from: String(before.is_test), to: String(isTest), touch: false });
     return this.toDto(row);
   }
 
-  async setStatus(id: string, status: SubmissionStatus, note: string | null, by: string | null): Promise<SubmissionDto> {
-    if (!z.string().uuid().safeParse(id).success) throw AppError.notFound('Submission not found');
-    const row = await this.feedback.setStatus(id, status, note, by);
+  /** `touch`: a team member did it, so it counts as a response and resets "stale". */
+  async setStatus(id: string, status: SubmissionStatus, note: string | null, by: string | null, touch = true): Promise<SubmissionDto> {
+    const before = await this.row(id);
+    const row = await this.feedback.setStatus(before.id, status, note, by);
     if (!row) throw AppError.notFound('Submission not found');
+    if (before.status !== status || note) await this.activity?.record({ submissionId: row.id, actor: by, action: 'status', from: before.status, to: status, note, touch });
     return this.toDto(row);
+  }
+
+  /** Give a report an owner (any dashboard user), or none. */
+  async assign(id: string, email: string | null, by: string | null): Promise<SubmissionDto> {
+    const before = await this.row(id);
+    const row = await this.feedback.setAssignee(before.id, email);
+    if (!row) throw AppError.notFound('Submission not found');
+    if (before.assigned_to !== email) await this.activity?.record({ submissionId: row.id, actor: by, action: 'assign', from: before.assigned_to, to: email, touch: true });
+    return this.toDto(row);
+  }
+
+  async setPriority(id: string, priority: Priority | null, by: string | null): Promise<SubmissionDto> {
+    const before = await this.row(id);
+    const row = await this.feedback.setPriority(before.id, priority);
+    if (!row) throw AppError.notFound('Submission not found');
+    if (before.priority !== priority) await this.activity?.record({ submissionId: row.id, actor: by, action: 'priority', from: before.priority, to: priority, touch: true });
+    return this.toDto(row);
+  }
+
+  /**
+   * A note on a report. On a CX report the text is redacted like everything else CX sends, since
+   * notes can quote the customer. `touch` is false for notes from the CX tool: a customer's reply is
+   * not the team responding.
+   */
+  async addNote(id: string, body: string, visibility: NoteVisibility, by: string | null, touch = true) {
+    const sub = await this.row(id);
+    if (!this.activity) throw AppError.validation([{ path: 'note', message: 'notes are not available' }]);
+    const note = sub.origin === 'cx' ? redact(body) : body;
+    return this.activity.record({ submissionId: sub.id, actor: by, action: 'note', note, visibility, touch });
+  }
+
+  /**
+   * Asks the reporter questions and parks the report as needs_info. On a CX report the questions
+   * are a customer-safe note, so the CX tool can relay them.
+   */
+  async askReporter(id: string, questions: string[], by: string | null): Promise<SubmissionDto> {
+    const sub = await this.row(id);
+    const text = questions.map((q) => `• ${q}`).join('\n');
+    await this.activity?.record({
+      submissionId: sub.id, actor: by, action: 'ask_reporter', note: `Questions for the ${sub.origin === 'cx' ? 'customer' : 'tester'}:\n${text}`,
+      visibility: sub.origin === 'cx' ? 'customer' : 'internal', touch: true,
+    });
+    return this.setStatus(sub.id, 'needs_info', null, by);
+  }
+
+  /** The reporter answered: a report parked as needs_info goes back to where it was. */
+  async reopenAfterReply(id: string, by: string | null): Promise<SubmissionDto | null> {
+    const sub = await this.row(id);
+    if (sub.status !== 'needs_info' || !this.activity) return null;
+    const back = (await this.activity.statusBeforeNeedsInfo(sub.id)) ?? 'open';
+    const status = (back === 'needs_info' ? 'open' : back) as SubmissionStatus;
+    return this.setStatus(sub.id, status, 'Reporter replied', by, false);
   }
 
   async countTestData() {

@@ -54,6 +54,13 @@ export interface SubmissionRow {
   status_note: string | null;
   status_changed_at: Date | null;
   status_changed_by: string | null;
+  /** Dashboard user (email) who owns it. */
+  assigned_to: string | null;
+  /** A person's call, p0 (drop everything) to p3; overrides the AI's severity for ordering and time limits. */
+  priority: string | null;
+  first_touched_at: Date | null;
+  last_activity_at: Date | null;
+  resolved_at: Date | null;
   jira_key: string | null;
   jira_url: string | null;
   jira_status: string | null;
@@ -67,10 +74,13 @@ export interface SubmissionRow {
 }
 
 /** Where a ticket sits in triage. QC owns the transitions; everyone else reads them. */
-export const SUBMISSION_STATUSES = ['open', 'triaged', 'in_progress', 'resolved', 'closed', 'wont_fix'] as const;
+export const SUBMISSION_STATUSES = ['open', 'triaged', 'in_progress', 'needs_info', 'resolved', 'closed', 'wont_fix'] as const;
 export type SubmissionStatus = (typeof SUBMISSION_STATUSES)[number];
 /** Statuses where nobody needs to do anything more. */
 export const TERMINAL_STATUSES: readonly SubmissionStatus[] = ['resolved', 'closed', 'wont_fix'];
+
+export const PRIORITIES = ['p0', 'p1', 'p2', 'p3'] as const;
+export type Priority = (typeof PRIORITIES)[number];
 
 /**
  * One person, for "how many people" counts. Internal reports always carry the Luna user id; a CX
@@ -115,6 +125,10 @@ export interface CommonFilters {
   origin?: Origin;
   /** Numeric part of a reference (LN-00042 -> 42). */
   ref_no?: number;
+  /** An owner's email, or 'none' for unassigned. */
+  assigned_to?: string;
+  /** p0..p3, or 'none' for no priority set. */
+  priority?: string;
   platform?: string;
   is_test?: boolean;
   status?: string;
@@ -176,6 +190,10 @@ export function buildWhere(f: Partial<StatsFilters>, alias = 's'): { where: stri
   if (f.environment) add(`${alias}.environment = ?`, f.environment);
   if (f.origin) add(`${alias}.origin = ?`, f.origin);
   if (f.ref_no !== undefined) add(`${alias}.ref_no = ?`, f.ref_no);
+  if (f.assigned_to === 'none') add(`${alias}.assigned_to is null`, undefined);
+  else if (f.assigned_to) add(`${alias}.assigned_to = ?`, f.assigned_to);
+  if (f.priority === 'none') add(`${alias}.priority is null`, undefined);
+  else if (f.priority) add(`${alias}.priority = ?`, f.priority);
   if (f.platform) add(`${alias}.platform = ?`, f.platform);
   if (f.is_test !== undefined) add(`${alias}.is_test = ?`, f.is_test);
   if (f.status) add(`${alias}.status = ?`, f.status);
@@ -198,7 +216,8 @@ export function buildWhere(f: Partial<StatsFilters>, alias = 's'): { where: stri
 const COLUMNS = `id, ref, feature_key, is_positive, occurred_on::text as occurred_on, user_id, email, issue_categories,
   created_at, feedback_text, device_serial, details, screenshots, environment, platform, app_version, build_number, build_channel, firmware_version, os_version,
   device_id, session_id, idempotency_key, schema_version, is_test,
-  origin, submitted_via, cx_ref, cx_url, cx_channel, cx_agent, cx_transcript, status, status_note, status_changed_at, status_changed_by,
+  origin, submitted_via, cx_ref, cx_url, cx_channel, cx_agent, cx_transcript,
+  assigned_to, priority, first_touched_at, last_activity_at, resolved_at, status, status_note, status_changed_at, status_changed_by,
   jira_key, jira_url, jira_status, jira_synced_at, jira_created_by, ai_status, ai_side, ai_severity, ai_event_codes, ai_checked_at`;
 
 export class FeedbackRepo {
@@ -270,10 +289,21 @@ export class FeedbackRepo {
   async setStatus(id: string, status: SubmissionStatus, note: string | null, by: string | null): Promise<SubmissionRow | undefined> {
     const r = await this.db.query<SubmissionRow>(
       `update luna_feedback.submissions
-          set status = $2, status_note = $3, status_changed_by = $4, status_changed_at = now()
+          set status = $2, status_note = $3, status_changed_by = $4, status_changed_at = now(),
+              resolved_at = case when $2 in ('resolved', 'closed', 'wont_fix') then now() else null end
         where id = $1 returning ${COLUMNS}`,
       [id, status, note, by],
     );
+    return r.rows[0];
+  }
+
+  async setAssignee(id: string, email: string | null): Promise<SubmissionRow | undefined> {
+    const r = await this.db.query<SubmissionRow>(`update luna_feedback.submissions set assigned_to = $2 where id = $1 returning ${COLUMNS}`, [id, email]);
+    return r.rows[0];
+  }
+
+  async setPriority(id: string, priority: Priority | null): Promise<SubmissionRow | undefined> {
+    const r = await this.db.query<SubmissionRow>(`update luna_feedback.submissions set priority = $2 where id = $1 returning ${COLUMNS}`, [id, priority]);
     return r.rows[0];
   }
 

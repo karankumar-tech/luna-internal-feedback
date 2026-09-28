@@ -49,6 +49,14 @@ export class UsersRepo {
     return r.rows[0];
   }
 
+  /** Everyone who can sign in: anyone may own a report. */
+  async assignable(): Promise<{ email: string; name: string | null; role: string }[]> {
+    const r = await this.db.query<{ email: string; name: string | null; role: string }>(
+      `select email, name, role from luna_feedback.dashboard_users where not is_disabled order by coalesce(name, email)`,
+    );
+    return r.rows;
+  }
+
   async list(): Promise<UserRow[]> {
     const r = await this.db.query<UserRow>(`select ${U_COLS} from luna_feedback.dashboard_users order by is_disabled, role, email`);
     return r.rows;

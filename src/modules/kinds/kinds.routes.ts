@@ -33,6 +33,8 @@ const PatchBody = KindBody.partial().extend({
   is_archived: z.boolean().optional(),
   /** The report to read first: an id or a reference (LN-00042); null clears it. */
   reference_submission_id: z.string().trim().max(60).nullable().optional(),
+  /** Any dashboard user's email; null clears it. */
+  owner: z.string().trim().toLowerCase().email().max(254).nullable().optional(),
 }).strict();
 
 function shiftDate(iso: string, days: number): string {
@@ -41,8 +43,8 @@ function shiftDate(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-export function registerKindRoutes(app: FastifyInstance, deps: { service: KindsService; feedback: FeedbackService; timeZone: string }) {
-  const { service, feedback, timeZone } = deps;
+export function registerKindRoutes(app: FastifyInstance, deps: { service: KindsService; feedback: FeedbackService; timeZone: string; isAssignable?: (email: string) => Promise<boolean> }) {
+  const { service, feedback, timeZone, isAssignable } = deps;
 
   /** Default window matches the dashboard's: the last 30 days. */
   function parseList(query: unknown) {
@@ -73,6 +75,9 @@ export function registerKindRoutes(app: FastifyInstance, deps: { service: KindsS
     const parsed = PatchBody.safeParse(req.body);
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
     const { key: _keyIsImmutable, reference_submission_id: reference, ...patch } = parsed.data;
+    if (patch.owner && isAssignable && !(await isAssignable(patch.owner))) {
+      throw AppError.validation([{ path: 'owner', message: `${patch.owner} has no dashboard account` }]);
+    }
     return service.update(req.params.id, {
       ...patch,
       description: patch.description ?? undefined,

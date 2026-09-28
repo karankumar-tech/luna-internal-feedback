@@ -178,6 +178,7 @@
           <select id="dStatus" title="Status of this recurring problem">
             <option value="open">Open</option><option value="watching">Watching</option><option value="fixed">Fixed</option><option value="wont_fix">Won't fix</option>
           </select>
+          <select id="dOwner" title="Who owns this problem"><option value="">No owner</option></select>
           <select id="dMergeSel" title="Fold this problem into another one: its reports, tags and Jira ticket move over"><option value="">Merge into…</option></select>
           <button class="btn small" id="btnMerge" type="button">Merge</button>
           <a class="jira-link" id="dJiraLink" href="#" target="_blank" rel="noopener" hidden></a>
@@ -275,7 +276,7 @@
       }
       const total = items.reduce((n, k) => n + k.count, 0) || 1;
       const t = el('table'); const head = el('tr');
-      for (const h of ['Issue kind', 'Reports', 'Share', 'People', 'Via CX', 'Still open', 'First seen', 'Last seen', 'Status', 'Jira']) head.appendChild(el('th', null, h));
+      for (const h of ['Issue kind', 'Reports', 'Share', 'People', 'Via CX', 'Still open', 'First seen', 'Last seen', 'Status', 'Owner', 'Jira']) head.appendChild(el('th', null, h));
       t.appendChild(head);
       const body = document.createElement('tbody');
       for (const k of items) {
@@ -295,6 +296,7 @@
         tr.appendChild(el('td', 'code', shortDate(k.first_seen)));
         tr.appendChild(el('td', 'code', shortDate(k.last_seen)));
         const st = el('td'); st.appendChild(el('span', 'kstatus ' + k.status, k.status.replace('_', ' '))); tr.appendChild(st);
+        tr.appendChild(el('td', null, k.owner ? k.owner.split('@')[0] : '—'));
         const j = el('td', 'code');
         if (k.jira_key) { const link = el('a', null, k.jira_key); link.href = k.jira_url || '#'; link.target = '_blank'; link.rel = 'noopener'; j.appendChild(link); } else j.textContent = '—';
         tr.appendChild(j);
@@ -366,6 +368,7 @@
     if (k.jira_key) { link.hidden = false; link.href = k.jira_url || '#'; link.textContent = k.jira_key; btn.hidden = true; }
     else { link.hidden = true; btn.hidden = !can('manage_jira'); }
     $('dStatus').disabled = !can('manage_kinds') || !!k.merged_into_ref;
+    renderOwner(k);
     $('dMergeSel').hidden = $('btnMerge').hidden = !can('manage_kinds') || !!k.merged_into_ref;
 
     renderTrend(k.trend || []);
@@ -481,6 +484,22 @@
     const b = $('btnAddMore'); b.disabled = true;
     try { const out = await api(`/v1/admin/kinds/${kindId}/reports`, { method: 'POST', body: JSON.stringify({ submission_ids: ids }) }); toast(`Added ${out.linked} report${out.linked === 1 ? '' : 's'} to ${out.kind.ref}`); loadDetail(); }
     catch (err) { toast('Could not add them: ' + err.message); b.disabled = false; }
+  });
+
+  // ---------- owner ----------
+  async function renderOwner(k) {
+    const sel = $('dOwner');
+    if (!state.people) { try { state.people = (await api('/v1/admin/assignees')).items || []; } catch { state.people = []; } }
+    const opts = [['', 'No owner'], ...state.people.map((p) => [p.email, p.name ? `${p.name} (${p.role})` : p.email])];
+    if (k.owner && !state.people.some((p) => p.email === k.owner)) opts.push([k.owner, k.owner]);
+    sel.replaceChildren(...opts.map(([v, l]) => { const o = el('option', null, l); o.value = v; return o; }));
+    sel.value = k.owner || '';
+    sel.disabled = !can('manage_kinds') || !!k.merged_into_ref;
+  }
+  $('dOwner').addEventListener('change', async (ev) => {
+    const owner = ev.target.value || null;
+    try { await api(`/v1/admin/kinds/${kindId}`, { method: 'PATCH', body: JSON.stringify({ owner }) }); toast(owner ? `Owner: ${owner}` : 'Owner cleared'); state.detail.owner = owner; }
+    catch (err) { toast('Could not set the owner: ' + err.message); renderOwner(state.detail); }
   });
 
   // ---------- merge ----------

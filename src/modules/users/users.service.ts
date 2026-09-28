@@ -62,6 +62,11 @@ export class UsersService {
     return (await this.repo.byEmail(email)) !== undefined;
   }
 
+  /** People a report can be assigned to: every enabled account. */
+  assignable() {
+    return this.repo.assignable();
+  }
+
   async list(): Promise<PublicUser[]> {
     return (await this.repo.list()).map((u) => toPublicUser(u, this.config.maxAgeDays));
   }

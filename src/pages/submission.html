@@ -180,6 +180,19 @@
   .verdict-ai.same { background: var(--ok-bg); color: #00583A; }
   .verdict-ai.related { background: var(--yellow-50); color: #545500; }
   .verdict-ai.different { background: var(--brief); color: var(--gray-dark); }
+  .hdr-sel { max-width: 200px; }
+  .timeline { list-style: none; margin: 10px 0 0; padding: 0; }
+  .timeline li { position: relative; padding: 8px 0 8px 18px; border-bottom: 1px solid var(--border-ghost); font-size: 13px; line-height: 18px; }
+  .timeline li::before { content: ''; position: absolute; left: 4px; top: 14px; width: 6px; height: 6px; border-radius: 50%; background: var(--gray-light); }
+  .timeline li.note::before { background: var(--blue); }
+  .timeline li.note.customer::before { background: var(--magenta); }
+  .timeline .who { font-weight: 600; }
+  .timeline .when { color: var(--gray-mid); font-family: var(--mono); font-size: 11px; margin-left: 6px; }
+  .timeline .body { margin-top: 4px; white-space: pre-wrap; word-break: break-word; background: #FAFAF7; border-radius: var(--r-m); padding: 6px 10px; }
+  .timeline .shared { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: #8A0044; background: var(--magenta-50); padding: 1px 5px; border-radius: var(--r-xs); margin-left: 6px; }
+  .composer { display: grid; gap: 6px; margin-top: 8px; }
+  .composer textarea { width: 100%; min-height: 60px; resize: vertical; border: 1px solid var(--gray-light); border-radius: var(--r-m); padding: 8px 10px; font: inherit; }
+  .composer .row { display: flex; gap: 6px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
   .kind-add select { flex: 1 1 200px; min-width: 0; }
 
   /* follow-up chat */
@@ -207,6 +220,10 @@
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <label class="overline" for="statusSel" style="letter-spacing:.1em">Status</label>
       <select id="statusSel" title="Move this ticket through triage"></select>
+      <label class="overline" for="ownerSel" style="letter-spacing:.1em">Owner</label>
+      <select id="ownerSel" class="hdr-sel" title="Who owns this report"><option value="">Unassigned</option></select>
+      <label class="overline" for="prioSel" style="letter-spacing:.1em">Priority</label>
+      <select id="prioSel" title="A person's call; overrides the AI's severity"><option value="">None</option><option value="p0">P0 · now</option><option value="p1">P1 · today</option><option value="p2">P2 · normal</option><option value="p3">P3 · later</option></select>
       <a class="jira-link" id="jiraLink" href="#" target="_blank" rel="noopener" hidden></a>
       <button class="btn small" id="btnJira" type="button" hidden>Create Jira ticket</button>
       <button class="btn small" id="btnFlag" type="button" hidden>Mark as test</button>
@@ -290,6 +307,23 @@
             <span class="left" id="chatHint">Press ⌘/Ctrl + Enter to send.</span>
           </div>
         </section>
+        <section class="card" id="activityCard">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
+            <h2>Activity &amp; notes</h2>
+            <span class="tertiary" style="font-size:12px" id="activitySub"></span>
+          </div>
+          <div class="composer" id="composer" hidden>
+            <textarea id="noteInput" placeholder="Add a note: what you found, what you asked, what happens next"></textarea>
+            <div class="row">
+              <select id="noteVis" title="Who the note is for">
+                <option value="internal">Team only</option>
+                <option value="customer">Customer-safe: CX can pass it on</option>
+              </select>
+              <button class="btn small primary" id="btnNote" type="button">Add note</button>
+            </div>
+          </div>
+          <ul class="timeline" id="timeline"></ul>
+        </section>
       </div>
     </div>
 
@@ -323,7 +357,7 @@
   // The page opens by reference (/dashboard/submissions/LN-00042) or by id; every API call below uses the id.
   const param = decodeURIComponent(location.pathname.split('/').filter(Boolean).pop() || '');
   let id = null;
-  const state = { sub: null, diag: null, schema: null, files: null, pollTimer: null, kinds: [], allKinds: [], chat: null, jira: null, me: null, logEnvs: null, similar: null };
+  const state = { sub: null, diag: null, schema: null, files: null, pollTimer: null, kinds: [], allKinds: [], chat: null, jira: null, me: null, logEnvs: null, similar: null, people: null, activity: [] };
   const can = (p) => !!(state.me && state.me.permissions && state.me.permissions[p]);
   let toastT; const toast = (m) => { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', 2400); };
 
@@ -339,7 +373,7 @@
   const istStamp = (iso) => { if (!iso) return '—'; const d = new Date(iso); return new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).format(d) + ' IST'; };
   const SIDE_LABEL = { firmware: 'Firmware', sdk: 'Ring SDK', app: 'App', backend: 'Backend', user_expectation: 'User expectation', not_a_bug: 'Not a bug', insufficient_logs: 'Insufficient logs' };
   const STATUS_TEXT = { pending: 'Queued', running: 'Diagnosing…', waiting_logs: 'Waiting for logs', done: 'Done', no_logs: 'No logs', failed: 'Failed' };
-  const TRIAGE = [['open', 'Open'], ['triaged', 'Triaged'], ['in_progress', 'In progress'], ['resolved', 'Resolved'], ['closed', 'Closed'], ['wont_fix', "Won't fix"]];
+  const TRIAGE = [['open', 'Open'], ['triaged', 'Triaged'], ['in_progress', 'In progress'], ['needs_info', 'Needs info'], ['resolved', 'Resolved'], ['closed', 'Closed'], ['wont_fix', "Won't fix"]];
 
   // ---------- load ----------
   async function load() {
@@ -359,6 +393,8 @@
     // Independent of each other and of the diagnosis; none of them should hold up the page.
     loadKinds();
     loadSimilar();
+    loadActivity();
+    loadAssignees();
     loadJiraStatus();
     loadCatalog();
     await refreshDiagnosis();
@@ -368,6 +404,9 @@
   /** Hide what this role cannot do; the server refuses it either way. */
   function applyRole() {
     $('statusSel').disabled = !can('manage_triage');
+    $('ownerSel').disabled = !can('manage_triage');
+    $('prioSel').disabled = !can('manage_triage');
+    $('composer').hidden = !can('add_notes');
     $('statusSel').title = can('manage_triage') ? 'Move this ticket through triage' : 'Your role can see the status but not change it';
     $('btnFlag').hidden = !can('manage_triage');
     $('btnDiagnose').hidden = !can('run_diagnosis');
@@ -400,6 +439,7 @@
     const envWrap = el('span'); envWrap.appendChild(el('span', 'env ' + (r.environment || 'stage'), r.environment || 'stage')); meta.appendChild(envWrap);
     if (r.status_changed_at) { const s = el('span', 'tertiary'); s.textContent = `${(TRIAGE.find((t) => t[0] === r.status) || [, r.status])[1]} by ${r.status_changed_by || 'someone'} · ${istStamp(r.status_changed_at)}`; meta.appendChild(s); }
     renderStatusSelect();
+    renderOwnerPriority();
     renderJira();
     $('quote').replaceChildren(...linkRefs(r.feedback_text || '(no text)'));
     const cats = $('cats'); cats.replaceChildren(); for (const c of r.issue_categories) cats.appendChild(el('span', 'chip', catLabel(c)));
@@ -463,9 +503,92 @@
     try {
       state.sub = await api(`/v1/admin/submissions/${id}`, { method: 'PATCH', body: JSON.stringify({ status: next }) });
       toast('Status set to ' + (TRIAGE.find((t) => t[0] === next) || [, next])[1]);
-      renderSubmission();
+      renderSubmission(); loadActivity();
     } catch (err) { sel.value = previous; toast('Could not update status: ' + err.message); }
     finally { sel.disabled = false; }
+  });
+
+  // ---------- owner & priority ----------
+  async function loadAssignees() {
+    try { state.people = (await api('/v1/admin/assignees')).items || []; } catch { state.people = []; }
+    renderOwnerPriority();
+    if (state.activity && state.activity.length) renderTimeline();
+  }
+  function renderOwnerPriority() {
+    const r = state.sub; if (!r) return;
+    const sel = $('ownerSel'); const people = state.people || [];
+    const options = [['', 'Unassigned'], ...people.map((p) => [p.email, p.name ? `${p.name} (${p.role})` : p.email])];
+    if (r.assigned_to && !people.some((p) => p.email === r.assigned_to)) options.push([r.assigned_to, r.assigned_to]);
+    sel.replaceChildren(...options.map(([v, l]) => { const o = el('option', null, l); o.value = v; return o; }));
+    sel.value = r.assigned_to || '';
+    $('prioSel').value = r.priority || '';
+  }
+  async function patchSub(body, done) {
+    try { state.sub = await api(`/v1/admin/submissions/${id}`, { method: 'PATCH', body: JSON.stringify(body) }); renderSubmission(); loadActivity(); toast(done); }
+    catch (err) { renderOwnerPriority(); toast('Could not update: ' + err.message); }
+  }
+  $('ownerSel').addEventListener('change', (ev) => { const v = ev.target.value || null; patchSub({ assigned_to: v }, v ? `Assigned to ${v}` : 'Unassigned'); });
+  $('prioSel').addEventListener('change', (ev) => { const v = ev.target.value || null; patchSub({ priority: v }, v ? `Priority ${v.toUpperCase()}` : 'Priority cleared'); });
+
+  async function askReporter(questions) {
+    if (!confirm(`Send these ${questions.length} question(s) ${state.sub.origin === 'cx' ? 'to the customer through CX' : 'to the tester'} and mark the report Needs info?\n\n• ${questions.join('\n• ')}`)) return;
+    try { state.sub = await api(`/v1/admin/submissions/${id}/ask-reporter`, { method: 'POST', body: JSON.stringify({ questions }) }); renderSubmission(); renderDiagnosis(); loadActivity(); toast('Asked. The report is waiting on the reporter.'); }
+    catch (err) { toast('Could not ask: ' + err.message); }
+  }
+
+  // ---------- activity & notes ----------
+  const ACTION_TEXT = {
+    created: (e) => e.to_value === 'cx' ? 'filed it from the CX tool' : 'reported it',
+    status: (e) => `moved it ${label(e.from_value)} → ${label(e.to_value)}`,
+    assign: (e) => e.to_value ? `assigned it to ${nameOf(e.to_value)}` : 'unassigned it',
+    priority: (e) => e.to_value ? `set priority ${e.to_value.toUpperCase()}` : 'cleared the priority',
+    note: () => 'added a note',
+    ask_reporter: () => 'asked the reporter',
+    test_flag: (e) => e.to_value === 'true' ? 'marked it as test data' : 'marked it as real',
+    kind_link: (e) => `put it under ${e.to_value}`,
+    kind_suggest: (e) => `suggested ${e.to_value}`,
+    kind_confirm: (e) => `confirmed ${e.to_value}`,
+    kind_reject: (e) => `said it is not ${e.to_value}`,
+    jira: (e) => `filed Jira ${e.to_value}`,
+    diagnosis: (e) => `ran a diagnosis (${e.to_value})`,
+  };
+  const label = (st) => (TRIAGE.find((t) => t[0] === st) || [, st || '—'])[1];
+  const nameOf = (email) => { const p = (state.people || []).find((x) => x.email === email); return p && p.name ? p.name : email; };
+  const whoOf = (actor) => actor === 'app' ? 'The app' : actor === 'cx_tool' ? 'The CX tool' : actor === 'ai' ? 'The AI' : actor === 'rule' ? 'The matcher'
+    : actor && actor.startsWith('cx_tool · ') ? 'CX tool · ' + actor.slice(10) : actor ? nameOf(actor) : 'Someone';
+
+  async function loadActivity() {
+    try { state.activity = (await api(`/v1/feedback/${id}/activity`)).items || []; } catch { state.activity = []; }
+    renderTimeline();
+  }
+  function renderTimeline() {
+    const list = $('timeline'); list.replaceChildren();
+    const items = [...state.activity].reverse();
+    const notes = items.filter((e) => e.note && (e.action === 'note' || e.action === 'ask_reporter')).length;
+    $('activitySub').textContent = `${items.length} event${items.length === 1 ? '' : 's'}${notes ? ` · ${notes} note${notes === 1 ? '' : 's'}` : ''}`;
+    for (const e of items) {
+      const isNote = e.action === 'note' || e.action === 'ask_reporter';
+      const li = el('li', isNote ? 'note' + (e.visibility === 'customer' ? ' customer' : '') : null);
+      const head = el('div'); head.appendChild(el('span', 'who', whoOf(e.actor))); head.appendChild(document.createTextNode(' ' + (ACTION_TEXT[e.action] ? ACTION_TEXT[e.action](e) : e.action)));
+      if (isNote && e.visibility === 'customer') head.appendChild(el('span', 'shared', 'customer-safe'));
+      head.appendChild(el('span', 'when', istStamp(e.created_at)));
+      li.appendChild(head);
+      if (e.note) { const b = el('div', 'body'); b.replaceChildren(...linkRefs(e.note)); li.appendChild(b); }
+      list.appendChild(li);
+    }
+  }
+  $('btnNote').addEventListener('click', async () => {
+    const body = $('noteInput').value.trim(); if (!body) { toast('Write something first'); return; }
+    const b = $('btnNote'); b.disabled = true;
+    const vis = $('noteVis').value;
+    try {
+      await api(`/v1/admin/submissions/${id}/notes`, { method: 'POST', body: JSON.stringify({ body, visibility: vis }) });
+      // Back to "Team only" after every note, so the next one is never shared with a customer by accident.
+      $('noteInput').value = ''; $('noteVis').value = 'internal';
+      await loadActivity(); toast(vis === 'customer' ? 'Added. CX can pass it on.' : 'Note added');
+    }
+    catch (err) { toast('Could not add the note: ' + err.message); }
+    finally { b.disabled = false; }
   });
 
   // ---------- Jira ----------
@@ -795,7 +918,16 @@
       });
       body.appendChild(ul);
     }
-    if (d.questions_for_tester && d.questions_for_tester.length) { body.appendChild(el('h3', null, 'Questions for the tester')); const ul = el('ul', 'q'); for (const q of d.questions_for_tester) ul.appendChild(el('li', null, q)); body.appendChild(ul); }
+    if (d.questions_for_tester && d.questions_for_tester.length) {
+      body.appendChild(el('h3', null, state.sub.origin === 'cx' ? 'Questions for the customer' : 'Questions for the tester'));
+      const ul = el('ul', 'q'); for (const q of d.questions_for_tester) ul.appendChild(el('li', null, q)); body.appendChild(ul);
+      if (can('manage_triage') && state.sub.status !== 'needs_info') {
+        const ask = el('button', 'btn small', state.sub.origin === 'cx' ? 'Ask the customer (through CX)' : 'Ask the tester');
+        ask.type = 'button'; ask.title = 'Posts these questions as a note and sets the status to Needs info';
+        ask.addEventListener('click', () => askReporter(d.questions_for_tester));
+        body.appendChild(ask);
+      }
+    }
     if (d.fw_version_seen || d.app_version_seen) {
       const mism = [];
       if (d.fw_version_seen && state.sub.firmware_version && d.fw_version_seen !== state.sub.firmware_version) mism.push(`firmware ${state.sub.firmware_version} reported vs ${d.fw_version_seen} in logs`);

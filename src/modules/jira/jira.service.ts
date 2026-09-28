@@ -15,6 +15,8 @@ export interface JiraDeps {
   categories: CategoriesRepo;
   publicBaseUrl: string;
   log: FastifyBaseLogger;
+  /** Records the ticket in the report's history. */
+  activity?: { record(e: { submissionId: string; actor: string | null; action: 'jira'; to: string; touch: boolean }): Promise<unknown> } | null;
 }
 
 /** Shown wherever a Jira action is attempted before the credentials exist. */
@@ -134,6 +136,7 @@ export class JiraService {
 
     const issue = await client.createIssue({ summary, description, labels });
     await this.d.feedback.setJira(sub.id, { key: issue.key, url: issue.url, status: issue.status, by });
+    await this.d.activity?.record({ submissionId: sub.id, actor: by, action: 'jira', to: issue.key, touch: true });
     this.d.log.info({ submissionId: sub.id, jira: issue.key }, 'jira issue created');
     return { issue, created: true };
   }

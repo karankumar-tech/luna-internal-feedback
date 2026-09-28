@@ -38,6 +38,8 @@ import { registerAttentionRoutes } from './modules/attention/attention.routes.js
 import { SimilarRepo } from './modules/similar/similar.repo.js';
 import { SimilarService } from './modules/similar/similar.service.js';
 import { registerSimilarRoutes } from './modules/similar/similar.routes.js';
+import { ActivityRepo } from './modules/activity/activity.repo.js';
+import { registerActivityRoutes } from './modules/activity/activity.routes.js';
 import { runInBackground } from './modules/diagnosis/background.js';
 import type { Environment } from './schema/registry.js';
 
@@ -102,6 +104,10 @@ export function buildApp(opts: BuildOptions = {}): App {
   const service = new FeedbackService(feedbackRepo, categories, config.APP_TIMEZONE);
   const kindsRepo = new KindsRepo(db);
   const kinds = new KindsService(kindsRepo);
+  // Every change to a report, and every note, lands in its history.
+  const activity = new ActivityRepo(db);
+  service.setActivity(activity);
+  kinds.setActivity(activity);
 
   const diagnosisRepo = new DiagnosisRepo(db);
   // Stage and production logs live on different hosts behind the same key. UAT has none until its
@@ -154,7 +160,7 @@ export function buildApp(opts: BuildOptions = {}): App {
       : null;
   const jira = new JiraService({
     client: jiraClient, feedback: feedbackRepo, diagnoses: diagnosisRepo, kinds: kindsRepo, categories,
-    publicBaseUrl: config.PUBLIC_BASE_URL, log: app.log,
+    publicBaseUrl: config.PUBLIC_BASE_URL, log: app.log, activity,
   });
   app.jira = jira;
   if (!jira.enabled) app.log.info({ missing: jira.status().missing_env }, 'Jira integration idle: set these to enable ticket creation');
@@ -188,18 +194,20 @@ export function buildApp(opts: BuildOptions = {}): App {
   else app.log.warn('Screenshot uploads disabled: set IMAGEKIT_PUB_KEY and IMAGEKIT_PRI_KEY to enable');
   registerFeedbackRoutes(app, {
     service, categories, timeZone: config.APP_TIMEZONE, kindsFor: (ids) => kindsRepo.forSubmissions(ids),
+    isAssignable: async (email) => (await users.assignable()).some((u) => u.email === email),
     uploads: imagekit ? { publicKey: imagekit.publicKey, urlEndpoint: imagekit.urlEndpoint, folder: imagekit.folder, maxBytes: config.SCREENSHOT_MAX_BYTES, maxCount: config.SCREENSHOT_MAX_COUNT, authParams: () => imagekit.authParams() } : null,
   });
   registerPageRoutes(app, { dashboardKey: config.DASHBOARD_KEY, sessionSecret, sessionDays: config.DASHBOARD_SESSION_DAYS, keyLogin: config.DASHBOARD_KEY_LOGIN, users });
   registerUserRoutes(app, { service: users });
   registerAdminRoutes(app, { categories });
-  registerDiagnosisRoutes(app, { service: diagnosis, repo: diagnosisRepo });
-  registerKindRoutes(app, { service: kinds, feedback: service, timeZone: config.APP_TIMEZONE });
+  registerDiagnosisRoutes(app, { service: diagnosis, repo: diagnosisRepo, activity });
+  registerKindRoutes(app, { service: kinds, feedback: service, timeZone: config.APP_TIMEZONE, isAssignable: async (email) => (await users.assignable()).some((u) => u.email === email) });
   registerSimilarRoutes(app, { service: similar });
+  registerActivityRoutes(app, { feedback: service, activity, kinds, assignable: () => users.assignable() });
   registerJiraRoutes(app, { service: jira });
   registerChatRoutes(app, { service: chat });
   registerAnalyticsRoutes(app, { repo: new AnalyticsRepo(db), timeZone: config.APP_TIMEZONE });
-  registerCxRoutes(app, { feedback: service, kinds, publicBaseUrl: config.PUBLIC_BASE_URL });
+  registerCxRoutes(app, { feedback: service, kinds, activity, publicBaseUrl: config.PUBLIC_BASE_URL });
   registerAttentionRoutes(app, { service: new AttentionService(new AttentionRepo(db)) });
 
   app.addHook('onClose', async () => {

@@ -32,6 +32,8 @@ export const PERMISSIONS = {
   manage_kinds: ['admin', 'qc', 'developer'],
   /** Say "this report looks like that problem" for someone who can manage kinds to confirm. */
   suggest_kinds: ['admin', 'qc', 'developer', 'cx'],
+  /** Write notes on a report: internal, or customer-safe for CX to pass on. */
+  add_notes: ['admin', 'qc', 'developer', 'cx'],
   /** Spend money: run a diagnosis or send a chat message to the model. CX may, on the reports they look at. */
   run_diagnosis: ['admin', 'qc', 'developer', 'cx'],
   /** Record agreement with a verdict. */
@@ -47,6 +49,14 @@ export type Permission = keyof typeof PERMISSIONS;
 export function can(actor: Actor | undefined, permission: Permission): boolean {
   if (!actor) return false;
   return (PERMISSIONS[permission] as readonly Role[]).includes(actor.role);
+}
+
+/**
+ * Whether a request is someone on the team acting on a report (a dashboard session, or automation
+ * with the admin key). Only those start the response clock; the app, the CX tool and cron do not.
+ */
+export function isTeamAction(req: FastifyRequest): boolean {
+  return req.actor?.via === 'session' || req.actor?.via === 'admin_key';
 }
 
 /** Short label stored on audited rows: an email once accounts exist, else how they signed in. */

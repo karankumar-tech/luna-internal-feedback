@@ -204,12 +204,25 @@ diagnosis puts it back. CX can suggest a problem for QC to confirm. A problem's 
 reports like it, lets you pick the reference report, and merges duplicates (the merged title becomes
 an alias, so the AI stops recreating it). Scoring lives in `src/modules/similar/similarity.ts`.
 
+## Owners, priority, notes and history
+
+Every report keeps a history: when it arrived, every status, owner and priority change, problem
+links, Jira tickets, diagnosis runs and notes, with who did it. Any dashboard user can own a report
+or a problem; **My queue** on the dashboard shows yours. QC sets a priority (P0–P3) that overrides
+the AI's severity. Notes are team-only or customer-safe; CX users can write both, and the CX tool
+reads the latest customer-safe one and can post replies back. **Needs info** parks a report while
+waiting on the tester or customer (Ask reporter posts the AI's questions and sets it); a reply
+through the CX tool puts it back where it was. The dashboard list does bulk status, owner and priority
+changes. Analytics shows time to first response and to resolve, per source, and time in each status.
+
 ## Needs attention
 
 `/dashboard/attention` (`GET /v1/attention`) lists what someone should look at now: reports nobody
 has touched (CX after 1 day, internal after 3), reports that went stale (CX 3 days, internal 7),
-every open CX report, stuck diagnoses, and problems big enough for a Jira ticket that have none.
-Critical severity halves the limits. Within a list, items sort by severity × (1 + log2(people
+every open CX report, reports waiting on the reporter for over a week, stuck diagnoses, and big
+problems with no owner or no Jira ticket. A priority replaces the limits: P0 after 4 hours untouched
+(1 day without progress), P1 after 1 day (3 days), P3 after twice the usual time; without one,
+critical AI severity halves them. Within a list, items sort by severity × (1 + log2(people
 affected)) × (1 + age / 7), where a customer counts twice. The limits live in
 `src/modules/attention/attention.service.ts`.
 

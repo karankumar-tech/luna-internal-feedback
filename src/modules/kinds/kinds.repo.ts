@@ -36,6 +36,8 @@ export interface IssueKindRow {
   aliases: string[];
   /** Set on a problem that was merged away: where its reports went. */
   merged_into: string | null;
+  /** Dashboard user (email) who owns the problem. */
+  owner: string | null;
   created_by: string | null;
   created_at: Date;
   updated_at: Date;
@@ -84,7 +86,7 @@ export interface KindLink {
 }
 
 const K_COLS = `k.id, k.ref, k.key, k.title, k.description, k.feature_key, k.tags, k.event_codes, k.status, k.severity,
-  k.jira_key, k.jira_url, k.is_archived, k.reference_submission_id, k.aliases, k.merged_into, k.created_by, k.created_at, k.updated_at`;
+  k.jira_key, k.jira_url, k.is_archived, k.reference_submission_id, k.aliases, k.merged_into, k.owner, k.created_by, k.created_at, k.updated_at`;
 
 /** Only confirmed links count toward a problem's size. */
 const LINKED = `sk.state = 'linked'`;
@@ -214,7 +216,7 @@ export class KindsRepo {
     return r.rows[0]!;
   }
 
-  async update(id: string, patch: Partial<Pick<IssueKindRow, 'title' | 'description' | 'feature_key' | 'tags' | 'event_codes' | 'status' | 'severity' | 'is_archived' | 'jira_key' | 'jira_url' | 'reference_submission_id'>>): Promise<IssueKindRow | undefined> {
+  async update(id: string, patch: Partial<Pick<IssueKindRow, 'title' | 'description' | 'feature_key' | 'tags' | 'event_codes' | 'status' | 'severity' | 'is_archived' | 'jira_key' | 'jira_url' | 'reference_submission_id' | 'owner'>>): Promise<IssueKindRow | undefined> {
     const sets: string[] = [];
     const vals: unknown[] = [id];
     for (const [col, value] of Object.entries(patch)) {

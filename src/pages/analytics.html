@@ -215,6 +215,17 @@
 
     <div class="grid2">
       <div class="card">
+        <div class="card-head"><div><h2>How fast the team responds</h2><div class="sub">Hours from a report arriving to the team's first action, and to it being resolved. Median, and the slowest tenth (p90).</div></div></div>
+        <div id="tResponse"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div><h2>Time in each status</h2><div class="sub">How long reports sit in each open status, from the activity log. History before the log started is partial.</div></div></div>
+        <div id="tInStatus"></div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
         <div class="card-head"><div><h2>Triage</h2><div class="sub">Where reported issues sit right now</div></div></div>
         <div class="chart" id="cStatus"></div>
       </div>
@@ -252,7 +263,9 @@
     { key: 'not_a_bug', label: 'Not a bug', color: '#C9C7C0' },
     { key: 'insufficient_logs', label: 'Insufficient logs', color: '#F5F85D' },
   ];
-  const STATUS_LABEL = { open: 'Open', triaged: 'Triaged', in_progress: 'In progress', resolved: 'Resolved', closed: 'Closed', wont_fix: "Won't fix" };
+  const STATUS_LABEL = { open: 'Open', triaged: 'Triaged', in_progress: 'In progress', needs_info: 'Needs info', resolved: 'Resolved', closed: 'Closed', wont_fix: "Won't fix" };
+  /** "40 min", "5.2 h", "3.1 d" */
+  const hrs = (h) => h == null ? '—' : h < 1 ? Math.max(1, Math.round(h * 60)) + ' min' : h < 48 ? h.toFixed(1) + ' h' : (h / 24).toFixed(1) + ' d';
   const state = { data: null, filters: null };
 
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; };
@@ -418,8 +431,25 @@
 
     barRows($('cStatus'), d.by_status.map((s) => ({
       label: STATUS_LABEL[s.status] || s.status, value: s.count,
-      color: s.status === 'open' ? CRIT : s.status === 'triaged' || s.status === 'in_progress' ? '#EF7432' : OK,
+      color: s.status === 'open' ? CRIT : s.status === 'triaged' || s.status === 'in_progress' || s.status === 'needs_info' ? '#EF7432' : OK,
     })), { label: 'Triage status', padL: 120, rowH: 28, empty: 'No issues in this window.' });
+
+    table($('tResponse'), [
+      { label: 'Source', render: (r) => r.origin === 'cx' ? 'CX' : 'Internal' },
+      { label: 'Issues', cls: 'num', render: (r) => fmtN(r.issues) },
+      { label: 'Responded', cls: 'num', render: (r) => `${fmtN(r.touched)} (${pct(r.touched, r.issues)})` },
+      { label: 'First response', cls: 'num', render: (r) => hrs(r.first_response_p50_h) },
+      { label: 'p90', cls: 'num', render: (r) => hrs(r.first_response_p90_h) },
+      { label: 'Resolved', cls: 'num', render: (r) => fmtN(r.resolved) },
+      { label: 'To resolve', cls: 'num', render: (r) => hrs(r.resolve_p50_h) },
+      { label: 'p90', cls: 'num', render: (r) => hrs(r.resolve_p90_h) },
+    ], d.response_times || [], { empty: 'No issues in this window.' });
+    table($('tInStatus'), [
+      { label: 'Status', render: (r) => STATUS_LABEL[r.status] || r.status },
+      { label: 'Times', cls: 'num', render: (r) => fmtN(r.stints) },
+      { label: 'Median', cls: 'num', render: (r) => hrs(r.p50_hours) },
+      { label: 'Average', cls: 'num', render: (r) => hrs(r.avg_hours) },
+    ], d.time_in_status || [], { empty: 'No status history in this window yet.' });
 
     table($('tReporters'), [
       { label: 'Who', cls: 'code', render: (r) => r.user_id ? String(r.user_id) : r.device_serial || '—' },
