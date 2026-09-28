@@ -186,7 +186,7 @@ export function buildWhere(f: Partial<StatsFilters>, alias = 's'): { where: stri
   if (f.ai_severity) add(`${alias}.ai_severity = ?`, f.ai_severity);
   if (f.event_code) add(`? = any(${alias}.ai_event_codes)`, f.event_code);
   if (f.ai_tag) add(`exists (select 1 from luna_feedback.diagnoses dt where dt.submission_id = ${alias}.id and ? = any(dt.tags))`, f.ai_tag);
-  if (f.kind_id) add(`exists (select 1 from luna_feedback.submission_issue_kinds sk where sk.submission_id = ${alias}.id and sk.kind_id = ?::uuid)`, f.kind_id);
+  if (f.kind_id) add(`exists (select 1 from luna_feedback.submission_issue_kinds sk where sk.submission_id = ${alias}.id and sk.kind_id = ?::uuid and sk.state = 'linked')`, f.kind_id);
   if (f.user_id !== undefined) add(`${alias}.user_id = ?`, f.user_id);
   if (f.from) add(`${alias}.occurred_on >= ?`, f.from);
   if (f.to) add(`${alias}.occurred_on <= ?`, f.to);
@@ -412,7 +412,7 @@ export class FeedbackRepo {
       this.db.query<{ id: string; key: string; title: string; count: number }>(
         `select k.id, k.key, k.title, count(*)::int as count
          from luna_feedback.submissions s
-         join luna_feedback.submission_issue_kinds sk on sk.submission_id = s.id
+         join luna_feedback.submission_issue_kinds sk on sk.submission_id = s.id and sk.state = 'linked'
          join luna_feedback.issue_kinds k on k.id = sk.kind_id
          ${where} group by k.id, k.key, k.title order by count desc limit 10`, vals),
       this.db.query<{ checked: number; with_verdict: number; waiting: number; failed: number }>(

@@ -597,6 +597,14 @@ owner or assignee); and the CX line in the prompt. Also fixed along the way: the
 review and category-edit routes had no role check (any signed-in role could call them). Not in
 Phase 1 as planned: re-tagging origin (see §1.3), and the log snapshot at intake, which stays in Phase 6.
 
+**Phase 2 status (2026-09-28, branch `cx-phase-2`, not merged):** built and tested locally. Migration
+`20260929000000_same_issue_links.sql` (link states, reference report, aliases, merged_into,
+similarity_checks). Similar-reports panel, mark as same, counts on reports and list rows, intake
+suggestions (CX API `likely_problem`), confirm / reject with rejections remembered, CX suggestions,
+merge, reference report, "more reports like this" on a problem, and the AI same-issue check pulled
+forward from Phase 5. Deviations: wording similarity is computed in the app (pg_trgm's algorithm,
+no database extension); a problem's Jira ticket is not updated with new counts yet.
+
 | phase | scope | size |
 |---|---|---|
 | **1** | Origin + CX API (`/v1/cx/feedback`, `CX_API_KEY`, serial required, no email) + serial → device lookup + `cx` role + email redaction + origin filter/pill/KPIs + **`LN-`/`LNK-` references, lookup, copy link/text, sign-in return** (§1b.1–1b.2) + per-environment logs host (production on, UAT off) + ship-now ageing (§2.1) + attention page v1 + CX prompt line | M |

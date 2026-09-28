@@ -54,7 +54,7 @@ export class AttentionRepo {
                 count(distinct ${personSql('s2')}) + count(distinct ${personSql('s2')}) filter (where s2.origin = 'cx') as impact
            from luna_feedback.submission_issue_kinds sk
            join luna_feedback.submissions s2 on s2.id = sk.submission_id
-          where not s2.is_positive ${testClause}
+          where not s2.is_positive and sk.state = 'linked' ${testClause}
           group by sk.kind_id
        )
        select s.id, s.ref, s.feature_key, s.origin, s.environment, s.status, s.created_at,
@@ -67,7 +67,8 @@ export class AttentionRepo {
               coalesce(ki.kinds, '[]'::json) as kinds
          from luna_feedback.submissions s
          left join lateral (
-           select max(sk.created_at) as last_link
+           -- A person linking, confirming or rejecting a problem counts as touching the report.
+           select max(greatest(sk.created_at, sk.decided_at)) as last_link
              from luna_feedback.submission_issue_kinds sk
             where sk.submission_id = s.id and sk.source = 'manual'
          ) m on true
@@ -77,7 +78,7 @@ export class AttentionRepo {
              from luna_feedback.submission_issue_kinds sk
              join luna_feedback.issue_kinds k on k.id = sk.kind_id
              left join kind_impact kim on kim.kind_id = sk.kind_id
-            where sk.submission_id = s.id
+            where sk.submission_id = s.id and sk.state = 'linked'
          ) ki on true
         where ${conds.join(' and ')}
         order by s.created_at asc
@@ -102,7 +103,7 @@ export class AttentionRepo {
               count(*) filter (where s.origin = 'cx')::int as cx_reports,
               max(s.occurred_on)::text as last_seen
          from luna_feedback.issue_kinds k
-         join luna_feedback.submission_issue_kinds sk on sk.kind_id = k.id
+         join luna_feedback.submission_issue_kinds sk on sk.kind_id = k.id and sk.state = 'linked'
          join luna_feedback.submissions s on s.id = sk.submission_id
         ${where ? where + ' and' : 'where'} not s.is_positive
           and not k.is_archived and k.status in ('open', 'watching') and k.jira_key is null

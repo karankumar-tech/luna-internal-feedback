@@ -72,6 +72,13 @@
 
   .chip { font-family: var(--mono); font-size: 11px; line-height: 16px; padding: 1px 6px; border-radius: var(--r-xs); background: var(--brief); white-space: nowrap; display: inline-block; }
   .jira-link[hidden] { display: none; }
+  .refline { margin-top: 10px; font-size: 13px; color: var(--gray-dark); } .refline a { color: var(--black); font-family: var(--mono); font-size: 12px; }
+  .banner { margin-top: 10px; border: 1px solid #545500; background: #FEFFD6; border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+  .why { display: flex; flex-wrap: wrap; gap: 4px; } .why span { font-family: var(--mono); font-size: 10px; line-height: 14px; padding: 1px 5px; border-radius: 2px; background: var(--brief); white-space: nowrap; }
+  .why span.strong { background: #EAF0FD; color: #0C3AAA; }
+  .star { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: #545500; background: #FEFFD6; padding: 1px 5px; border-radius: 2px; white-space: nowrap; }
+  .linkbtn { border: 1px solid var(--gray-light); background: var(--white); border-radius: 4px; font-size: 11px; line-height: 16px; padding: 0 6px; cursor: pointer; white-space: nowrap; }
+  .linkbtn:hover { border-color: var(--black); }
   .chip.cx { background: var(--magenta, #E0237A); color: #fff; letter-spacing: .08em; font-size: 10px; }
   .chips { display: flex; flex-wrap: wrap; gap: 4px; }
   .kstatus { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 7px; border-radius: var(--r-xs); border: 1px solid; }
@@ -171,12 +178,16 @@
           <select id="dStatus" title="Status of this recurring problem">
             <option value="open">Open</option><option value="watching">Watching</option><option value="fixed">Fixed</option><option value="wont_fix">Won't fix</option>
           </select>
+          <select id="dMergeSel" title="Fold this problem into another one: its reports, tags and Jira ticket move over"><option value="">Merge into…</option></select>
+          <button class="btn small" id="btnMerge" type="button">Merge</button>
           <a class="jira-link" id="dJiraLink" href="#" target="_blank" rel="noopener" hidden></a>
           <button class="btn small" id="btnKindJira" type="button">Create Jira ticket</button>
         </div>
       </div>
       <p id="dDesc" class="muted" style="margin:0"></p>
       <div class="chips" id="dChips" style="margin-top:10px"></div>
+      <div class="refline" id="dRef" hidden></div>
+      <div class="banner" id="dMerged" hidden></div>
     </section>
 
     <section class="kpis" style="margin-top:12px">
@@ -194,8 +205,16 @@
     </section>
 
     <section class="card">
-      <div class="card-head"><div><h2>Tickets</h2><div class="sub">Every report linked to this kind</div></div></div>
+      <div class="card-head"><div><h2>Tickets</h2><div class="sub">Every report confirmed as this problem. The reference report is the one to read first.</div></div></div>
       <div id="dTickets"><div class="empty">Loading…</div></div>
+    </section>
+
+    <section class="card" id="moreCard">
+      <div class="card-head">
+        <div><h2>More reports like this</h2><div class="sub">Reports from around the same time that look like this problem's own and are not part of it yet.</div></div>
+        <button class="btn small primary" id="btnAddMore" type="button" hidden disabled>Add selected</button>
+      </div>
+      <div id="dMore"><div class="empty">Looking…</div></div>
     </section>
   </div>
 </main>
@@ -309,6 +328,8 @@
       const tickets = await api('/v1/feedback?' + qs(Object.assign({ limit: 100, kind_id: kindId }, filters)));
       state.detail = detail;
       renderDetail(detail, tickets.items || []);
+      loadMore();
+      fillMergeSelect();
     } catch (err) {
       if (err.status === 401) { location.replace('/dashboard?next=' + encodeURIComponent(location.pathname)); return; }
       $('dTickets').replaceChildren(el('div', 'empty', 'Could not load: ' + err.message));
@@ -319,6 +340,11 @@
     document.title = `${k.ref} · ${k.title} · Luna Feedback`;
     $('pageTitle').textContent = 'Issue kind';
     $('dTitle').textContent = k.title;
+    const ref = $('dRef'); ref.hidden = !k.reference_ref; ref.replaceChildren();
+    if (k.reference_ref) { ref.appendChild(document.createTextNode('Read first: ')); const a = el('a', null, k.reference_ref); a.href = '/dashboard/submissions/' + encodeURIComponent(k.reference_ref); ref.appendChild(a); }
+    const merged = $('dMerged'); merged.hidden = !k.merged_into_ref; merged.replaceChildren();
+    if (k.merged_into_ref) { merged.appendChild(document.createTextNode('Merged into ')); const a = el('a', null, k.merged_into_ref); a.href = '/dashboard/kinds/' + encodeURIComponent(k.merged_into_ref); merged.appendChild(a); merged.appendChild(document.createTextNode('. Its reports are counted there now.')); }
+    if (k.aliases && k.aliases.length) { const al = el('div', 'tertiary', 'Also known as: ' + k.aliases.join(' · ')); al.style.fontSize = '12px'; al.style.marginTop = '6px'; ref.hidden = false; ref.appendChild(al); }
     $('dSub').textContent = `${k.ref} · ${k.key}${k.created_by === 'ai' ? ' · first named by the model' : k.created_by ? ' · created by ' + k.created_by : ''}`;
     $('dDesc').textContent = k.description || 'No description yet.';
     $('dStatus').value = k.status;
@@ -339,7 +365,8 @@
     const link = $('dJiraLink'); const btn = $('btnKindJira');
     if (k.jira_key) { link.hidden = false; link.href = k.jira_url || '#'; link.textContent = k.jira_key; btn.hidden = true; }
     else { link.hidden = true; btn.hidden = !can('manage_jira'); }
-    $('dStatus').disabled = !can('manage_kinds');
+    $('dStatus').disabled = !can('manage_kinds') || !!k.merged_into_ref;
+    $('dMergeSel').hidden = $('btnMerge').hidden = !can('manage_kinds') || !!k.merged_into_ref;
 
     renderTrend(k.trend || []);
     renderTickets(tickets);
@@ -379,7 +406,7 @@
     const host = $('dTickets'); host.replaceChildren();
     if (!rows.length) { host.appendChild(el('div', 'empty', 'No tickets linked in this range.')); return; }
     const t = el('table'); const head = el('tr');
-    for (const h of ['Report', 'Occurred', 'Feature', 'Reporter', 'Env', 'Status', 'Verdict', 'What they said', 'Jira']) head.appendChild(el('th', null, h));
+    for (const h of ['Report', 'Occurred', 'Feature', 'Reporter', 'Env', 'Status', 'Verdict', 'What they said', 'Jira', '']) head.appendChild(el('th', null, h));
     t.appendChild(head);
     const body = document.createElement('tbody');
     for (const r of rows) {
@@ -398,10 +425,80 @@
       txt.textContent = (r.feedback_text || '').slice(0, 120) || '—';
       tr.appendChild(txt);
       const j = el('td', 'code', r.jira_key || '—'); tr.appendChild(j);
+      const refTd = el('td');
+      if (state.detail && state.detail.reference_submission_id === r.id) refTd.appendChild(el('span', 'star', 'read first'));
+      else if (can('manage_kinds')) {
+        const mk = el('button', 'linkbtn', 'Make reference'); mk.type = 'button'; mk.title = 'Make this the report to read first';
+        mk.addEventListener('click', async (ev) => {
+          ev.stopPropagation();
+          try { await api(`/v1/admin/kinds/${kindId}`, { method: 'PATCH', body: JSON.stringify({ reference_submission_id: r.id }) }); toast(`${r.ref} is now the report to read first`); loadDetail(); }
+          catch (err) { toast('Could not set it: ' + err.message); }
+        });
+        refTd.appendChild(mk);
+      }
+      tr.appendChild(refTd);
       body.appendChild(tr);
     }
     t.appendChild(body); host.appendChild(t);
   }
+
+  // ---------- more reports like this ----------
+  async function loadMore() {
+    const host = $('dMore'); const data = $('fTest').value;
+    try {
+      const out = await api(`/v1/kinds/${kindId}/similar${data ? '?is_test=' + data : ''}`);
+      host.replaceChildren();
+      if (!out.members) { host.appendChild(el('div', 'empty', 'No reports in this problem yet to compare against.')); $('btnAddMore').hidden = true; return; }
+      if (!out.items.length) { host.appendChild(el('div', 'empty', 'Nothing else looks like this problem right now.')); $('btnAddMore').hidden = true; return; }
+      const t = el('table'); const head = el('tr');
+      for (const h of ['', 'Report', 'Match', 'Why it matched', 'Most like', 'Status', 'What they said']) head.appendChild(el('th', null, h));
+      t.appendChild(head);
+      for (const r of out.items) {
+        const tr = el('tr');
+        const pick = el('td'); const cb = el('input'); cb.type = 'checkbox'; cb.value = r.id; cb.className = 'morepick'; cb.disabled = !can('manage_kinds');
+        cb.addEventListener('change', renderAddMore); pick.appendChild(cb); tr.appendChild(pick);
+        const refTd = el('td', 'code'); const a = el('a', null, r.ref); a.href = '/dashboard/submissions/' + encodeURIComponent(r.ref); refTd.appendChild(a);
+        if (r.origin === 'cx') { refTd.appendChild(document.createTextNode(' ')); refTd.appendChild(el('span', 'chip cx', 'CX')); }
+        tr.appendChild(refTd);
+        tr.appendChild(el('td', 'num', Math.round(r.strength * 100) + '%'));
+        const why = el('td'); const w = el('div', 'why'); for (const x of r.reasons) w.appendChild(el('span', ['categories', 'text', 'events', 'tags'].includes(x.kind) ? 'strong' : null, x.label)); why.appendChild(w); tr.appendChild(why);
+        tr.appendChild(el('td', 'code', r.closest_ref || '—'));
+        tr.appendChild(el('td', null, (r.status || 'open').replace('_', ' ')));
+        const said = el('td'); said.style.maxWidth = '320px'; said.style.color = 'var(--gray-dark)'; said.textContent = (r.feedback_text || '—').slice(0, 140); tr.appendChild(said);
+        t.appendChild(tr);
+      }
+      host.appendChild(t);
+      renderAddMore();
+    } catch (err) { host.replaceChildren(el('div', 'empty', 'Could not look: ' + err.message)); }
+  }
+  const morePicked = () => [...document.querySelectorAll('.morepick:checked')].map((x) => x.value);
+  function renderAddMore() {
+    const b = $('btnAddMore'); const n = morePicked().length;
+    b.hidden = !can('manage_kinds'); b.disabled = n === 0; b.textContent = n ? `Add ${n} to ${state.detail.ref}` : 'Add selected';
+  }
+  $('btnAddMore').addEventListener('click', async () => {
+    const ids = morePicked(); if (!ids.length) return;
+    const b = $('btnAddMore'); b.disabled = true;
+    try { const out = await api(`/v1/admin/kinds/${kindId}/reports`, { method: 'POST', body: JSON.stringify({ submission_ids: ids }) }); toast(`Added ${out.linked} report${out.linked === 1 ? '' : 's'} to ${out.kind.ref}`); loadDetail(); }
+    catch (err) { toast('Could not add them: ' + err.message); b.disabled = false; }
+  });
+
+  // ---------- merge ----------
+  async function fillMergeSelect() {
+    if (!can('manage_kinds')) return;
+    try {
+      const { items } = await api('/v1/kinds?from=2020-01-01');
+      const sel = $('dMergeSel'); sel.replaceChildren(el('option', null, 'Merge into…')); sel.options[0].value = '';
+      for (const k of items) { if (k.id === kindId) continue; const o = el('option', null, `${k.ref} · ${k.title}`); o.value = k.id; sel.appendChild(o); }
+    } catch { /* the control just stays empty */ }
+  }
+  $('btnMerge').addEventListener('click', async () => {
+    const into = $('dMergeSel').value; if (!into) { toast('Pick the problem to merge into'); return; }
+    const target = $('dMergeSel').selectedOptions[0].textContent;
+    if (!confirm(`Merge ${state.detail.ref} into ${target}?\n\nIts reports, tags and Jira ticket move over, and ${state.detail.ref} is archived. This cannot be undone from the dashboard.`)) return;
+    try { const out = await api(`/v1/admin/kinds/${kindId}/merge`, { method: 'POST', body: JSON.stringify({ into }) }); toast(`Merged into ${out.ref}`); location.href = '/dashboard/kinds/' + encodeURIComponent(out.ref); }
+    catch (err) { toast('Could not merge: ' + err.message); }
+  });
 
   $('dStatus').addEventListener('change', async (ev) => {
     const next = ev.target.value;

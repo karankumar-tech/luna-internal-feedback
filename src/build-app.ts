@@ -35,6 +35,9 @@ import { registerCxRoutes } from './modules/cx/cx.routes.js';
 import { AttentionRepo } from './modules/attention/attention.repo.js';
 import { AttentionService } from './modules/attention/attention.service.js';
 import { registerAttentionRoutes } from './modules/attention/attention.routes.js';
+import { SimilarRepo } from './modules/similar/similar.repo.js';
+import { SimilarService } from './modules/similar/similar.service.js';
+import { registerSimilarRoutes } from './modules/similar/similar.routes.js';
 import { runInBackground } from './modules/diagnosis/background.js';
 import type { Environment } from './schema/registry.js';
 
@@ -122,6 +125,16 @@ export function buildApp(opts: BuildOptions = {}): App {
   service.setDiagnosisHook({ onNegativeSubmission: (id, log) => diagnosis.enqueueAndRun(id, log) });
   // A CX report arrives with only its ring serial; the logging service knows the rest.
   service.setDeviceHook({ onCxSubmission: (id, log) => runInBackground(() => diagnosis.fillDeviceFromLogs(id), log, `device ${id}`) });
+
+  // Every new issue is matched against open problems and, when it clearly looks like one, gets a
+  // "Looks like …" suggestion. The CX tool waits for it (it shows the answer); the app does not.
+  const similar = new SimilarService({ repo: new SimilarRepo(db), feedback: feedbackRepo, kinds, categories, ai: aiClient });
+  service.setSimilarityHook({
+    onNewIssue: async (id, log, wait) => {
+      if (wait) await similar.suggestForNew(id);
+      else await runInBackground(() => similar.suggestForNew(id), log, `suggest ${id}`);
+    },
+  });
   if (!diagnosis.enabled) app.log.warn('AI diagnosis disabled: set LUNA_LOGS_APIKEY and OPEN_ROUTER_KEY to enable');
 
   const chat = new ChatService({
@@ -174,14 +187,15 @@ export function buildApp(opts: BuildOptions = {}): App {
   if (imagekit) service.setScreenshotSupport({ isOurUrl: (u) => imagekit.isOurUrl(u), maxCount: config.SCREENSHOT_MAX_COUNT, deleteFile: (id) => imagekit.deleteFile(id) });
   else app.log.warn('Screenshot uploads disabled: set IMAGEKIT_PUB_KEY and IMAGEKIT_PRI_KEY to enable');
   registerFeedbackRoutes(app, {
-    service, categories, timeZone: config.APP_TIMEZONE,
+    service, categories, timeZone: config.APP_TIMEZONE, kindsFor: (ids) => kindsRepo.forSubmissions(ids),
     uploads: imagekit ? { publicKey: imagekit.publicKey, urlEndpoint: imagekit.urlEndpoint, folder: imagekit.folder, maxBytes: config.SCREENSHOT_MAX_BYTES, maxCount: config.SCREENSHOT_MAX_COUNT, authParams: () => imagekit.authParams() } : null,
   });
   registerPageRoutes(app, { dashboardKey: config.DASHBOARD_KEY, sessionSecret, sessionDays: config.DASHBOARD_SESSION_DAYS, keyLogin: config.DASHBOARD_KEY_LOGIN, users });
   registerUserRoutes(app, { service: users });
   registerAdminRoutes(app, { categories });
   registerDiagnosisRoutes(app, { service: diagnosis, repo: diagnosisRepo });
-  registerKindRoutes(app, { service: kinds, timeZone: config.APP_TIMEZONE });
+  registerKindRoutes(app, { service: kinds, feedback: service, timeZone: config.APP_TIMEZONE });
+  registerSimilarRoutes(app, { service: similar });
   registerJiraRoutes(app, { service: jira });
   registerChatRoutes(app, { service: chat });
   registerAnalyticsRoutes(app, { repo: new AnalyticsRepo(db), timeZone: config.APP_TIMEZONE });

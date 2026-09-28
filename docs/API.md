@@ -603,6 +603,24 @@ Not for the app. Listed so the front-end team knows how categories change.
 | `POST` | `/v1/admin/features/{feature}/issue-categories` | `{ "key", "label", "sort_order"? }` · key is a lowercase slug · `409` on duplicate |
 | `PATCH` | `/v1/admin/issue-categories/{id}` | `{ "label"?, "sort_order"?, "is_active"? }` |
 | `PATCH` | `/v1/admin/submissions/{id}` | `{ "is_test": true \| false }` marks one submission as test data or real (also a button in the dashboard) |
+
+**Same-issue linking** (dashboard; `manage_kinds` unless noted). A report is linked to a problem (`LNK-0007`) as *suggested*, *linked* or *rejected*; only linked ones count.
+
+| method | path | body / notes |
+|---|---|---|
+| `GET` | `/v1/feedback/{id}/similar` | look-alikes of a report, best first, each with `reasons` (same feature, categories, wording, fw…), `strength` and the latest AI verdict |
+| `GET` | `/v1/feedback/{id}/kinds` | the report's problems (linked and suggested), each with `counts` (reports, people, via CX, first/last seen) |
+| `POST` | `/v1/admin/submissions/{id}/same` | `{ "submission_ids": [...], "kind_id"? , "title"? }` puts the report and the given ones under one problem: the one named, else the report's own, else a new one called `title` |
+| `POST` | `/v1/admin/submissions/{id}/kinds/suggest` | `{ "kind_id" }` proposes a problem (`suggest_kinds`, which CX has) |
+| `POST` | `/v1/admin/submissions/{id}/kinds/{kindId}/decision` | `{ "decision": "confirm" \| "reject" }`. A rejection is remembered: no rule or diagnosis links it again |
+| `DELETE` | `/v1/admin/submissions/{id}/kinds/{kindId}` | same as reject |
+| `POST` | `/v1/admin/submissions/{id}/similar/ai-check` | asks the model which top look-alikes are really the same issue (`run_diagnosis`, about $0.002) |
+| `GET` | `/v1/kinds/{id}/similar` | reports that look like a problem's own and are not part of it yet (`is_test` optional) |
+| `POST` | `/v1/admin/kinds/{id}/reports` | `{ "submission_ids": [...] }` adds reports to a problem |
+| `POST` | `/v1/admin/kinds/{id}/merge` | `{ "into" }` folds a problem into another: reports, tags, Jira ticket and title move over; the old one is archived |
+| `PATCH` | `/v1/admin/kinds/{id}` | also `{ "reference_submission_id" }`: the report to read first (id or `LN-` reference; `null` clears) |
+
+Every new issue is matched against open problems when it arrives; a clear match is added as a *suggested* link.
 | `GET` | `/v1/admin/test-data` | → `{ "count" }` of rows flagged `is_test` |
 | `DELETE` | `/v1/admin/test-data?confirm=delete` | deletes only `is_test` rows → `{ "deleted" }`; `422` without the confirm parameter |
 
@@ -652,11 +670,12 @@ curl -X POST https://luna-feedback.buildsage.tech/v1/cx/feedback/sleep \
   "status": "open", "status_changed_at": null,
   "created_at": "2026-09-27T10:02:11.000Z", "created_at_ist": "2026-09-27 15:32:11 +05:30",
   "problems": [],
+  "likely_problem": { "ref": "LNK-0007", "title": "Sleep start recorded hours late", "report_count": 14 },
   "dashboard_url": "https://luna-feedback.buildsage.tech/i/LN-00042"
 }
 ```
 
-Store `ref` on the CX ticket. `problems` lists the recurring problems (`LNK-0007`) the report has been grouped under.
+Store `ref` on the CX ticket. `problems` lists the recurring problems (`LNK-0007`) the report is confirmed as part of, with how many reports each has. `likely_problem` is the open problem it most looks like, not yet confirmed by QC: show it to the agent as "Looks like …", or `null`.
 
 ### `GET /v1/cx/feedback/{ref}`
 

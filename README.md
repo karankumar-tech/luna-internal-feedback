@@ -186,6 +186,22 @@ are filled in afterwards from the production logging service by serial. Pressing
 for the same ticket and feature returns the first report. `GET /v1/cx/feedback/{ref}` tells the
 tool where a report stands. Contract: [docs/API.md §5b](docs/API.md).
 
+## Same issue, counted
+
+Every issue report gets a **Similar reports** panel: reports from the 90 days around it that look
+like the same problem, best first, each saying why (same feature, same categories, wording N% alike,
+shared diagnosis tags or catalog events, same firmware / app / platform). Tick the look-alikes and
+**Mark as same issue** puts them all under one problem (`LNK-…`), creating it if needed with this
+report as the one to read first. **Ask AI to check** (about $0.002) labels them same / related /
+different and ticks the same ones.
+
+When a report arrives it is matched against open problems; a clear match shows on it as "Looks like
+LNK-0007 … Confirm / Not this", and the CX API returns it as `likely_problem`. Links are *suggested*,
+*linked* or *rejected*: only linked ones count anywhere, and a rejection is remembered so no rule or
+diagnosis puts it back. CX can suggest a problem for QC to confirm. A problem's page lists more
+reports like it, lets you pick the reference report, and merges duplicates (the merged title becomes
+an alias, so the AI stops recreating it). Scoring lives in `src/modules/similar/similarity.ts`.
+
 ## Needs attention
 
 `/dashboard/attention` (`GET /v1/attention`) lists what someone should look at now: reports nobody

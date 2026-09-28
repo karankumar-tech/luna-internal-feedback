@@ -152,6 +152,34 @@
   .kind .x { border: none; background: transparent; cursor: pointer; color: var(--gray-mid); padding: 0 4px; line-height: 16px; border-radius: var(--r-xs); }
   .kind .x:hover { background: var(--crit-bg); color: #8A1010; }
   .kind-add { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .kind .n { font-family: var(--mono); font-size: 11px; color: var(--gray-dark); }
+  .kind .kref, .kind .n, .kind .act, .kind .lead, .kind .by { white-space: nowrap; }
+  .kind.suggested { border-style: dashed; background: var(--yellow-50); display: flex; flex-wrap: wrap; align-items: center; row-gap: 4px; width: 100%; padding: 6px 8px 6px 10px; }
+  .kind.suggested a { flex: 1 1 140px; min-width: 0; }
+  .kind.suggested .acts { display: inline-flex; gap: 4px; margin-left: auto; }
+  .kind.suggested .lead { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #545500; }
+  .kind .act { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-xs); font-size: 11px; line-height: 16px; padding: 0 6px; cursor: pointer; }
+  .kind .act:hover { border-color: var(--black); }
+  .problem-line { margin-top: 6px; font-size: 13px; color: var(--gray-dark); }
+  .problem-line b { color: var(--black); font-weight: 600; }
+  .problem-line a { color: inherit; }
+  .sim-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+  .sim-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .sim-scroll { overflow-x: auto; }
+  table.sim { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 18px; }
+  table.sim th { text-align: left; font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); font-weight: 400; padding: 6px 8px; border-bottom: 1px solid var(--gray-light); white-space: nowrap; }
+  table.sim td { padding: 8px; border-bottom: 1px solid var(--border-ghost); vertical-align: top; }
+  table.sim td.ref { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+  table.sim td.pct { font-family: var(--mono); font-size: 12px; white-space: nowrap; text-align: right; }
+  table.sim tr.mine td { background: #FAFAF7; }
+  .why { display: flex; flex-wrap: wrap; gap: 4px; }
+  .why span { font-family: var(--mono); font-size: 10px; line-height: 14px; padding: 1px 5px; border-radius: var(--r-xs); background: var(--brief); white-space: nowrap; }
+  .why span.strong { background: var(--blue-50); color: #0C3AAA; }
+  .said { color: var(--gray-dark); font-size: 12px; max-width: 320px; }
+  .verdict-ai { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; padding: 1px 6px; border-radius: var(--r-xs); white-space: nowrap; }
+  .verdict-ai.same { background: var(--ok-bg); color: #00583A; }
+  .verdict-ai.related { background: var(--yellow-50); color: #545500; }
+  .verdict-ai.different { background: var(--brief); color: var(--gray-dark); }
   .kind-add select { flex: 1 1 200px; min-width: 0; }
 
   /* follow-up chat */
@@ -196,6 +224,7 @@
       <div>
         <h1 id="title"></h1>
         <div class="meta" id="meta"></div>
+        <div class="problem-line" id="problemLine" hidden></div>
       </div>
     </section>
 
@@ -205,12 +234,13 @@
           <h2>Feedback</h2>
           <div class="quote" id="quote"></div>
           <div class="chips" id="cats"></div>
-          <h3>Issue kinds</h3>
+          <h3>Problem</h3>
           <div class="kinds" id="kinds"></div>
           <div class="kind-add">
-            <select id="kindSel"><option value="">Link to an existing kind…</option></select>
+            <select id="kindSel"><option value="">Link to an existing problem…</option></select>
             <button class="btn small" id="btnLinkKind" type="button">Link</button>
-            <button class="btn small" id="btnNewKind" type="button">New kind…</button>
+            <button class="btn small" id="btnSuggestKind" type="button" hidden title="Someone in QC confirms it">Suggest</button>
+            <button class="btn small" id="btnNewKind" type="button">New problem…</button>
           </div>
           <h3>Feature details</h3>
           <dl id="details"></dl>
@@ -263,6 +293,17 @@
       </div>
     </div>
 
+    <section class="card" id="similarCard" hidden>
+      <div class="sim-head">
+        <div><h2>Similar reports</h2><div class="tertiary" style="font-size:12px" id="similarSub">Reports from the 90 days around this one that look like the same problem, best match first.</div></div>
+        <div class="sim-actions">
+          <button class="btn small" id="btnAiCheck" type="button" hidden title="Asks the model which of these are really the same issue (about $0.002)">Ask AI to check</button>
+          <button class="btn small primary" id="btnMarkSame" type="button" hidden disabled>Mark selected as same issue</button>
+        </div>
+      </div>
+      <div class="sim-scroll" id="similarBody"><div class="empty">Looking for look-alikes…</div></div>
+    </section>
+
     <section class="card excerpt" id="excerptCard" hidden>
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px">
         <div><h2>Log excerpt</h2><div class="tertiary" style="font-size:12px" id="excerptSub"></div></div>
@@ -282,7 +323,7 @@
   // The page opens by reference (/dashboard/submissions/LN-00042) or by id; every API call below uses the id.
   const param = decodeURIComponent(location.pathname.split('/').filter(Boolean).pop() || '');
   let id = null;
-  const state = { sub: null, diag: null, schema: null, files: null, pollTimer: null, kinds: [], allKinds: [], chat: null, jira: null, me: null, logEnvs: null };
+  const state = { sub: null, diag: null, schema: null, files: null, pollTimer: null, kinds: [], allKinds: [], chat: null, jira: null, me: null, logEnvs: null, similar: null };
   const can = (p) => !!(state.me && state.me.permissions && state.me.permissions[p]);
   let toastT; const toast = (m) => { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', 2400); };
 
@@ -317,6 +358,7 @@
     $('loading').hidden = true; $('page').hidden = false;
     // Independent of each other and of the diagnosis; none of them should hold up the page.
     loadKinds();
+    loadSimilar();
     loadJiraStatus();
     loadCatalog();
     await refreshDiagnosis();
@@ -329,7 +371,10 @@
     $('statusSel').title = can('manage_triage') ? 'Move this ticket through triage' : 'Your role can see the status but not change it';
     $('btnFlag').hidden = !can('manage_triage');
     $('btnDiagnose').hidden = !can('run_diagnosis');
-    document.querySelector('.kind-add').classList.toggle('ro', !can('manage_kinds'));
+    document.querySelector('.kind-add').classList.toggle('ro', !can('manage_kinds') && !can('suggest_kinds'));
+    $('btnLinkKind').hidden = !can('manage_kinds');
+    $('btnNewKind').hidden = !can('manage_kinds');
+    $('btnSuggestKind').hidden = can('manage_kinds') || !can('suggest_kinds');
     const logsReady = !state.logEnvs || state.logEnvs[state.sub.environment] !== false;
     $('btnDiagnose').disabled = !logsReady;
     if (!logsReady) $('btnDiagnose').title = `Log lookup isn't set up for ${state.sub.environment} yet`;
@@ -470,34 +515,167 @@
     } catch { state.kinds = []; state.allKinds = []; }
     renderKinds();
   }
+  const countsText = (c) => !c ? '' : `${c.count} report${c.count === 1 ? '' : 's'} · ${c.users} ${c.users === 1 ? 'person' : 'people'}${c.cx_count ? ` · ${c.cx_count} via CX` : ''}`;
   function renderKinds() {
     const host = $('kinds'); host.replaceChildren();
-    if (!state.kinds.length) host.appendChild(el('span', 'tertiary', 'Not linked to any recurring issue yet.'));
-    for (const k of state.kinds) {
+    const linked = state.kinds.filter((k) => k.state === 'linked');
+    const suggested = state.kinds.filter((k) => k.state === 'suggested');
+    if (!state.kinds.length) host.appendChild(el('span', 'tertiary', 'Not part of a known problem yet. Similar reports are listed below.'));
+    for (const k of linked) {
       const chip = el('span', 'kind');
       chip.appendChild(el('span', 'kref', k.ref));
       const a = el('a', null, k.title); a.href = '/dashboard/kinds/' + encodeURIComponent(k.ref); chip.appendChild(a);
+      if (k.counts) chip.appendChild(el('span', 'n', countsText(k.counts)));
       if (k.source === 'ai') chip.appendChild(el('span', 'by', 'ai'));
-      const x = el('button', 'x' + (can('manage_kinds') ? '' : ' ro'), '×'); x.type = 'button'; x.title = 'Unlink';
-      x.addEventListener('click', async () => {
-        try { const out = await api(`/v1/admin/submissions/${id}/kinds/${k.kind_id}`, { method: 'DELETE' }); state.kinds = out.items || []; renderKinds(); toast('Unlinked'); }
-        catch (err) { toast('Could not unlink: ' + err.message); }
-      });
+      const x = el('button', 'x' + (can('manage_kinds') ? '' : ' ro'), '×'); x.type = 'button'; x.title = 'Not this problem (remembered, so it is not suggested again)';
+      x.addEventListener('click', () => decide(k, 'reject'));
       chip.appendChild(x);
       host.appendChild(chip);
     }
-    const sel = $('kindSel'); const linked = new Set(state.kinds.map((k) => k.kind_id));
-    sel.replaceChildren(el('option', null, 'Link to an existing kind…'));
-    for (const k of state.allKinds) {
-      if (linked.has(k.id)) continue;
-      const o = el('option', null, `${k.title}${k.count ? ` (${k.count})` : ''}`); o.value = k.id; sel.appendChild(o);
+    for (const k of suggested) {
+      const chip = el('span', 'kind suggested');
+      chip.appendChild(el('span', 'lead', 'Looks like'));
+      chip.appendChild(el('span', 'kref', k.ref));
+      const a = el('a', null, k.title); a.href = '/dashboard/kinds/' + encodeURIComponent(k.ref); chip.appendChild(a);
+      if (k.counts) chip.appendChild(el('span', 'n', `(${countsText(k.counts)})`));
+      if (can('manage_kinds')) {
+        const acts = el('span', 'acts');
+        const yes = el('button', 'act', 'Confirm'); yes.type = 'button'; yes.addEventListener('click', () => decide(k, 'confirm')); acts.appendChild(yes);
+        const no = el('button', 'act', 'Not this'); no.type = 'button'; no.addEventListener('click', () => decide(k, 'reject')); acts.appendChild(no);
+        chip.appendChild(acts);
+      } else {
+        chip.appendChild(el('span', 'by', k.source === 'rule' ? 'suggested · waiting for QC' : `suggested by ${k.created_by || 'someone'}`));
+      }
+      host.appendChild(chip);
     }
+    const sel = $('kindSel'); const taken = new Set(state.kinds.map((k) => k.kind_id));
+    sel.replaceChildren(el('option', null, can('manage_kinds') ? 'Link to an existing problem…' : 'Suggest an existing problem…'));
+    for (const k of state.allKinds) {
+      if (taken.has(k.id)) continue;
+      const o = el('option', null, `${k.ref} · ${k.title}${k.count ? ` (${k.count})` : ''}`); o.value = k.id; sel.appendChild(o);
+    }
+    renderProblemLine();
+    renderSimilarActions();
   }
+
+  /** "Reported 14× · 9 people · 5 via CX · first 3 Sep · last 26 Sep", for the problem this report is part of. */
+  function renderProblemLine() {
+    const line = $('problemLine'); const k = state.kinds.find((x) => x.state === 'linked' && x.counts);
+    line.hidden = !k; if (!k) return;
+    const c = k.counts;
+    line.replaceChildren(
+      el('span', null, 'Part of '), Object.assign(el('a', null, `${k.ref} ${k.title}`), { href: '/dashboard/kinds/' + encodeURIComponent(k.ref) }),
+      el('span', null, ' · reported '), el('b', null, `${c.count}×`),
+      el('span', null, ` · ${c.users} ${c.users === 1 ? 'person' : 'people'}${c.cx_count ? ` · ${c.cx_count} via CX` : ''} · first ${shortDate(c.first_seen)} · last ${shortDate(c.last_seen)}`));
+  }
+
+  async function decide(k, decision) {
+    try {
+      const out = await api(`/v1/admin/submissions/${id}/kinds/${k.kind_id}/decision`, { method: 'POST', body: JSON.stringify({ decision }) });
+      state.kinds = out.items || []; renderKinds(); loadSimilar();
+      toast(decision === 'confirm' ? `Confirmed: part of ${k.ref}` : `Noted: not ${k.ref}. It won't be suggested again.`);
+    } catch (err) { toast('Could not update: ' + err.message); }
+  }
+
+  // ---------- similar reports ----------
+  async function loadSimilar() {
+    if (!state.sub || state.sub.is_positive) { $('similarCard').hidden = true; return; }
+    $('similarCard').hidden = false;
+    try { state.similar = await api(`/v1/feedback/${id}/similar`); }
+    catch (err) { $('similarBody').replaceChildren(el('div', 'empty', 'Could not look for similar reports: ' + err.message)); return; }
+    renderSimilar();
+  }
+
+  function renderSimilar() {
+    const body = $('similarBody'); const sim = state.similar; body.replaceChildren();
+    if (!sim) return;
+    $('similarSub').textContent = sim.checked_at
+      ? `Reports from the 90 days around this one that look like the same problem. AI checked ${istStamp(sim.checked_at)}.`
+      : 'Reports from the 90 days around this one that look like the same problem, best match first.';
+    if (!sim.items.length) { body.appendChild(el('div', 'empty', 'No look-alikes in the 90 days around this report.')); renderSimilarActions(); return; }
+    const t = el('table', 'sim'); const head = el('tr');
+    for (const h of ['', 'Report', 'Match', 'Why it matched', 'Problem', 'Status', 'What they said', 'AI']) head.appendChild(el('th', null, h));
+    t.appendChild(head);
+    for (const r of sim.items) {
+      const tr = el('tr', r.same_problem ? 'mine' : null);
+      const pick = el('td'); const cb = el('input'); cb.type = 'checkbox'; cb.value = r.id; cb.className = 'simpick';
+      cb.disabled = r.same_problem || !can('manage_kinds'); cb.title = r.same_problem ? 'Already part of the same problem' : 'Select to group with this report';
+      if (r.ai && r.ai.verdict === 'same' && !r.same_problem && can('manage_kinds')) cb.checked = true;
+      cb.addEventListener('change', renderSimilarActions); pick.appendChild(cb); tr.appendChild(pick);
+      const ref = el('td', 'ref'); const a = el('a', null, r.ref); a.href = '/dashboard/submissions/' + encodeURIComponent(r.ref); ref.appendChild(a);
+      if (r.origin === 'cx') { ref.appendChild(document.createTextNode(' ')); ref.appendChild(el('span', 'chip cx', 'CX')); }
+      ref.appendChild(el('div', 'tertiary', shortDate(r.occurred_on))); tr.appendChild(ref);
+      tr.appendChild(el('td', 'pct', Math.round(r.strength * 100) + '%'));
+      const why = el('td'); const w = el('div', 'why');
+      for (const x of r.reasons) w.appendChild(el('span', ['categories', 'text', 'events', 'tags'].includes(x.kind) ? 'strong' : null, x.label));
+      why.appendChild(w); tr.appendChild(why);
+      const prob = el('td');
+      if (r.same_problem) prob.appendChild(el('span', 'tertiary', 'same problem'));
+      else if (r.kinds.length) r.kinds.forEach((k, i) => { if (i) prob.appendChild(document.createTextNode(', ')); const l = el('a', 'mono', k.ref); l.href = '/dashboard/kinds/' + encodeURIComponent(k.ref); l.title = k.title; prob.appendChild(l); });
+      else prob.appendChild(el('span', 'tertiary', '—'));
+      tr.appendChild(prob);
+      tr.appendChild(el('td', null, (TRIAGE.find((x) => x[0] === r.status) || [, r.status])[1]));
+      tr.appendChild(el('td', 'said', r.feedback_text ? (r.feedback_text.length > 140 ? r.feedback_text.slice(0, 140) + '…' : r.feedback_text) : '—'));
+      const ai = el('td');
+      if (r.ai) { const v = el('span', 'verdict-ai ' + r.ai.verdict, r.ai.verdict); v.title = r.ai.reason; ai.appendChild(v); ai.appendChild(el('div', 'tertiary', r.ai.reason)); }
+      tr.appendChild(ai);
+      t.appendChild(tr);
+    }
+    body.appendChild(t);
+    renderSimilarActions();
+  }
+
+  const picked = () => [...document.querySelectorAll('.simpick:checked')].map((x) => x.value);
+  function renderSimilarActions() {
+    const sim = state.similar; const btn = $('btnMarkSame'); const ai = $('btnAiCheck');
+    const has = !!(sim && sim.items.length);
+    ai.hidden = !has || !can('run_diagnosis') || !sim.ai_enabled;
+    btn.hidden = !has || !can('manage_kinds');
+    const n = picked().length; const home = (state.kinds || []).find((k) => k.state === 'linked');
+    btn.disabled = n === 0;
+    btn.textContent = home ? `Add ${n || ''} selected to ${home.ref}`.replace('  ', ' ') : `Mark ${n || ''} selected as same issue`.replace('  ', ' ');
+  }
+
+  $('btnMarkSame').addEventListener('click', async () => {
+    const ids = picked(); if (!ids.length) return;
+    const home = state.kinds.find((k) => k.state === 'linked');
+    const body = { submission_ids: ids };
+    if (home) body.kind_id = home.kind_id;
+    else {
+      const title = prompt('Name the problem these reports share: the problem, not one report.\ne.g. "Sleep start recorded hours late"');
+      if (title === null) return;
+      if (title.trim().length < 4) { toast('Give it at least 4 characters'); return; }
+      body.title = title.trim();
+    }
+    const b = $('btnMarkSame'); b.disabled = true;
+    try {
+      const out = await api(`/v1/admin/submissions/${id}/same`, { method: 'POST', body: JSON.stringify(body) });
+      toast(`${out.linked} reports are now ${out.kind.ref}: ${out.kind.title}`);
+      await loadKinds(); await loadSimilar();
+    } catch (err) { toast('Could not group them: ' + err.message); b.disabled = false; }
+  });
+
+  $('btnAiCheck').addEventListener('click', async () => {
+    const b = $('btnAiCheck'); b.disabled = true; const old = b.textContent; b.textContent = 'Checking…';
+    try {
+      const out = await api(`/v1/admin/submissions/${id}/similar/ai-check`, { method: 'POST' });
+      state.similar = Object.assign({}, state.similar, out); renderSimilar();
+      const same = out.items.filter((x) => x.ai && x.ai.verdict === 'same').length;
+      toast(`AI says ${same} of ${out.items.length} are the same issue${out.cost_usd ? ` · $${out.cost_usd.toFixed(4)}` : ''}. Those are ticked for you.`);
+    } catch (err) { toast('AI check failed: ' + err.message); }
+    finally { b.disabled = false; b.textContent = old; }
+  });
+
   async function linkKind(body) {
     try { const out = await api(`/v1/admin/submissions/${id}/kinds`, { method: 'POST', body: JSON.stringify(body) }); state.kinds = out.items || []; await loadKinds(); toast('Linked'); }
     catch (err) { toast('Could not link: ' + err.message); }
   }
-  $('btnLinkKind').addEventListener('click', () => { const v = $('kindSel').value; if (!v) { toast('Pick a kind first'); return; } linkKind({ kind_id: v }); });
+  $('btnLinkKind').addEventListener('click', () => { const v = $('kindSel').value; if (!v) { toast('Pick a problem first'); return; } linkKind({ kind_id: v }); });
+  $('btnSuggestKind').addEventListener('click', async () => {
+    const v = $('kindSel').value; if (!v) { toast('Pick a problem first'); return; }
+    try { const out = await api(`/v1/admin/submissions/${id}/kinds/suggest`, { method: 'POST', body: JSON.stringify({ kind_id: v }) }); state.kinds = out.items || []; renderKinds(); toast('Suggested. Someone in QC will confirm it.'); }
+    catch (err) { toast('Could not suggest: ' + err.message); }
+  });
   $('btnNewKind').addEventListener('click', () => {
     const title = prompt('Name the recurring problem, not this one report.\ne.g. "Sleep start recorded hours late"');
     if (title && title.trim().length >= 4) linkKind({ title: title.trim() });
@@ -706,7 +884,8 @@
     const parts = [r.ref, f.label, r.issue_categories.map(catLabel).join(', ') || (r.is_positive ? 'Working fine' : 'Issue'), status];
     if (r.origin === 'cx') parts.push('CX ' + (r.cx_ref || ''));
     if (r.environment !== 'stage') parts.push(r.environment);
-    if (state.kinds.length) parts.push(state.kinds.map((k) => `${k.ref} ${k.title}`).join('; '));
+    const linkedKinds = state.kinds.filter((k) => k.state === 'linked');
+    if (linkedKinds.length) parts.push(linkedKinds.map((k) => `${k.ref} ${k.title}${k.counts ? ` (reported ${k.counts.count}×)` : ''}`).join('; '));
     const line = parts.filter(Boolean).join(' · ') + ' — ' + shortLink();
     try { await navigator.clipboard.writeText(line); toast('Copied: ' + line); } catch { toast('Copy failed'); }
   });

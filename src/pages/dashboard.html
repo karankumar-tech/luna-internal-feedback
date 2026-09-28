@@ -166,6 +166,7 @@
   .shots img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .chip.test { background: var(--yellow); color: var(--black); letter-spacing: .08em; font-size: 10px; margin-left: 6px; vertical-align: 1px; }
   .chip.cx { background: var(--magenta); color: var(--white); letter-spacing: .08em; font-size: 10px; margin-left: 6px; vertical-align: 1px; }
+  td .problem { font-family: var(--mono); font-size: 11px; line-height: 16px; color: #0C3AAA; margin-top: 4px; white-space: nowrap; }
   td.ref { font-family: var(--mono); font-size: 12px; white-space: nowrap; } td.ref .age { color: var(--gray-mid); font-size: 11px; } td.ref .age.old { color: #A03600; }
   .goto { width: 120px; border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-s); padding: 3px 8px; font-family: var(--mono); font-size: 12px; line-height: 16px; }
   .goto:focus-visible { outline: none; border-color: var(--black); box-shadow: 0 0 0 1px var(--black); }
@@ -674,7 +675,7 @@
     $('conn').className = 'pill on'; $('conn').textContent = 'connected';
     $('btnKey').hidden = false;
     $('gate').hidden = true; $('app').hidden = false;
-    fillFeatureSelect(); fillCategorySelect(); fillKindSelect();
+    fillFeatureSelect(); fillCategorySelect(); await fillKindSelect();
     if (!state.filters) applyPreset(30);
     await refresh();
     loadManage();
@@ -747,9 +748,10 @@
   async function fillKindSelect() {
     try {
       const { items } = await api('/v1/kinds?from=2020-01-01');
+      state.kindCounts = new Map(items.map((k) => [k.id, k.count]));
       const sel = $('fKind'); const current = sel.value;
       while (sel.options.length > 1) sel.remove(1);
-      for (const k of items) { const o = document.createElement('option'); o.value = k.id; o.textContent = `${k.title} (${k.count})`; sel.appendChild(o); }
+      for (const k of items) { const o = document.createElement('option'); o.value = k.id; o.textContent = `${k.ref} · ${k.title} (${k.count})`; sel.appendChild(o); }
       sel.value = current;
     } catch { /* the filter simply stays empty */ }
   }
@@ -971,7 +973,12 @@
       const res = el('td', 'nowrap'); res.appendChild(el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue')); if (r.origin === 'cx') res.appendChild(el('span', 'chip cx', 'CX')); if (r.is_test) res.appendChild(el('span', 'chip test', 'TEST'));
       if (!r.is_positive) { const ai = el('div', 'aibadge ' + (r.ai_side ? sideOf(r.ai_side) : (r.ai_status || 'none')), r.ai_side ? SIDE_LABEL[r.ai_side] || r.ai_side : r.ai_status === 'waiting_logs' ? 'waiting for logs' : r.ai_status === 'no_logs' ? 'no logs' : r.ai_status === 'failed' ? 'AI failed' : r.ai_status ? 'AI ' + r.ai_status : 'not checked'); res.appendChild(ai); }
       tr.appendChild(res);
-      const cats = el('td'); const chips = el('div', 'chips'); for (const c of r.issue_categories) chips.appendChild(el('span', 'chip', catLabelOf(r.feature_key, c))); cats.appendChild(chips); tr.appendChild(cats);
+      const cats = el('td'); const chips = el('div', 'chips'); for (const c of r.issue_categories) chips.appendChild(el('span', 'chip', catLabelOf(r.feature_key, c))); cats.appendChild(chips);
+      for (const k of r.kinds || []) {
+        const n = state.kindCounts && state.kindCounts.get(k.id);
+        const p = el('div', 'problem', `${k.ref}${n ? ' ×' + n : ''}`); p.title = `${k.title}${n ? ` · reported ${n} times` : ''}`; cats.appendChild(p);
+      }
+      tr.appendChild(cats);
       const user = el('td', 'num');
       if (r.origin === 'cx') { user.appendChild(el('div', null, r.user_id ? String(r.user_id) : r.device_serial)); const sub = el('div', 'tertiary', 'CX ' + (r.cx_ref || '')); sub.style.fontSize = '11px'; user.appendChild(sub); }
       else { user.appendChild(el('div', null, String(r.user_id))); const em = el('div', 'tertiary', r.email); em.style.fontSize = '11px'; user.appendChild(em); }

@@ -121,7 +121,7 @@ export class AnalyticsRepo {
                 count(*)::int as count, count(distinct ${personSql()})::int as users,
                 min(s.occurred_on)::text as first_seen, max(s.occurred_on)::text as last_seen
          from luna_feedback.submissions s
-         join luna_feedback.submission_issue_kinds sk on sk.submission_id = s.id
+         join luna_feedback.submission_issue_kinds sk on sk.submission_id = s.id and sk.state = 'linked'
          join luna_feedback.issue_kinds k on k.id = sk.kind_id
          ${where} group by k.id, k.key, k.title, k.status, k.jira_key order by count desc limit 20`),
 

@@ -7,6 +7,14 @@ export type KindStatus = (typeof KIND_STATUSES)[number];
 export const KIND_LINK_SOURCES = ['manual', 'ai', 'rule'] as const;
 export type KindLinkSource = (typeof KIND_LINK_SOURCES)[number];
 
+/**
+ * suggested: proposed by a rule at intake or by CX, waiting for a person.
+ * linked: a person or a finished diagnosis put it there. Only these count.
+ * rejected: a person said "not this". Kept so the same suggestion is never made again.
+ */
+export const KIND_LINK_STATES = ['suggested', 'linked', 'rejected'] as const;
+export type KindLinkState = (typeof KIND_LINK_STATES)[number];
+
 export interface IssueKindRow {
   id: string;
   /** Readable reference, LNK-0007. */
@@ -22,9 +30,25 @@ export interface IssueKindRow {
   jira_key: string | null;
   jira_url: string | null;
   is_archived: boolean;
+  /** The report to read first for this problem. */
+  reference_submission_id: string | null;
+  /** Titles of problems merged into this one. */
+  aliases: string[];
+  /** Set on a problem that was merged away: where its reports went. */
+  merged_into: string | null;
   created_by: string | null;
   created_at: Date;
   updated_at: Date;
+}
+
+/** All-time size of a problem among real (or, for test reports, test) reports. */
+export interface KindCounts {
+  count: number;
+  users: number;
+  cx_count: number;
+  cx_users: number;
+  first_seen: string | null;
+  last_seen: string | null;
 }
 
 /** A kind plus how much of it is actually happening in the window being looked at. */
@@ -51,13 +75,19 @@ export interface KindLink {
   jira_key: string | null;
   jira_url: string | null;
   source: string;
+  state: KindLinkState;
   confidence: number | null;
   created_by: string | null;
   created_at: Date;
+  decided_by: string | null;
+  decided_at: Date | null;
 }
 
 const K_COLS = `k.id, k.ref, k.key, k.title, k.description, k.feature_key, k.tags, k.event_codes, k.status, k.severity,
-  k.jira_key, k.jira_url, k.is_archived, k.created_by, k.created_at, k.updated_at`;
+  k.jira_key, k.jira_url, k.is_archived, k.reference_submission_id, k.aliases, k.merged_into, k.created_by, k.created_at, k.updated_at`;
+
+/** Only confirmed links count toward a problem's size. */
+const LINKED = `sk.state = 'linked'`;
 
 /** "Sleep start recorded hours late" -> "sleep_start_recorded_hours_late". */
 export function slugify(title: string): string {
@@ -102,10 +132,10 @@ export class KindsRepo {
     return r.rows[0];
   }
 
-  /** Every kind with a normalized title, for matching a model suggestion against what exists. */
-  async titles(): Promise<{ id: string; key: string; title: string }[]> {
-    const r = await this.db.query<{ id: string; key: string; title: string }>(
-      `select id, key, title from luna_feedback.issue_kinds where not is_archived order by updated_at desc`,
+  /** Every live kind's title and the titles merged into it, for matching a model suggestion against what exists. */
+  async titles(): Promise<{ id: string; key: string; title: string; aliases: string[] }[]> {
+    const r = await this.db.query<{ id: string; key: string; title: string; aliases: string[] }>(
+      `select id, key, title, aliases from luna_feedback.issue_kinds where not is_archived order by updated_at desc`,
     );
     return r.rows;
   }
@@ -146,7 +176,7 @@ export class KindsRepo {
                   count(distinct ${personSql()}) filter (where s.origin = 'cx')::int as cx_users
              from luna_feedback.submission_issue_kinds sk
              join luna_feedback.submissions s on s.id = sk.submission_id
-             ${where}
+             ${where ? where + ' and' : 'where'} ${LINKED}
             group by sk.kind_id
          ) c on c.kind_id = k.id
         ${conds.length ? 'where ' + conds.join(' and ') : ''}
@@ -164,7 +194,7 @@ export class KindsRepo {
       `select s.occurred_on::text as date, count(*)::int as count
          from luna_feedback.submission_issue_kinds sk
          join luna_feedback.submissions s on s.id = sk.submission_id
-        ${where ? where + ' and' : 'where'} sk.kind_id = $${params.length}::uuid
+        ${where ? where + ' and' : 'where'} sk.kind_id = $${params.length}::uuid and ${LINKED}
         group by s.occurred_on order by s.occurred_on`,
       params,
     );
@@ -184,7 +214,7 @@ export class KindsRepo {
     return r.rows[0]!;
   }
 
-  async update(id: string, patch: Partial<Pick<IssueKindRow, 'title' | 'description' | 'feature_key' | 'tags' | 'event_codes' | 'status' | 'severity' | 'is_archived' | 'jira_key' | 'jira_url'>>): Promise<IssueKindRow | undefined> {
+  async update(id: string, patch: Partial<Pick<IssueKindRow, 'title' | 'description' | 'feature_key' | 'tags' | 'event_codes' | 'status' | 'severity' | 'is_archived' | 'jira_key' | 'jira_url' | 'reference_submission_id'>>): Promise<IssueKindRow | undefined> {
     const sets: string[] = [];
     const vals: unknown[] = [id];
     for (const [col, value] of Object.entries(patch)) {
@@ -200,37 +230,147 @@ export class KindsRepo {
     return r.rows[0];
   }
 
-  async link(submissionId: string, kindId: string, source: KindLinkSource, confidence: number | null, by: string | null): Promise<void> {
+  /**
+   * Records a link decision. A person's decision always stands; a machine never overrides a
+   * rejection, and a suggestion never demotes a link that is already confirmed.
+   */
+  async link(submissionId: string, kindId: string, source: KindLinkSource, confidence: number | null, by: string | null, state: KindLinkState = 'linked'): Promise<void> {
+    const decided = source === 'manual' && state !== 'suggested';
     await this.db.query(
-      `insert into luna_feedback.submission_issue_kinds (submission_id, kind_id, source, confidence, created_by)
-       values ($1,$2,$3,$4,$5)
+      `insert into luna_feedback.submission_issue_kinds as sik (submission_id, kind_id, source, confidence, created_by, state, decided_by, decided_at)
+       values ($1, $2, $3, $4, $5, $6, case when $7 then $5 end, case when $7 then now() end)
        on conflict (submission_id, kind_id) do update
-         set source = case when luna_feedback.submission_issue_kinds.source = 'ai' then excluded.source
-                           else luna_feedback.submission_issue_kinds.source end,
-             confidence = coalesce(excluded.confidence, luna_feedback.submission_issue_kinds.confidence)`,
-      [submissionId, kindId, source, confidence, by],
+         set state = case
+                       when excluded.state = 'rejected' then 'rejected'
+                       when excluded.state = 'linked' and excluded.source = 'manual' then 'linked'
+                       when sik.state in ('linked', 'rejected') then sik.state
+                       else excluded.state
+                     end,
+             source = case when sik.source = 'manual' or excluded.source = 'manual' then 'manual' else excluded.source end,
+             confidence = coalesce(excluded.confidence, sik.confidence),
+             decided_by = case when $7 then excluded.decided_by else sik.decided_by end,
+             decided_at = case when $7 then excluded.decided_at else sik.decided_at end`,
+      [submissionId, kindId, source, confidence, by, state, decided],
     );
   }
 
-  async unlink(submissionId: string, kindId: string): Promise<boolean> {
+  /**
+   * Once a person has put a report under a problem, the matcher's other guesses for it are stale:
+   * they are dropped, not rejected, since nobody judged them. Suggestions made by people stay.
+   */
+  async clearRuleSuggestions(submissionId: string, keepKindId: string): Promise<void> {
+    await this.db.query(
+      `delete from luna_feedback.submission_issue_kinds
+        where submission_id = $1 and kind_id <> $2 and state = 'suggested' and source = 'rule'`,
+      [submissionId, keepKindId],
+    );
+  }
+
+  /** "Not this problem": kept as rejected so it is never suggested again. False when there was nothing to reject. */
+  async reject(submissionId: string, kindId: string, by: string | null): Promise<boolean> {
     const r = await this.db.query(
-      `delete from luna_feedback.submission_issue_kinds where submission_id = $1 and kind_id = $2`,
-      [submissionId, kindId],
+      `update luna_feedback.submission_issue_kinds
+          set state = 'rejected', source = 'manual', decided_by = $3, decided_at = now()
+        where submission_id = $1 and kind_id = $2 and state <> 'rejected'`,
+      [submissionId, kindId, by],
     );
     return (r.rowCount ?? 0) > 0;
   }
 
+  /** Links shown on a report: confirmed and suggested ones. Rejected ones are remembered, not shown. */
   async forSubmission(submissionId: string): Promise<KindLink[]> {
     const r = await this.db.query<KindLink>(
       `select k.id as kind_id, k.ref, k.key, k.title, k.status, k.severity, k.jira_key, k.jira_url,
-              sk.source, sk.confidence::float8 as confidence, sk.created_by, sk.created_at
+              sk.source, sk.state, sk.confidence::float8 as confidence, sk.created_by, sk.created_at, sk.decided_by, sk.decided_at
          from luna_feedback.submission_issue_kinds sk
          join luna_feedback.issue_kinds k on k.id = sk.kind_id
-        where sk.submission_id = $1
-        order by sk.created_at`,
+        where sk.submission_id = $1 and sk.state <> 'rejected'
+        order by case when sk.state = 'linked' then 0 else 1 end, sk.created_at`,
       [submissionId],
     );
     return r.rows;
+  }
+
+  /** Every link row for one report, rejected ones included, so callers can skip what a person already refused. */
+  async decidedKindIds(submissionId: string): Promise<Set<string>> {
+    const r = await this.db.query<{ kind_id: string }>(
+      `select kind_id from luna_feedback.submission_issue_kinds where submission_id = $1`, [submissionId],
+    );
+    return new Set(r.rows.map((x) => x.kind_id));
+  }
+
+  /** All-time size of each problem, counting reports that share `isTest` with the one being looked at. */
+  async countsFor(kindIds: string[], isTest: boolean): Promise<Map<string, KindCounts>> {
+    const out = new Map<string, KindCounts>();
+    if (!kindIds.length) return out;
+    const r = await this.db.query<KindCounts & { kind_id: string }>(
+      `select sk.kind_id,
+              count(*)::int as count,
+              count(distinct ${personSql()})::int as users,
+              count(*) filter (where s.origin = 'cx')::int as cx_count,
+              count(distinct ${personSql()}) filter (where s.origin = 'cx')::int as cx_users,
+              min(s.occurred_on)::text as first_seen,
+              max(s.occurred_on)::text as last_seen
+         from luna_feedback.submission_issue_kinds sk
+         join luna_feedback.submissions s on s.id = sk.submission_id
+        where sk.kind_id = any($1::uuid[]) and ${LINKED} and s.is_test = $2
+        group by sk.kind_id`,
+      [kindIds, isTest],
+    );
+    for (const row of r.rows) { const { kind_id, ...c } = row; out.set(kind_id, c); }
+    return out;
+  }
+
+  /**
+   * Folds one problem into another in a single transaction: its links move over (a confirmed link
+   * beats a suggestion beats a rejection), its title becomes an alias of the survivor, and it is
+   * archived with a pointer to where its reports went.
+   */
+  async merge(fromId: string, intoId: string): Promise<void> {
+    const c = await this.db.connect();
+    try {
+      await c.query('begin');
+      await c.query(
+        `insert into luna_feedback.submission_issue_kinds as sik
+                (submission_id, kind_id, source, confidence, created_by, created_at, state, decided_by, decided_at)
+         select submission_id, $2, source, confidence, created_by, created_at, state, decided_by, decided_at
+           from luna_feedback.submission_issue_kinds where kind_id = $1
+         on conflict (submission_id, kind_id) do update
+           set state = case
+                         when sik.state = 'linked' or excluded.state = 'linked' then 'linked'
+                         when sik.state = 'suggested' or excluded.state = 'suggested' then 'suggested'
+                         else 'rejected'
+                       end`,
+        [fromId, intoId],
+      );
+      await c.query(`delete from luna_feedback.submission_issue_kinds where kind_id = $1`, [fromId]);
+      await c.query(
+        `update luna_feedback.issue_kinds k
+            set aliases = (select coalesce(array_agg(distinct a), '{}') from unnest(k.aliases || f.aliases || array[f.title]) as a where a <> k.title),
+                tags = (select coalesce(array_agg(distinct t), '{}') from unnest(k.tags || f.tags) as t),
+                event_codes = (select coalesce(array_agg(distinct e), '{}') from unnest(k.event_codes || f.event_codes) as e),
+                reference_submission_id = coalesce(k.reference_submission_id, f.reference_submission_id),
+                jira_key = coalesce(k.jira_key, f.jira_key),
+                jira_url = case when k.jira_key is null then f.jira_url else k.jira_url end
+           from luna_feedback.issue_kinds f
+          where k.id = $2 and f.id = $1`,
+        [fromId, intoId],
+      );
+      await c.query(`update luna_feedback.issue_kinds set merged_into = $2, is_archived = true where id = $1`, [fromId, intoId]);
+      // Anything that was merged into the one going away now points at the survivor.
+      await c.query(`update luna_feedback.issue_kinds set merged_into = $2 where merged_into = $1`, [fromId, intoId]);
+      await c.query('commit');
+    } catch (err) {
+      await c.query('rollback');
+      throw err;
+    } finally {
+      c.release();
+    }
+  }
+
+  async submissionRef(id: string): Promise<string | null> {
+    const r = await this.db.query<{ ref: string }>(`select ref from luna_feedback.submissions where id = $1`, [id]);
+    return r.rows[0]?.ref ?? null;
   }
 
   /** Kind links for many submissions at once, so a list page does not fan out one query per row. */
@@ -241,7 +381,7 @@ export class KindsRepo {
       `select sk.submission_id, k.id, k.ref, k.key, k.title
          from luna_feedback.submission_issue_kinds sk
          join luna_feedback.issue_kinds k on k.id = sk.kind_id
-        where sk.submission_id = any($1::uuid[])`,
+        where sk.submission_id = any($1::uuid[]) and ${LINKED}`,
       [ids],
     );
     for (const row of r.rows) {

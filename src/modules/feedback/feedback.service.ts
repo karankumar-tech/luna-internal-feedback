@@ -14,6 +14,12 @@ export interface DiagnosisHook { onNegativeSubmission(submissionId: string, log:
 /** Fills a CX report's user id and device details from the logging service, after the response. */
 export interface DeviceHook { onCxSubmission(submissionId: string, log: FastifyBaseLogger): Promise<void> }
 
+/**
+ * Proposes the open problem a new issue most likely belongs to. `wait` runs it before the
+ * response, for callers that show the answer straight away (the CX tool).
+ */
+export interface SimilarityHook { onNewIssue(submissionId: string, log: FastifyBaseLogger, wait: boolean): Promise<void> }
+
 export interface SubmissionDto extends Omit<SubmissionRow, 'created_at' | 'user_id' | 'idempotency_key' | 'ai_checked_at' | 'status_changed_at' | 'jira_synced_at'> {
   user_id: number | null;
   created_at: string;      // ISO 8601 UTC
@@ -26,6 +32,7 @@ export interface SubmissionDto extends Omit<SubmissionRow, 'created_at' | 'user_
 export class FeedbackService {
   private diagnosis: DiagnosisHook | null = null;
   private device: DeviceHook | null = null;
+  private similarity: SimilarityHook | null = null;
   /** Screenshot URL validator + cleanup, wired when ImageKit is configured. */
   private screenshots: { isOurUrl: (u: string) => boolean; maxCount: number; deleteFile: (id: string) => Promise<boolean> } | null = null;
 
@@ -37,6 +44,7 @@ export class FeedbackService {
 
   setDiagnosisHook(hook: DiagnosisHook | null) { this.diagnosis = hook; }
   setDeviceHook(hook: DeviceHook | null) { this.device = hook; }
+  setSimilarityHook(hook: SimilarityHook | null) { this.similarity = hook; }
   setScreenshotSupport(s: { isOurUrl: (u: string) => boolean; maxCount: number; deleteFile: (id: string) => Promise<boolean> } | null) { this.screenshots = s; }
 
   toDto(row: SubmissionRow): SubmissionDto {
@@ -70,7 +78,7 @@ export class FeedbackService {
       origin: 'internal',
       submitted_via: 'app',
       cx: null,
-    }, log);
+    }, log, false);
   }
 
   /**
@@ -107,7 +115,7 @@ export class FeedbackService {
         agent: v.cx.agent || null,
         transcript: scrub(v.cx.transcript),
       },
-    }, log);
+    }, log, true);
     if (result.created && this.device && log) {
       try { await this.device.onCxSubmission(result.dto.id, log); } catch (err) { log.error({ err }, 'could not queue the device lookup'); }
     }
@@ -154,11 +162,15 @@ export class FeedbackService {
     return client;
   }
 
-  private async store(input: NewSubmission, log?: FastifyBaseLogger) {
+  private async store(input: NewSubmission, log: FastifyBaseLogger | undefined, waitForSuggestion: boolean) {
     const { row, created } = await this.feedback.insert(input);
     if (created && !row.is_positive && this.diagnosis && log) {
       // Queue + start after the response; never let diagnosis problems break the submit.
       try { await this.diagnosis.onNegativeSubmission(row.id, log); } catch (err) { log.error({ err }, 'could not queue diagnosis'); }
+    }
+    if (created && !row.is_positive && this.similarity && log) {
+      // A suggestion is a convenience: it never fails the submit.
+      try { await this.similarity.onNewIssue(row.id, log, waitForSuggestion); } catch (err) { log.error({ err }, 'could not suggest a problem'); }
     }
     return { dto: this.toDto(row), created };
   }

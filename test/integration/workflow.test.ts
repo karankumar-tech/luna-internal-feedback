@@ -166,7 +166,10 @@ describe('issue kinds', () => {
     const id = (await app.inject({ method: 'POST', url: '/v1/feedback/home', headers: appHeaders, payload: body() })).json().id;
     const r = await app.inject({ method: 'POST', url: `/v1/admin/submissions/${id}/kinds`, headers: adminHeaders, payload: { title: `WF ${run} brand new kind` } });
     expect(r.statusCode).toBe(200);
-    expect(r.json().items).toHaveLength(1);
+    // The report is identical to one already in a kind, so the matcher may have suggested that kind too.
+    const linked = r.json().items.filter((k: { state: string }) => k.state === 'linked');
+    expect(linked).toHaveLength(1);
+    expect(linked[0].title).toBe(`WF ${run} brand new kind`);
   });
 
   it('rejects sending both kind_id and title', async () => {

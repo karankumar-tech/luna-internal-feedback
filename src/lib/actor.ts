@@ -28,8 +28,10 @@ export const PERMISSIONS = {
   manage_jira: ['admin', 'qc'],
   /** Move a ticket through triage and flag it as test data. */
   manage_triage: ['admin', 'qc'],
-  /** Create, edit and link issue kinds. */
+  /** Create, edit and link issue kinds; confirm or reject suggested links; merge kinds. */
   manage_kinds: ['admin', 'qc', 'developer'],
+  /** Say "this report looks like that problem" for someone who can manage kinds to confirm. */
+  suggest_kinds: ['admin', 'qc', 'developer', 'cx'],
   /** Spend money: run a diagnosis or send a chat message to the model. CX may, on the reports they look at. */
   run_diagnosis: ['admin', 'qc', 'developer', 'cx'],
   /** Record agreement with a verdict. */

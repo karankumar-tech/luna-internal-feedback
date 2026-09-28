@@ -20,8 +20,10 @@ export interface CxReportView {
   status_changed_at: string | null;
   created_at: string;
   created_at_ist: string;
-  /** The recurring problems this report has been grouped under, if any. */
-  problems: { ref: string; title: string; status: string }[];
+  /** The recurring problems this report has been confirmed as part of. */
+  problems: { ref: string; title: string; status: string; report_count: number }[];
+  /** The open problem it most likely belongs to, not confirmed yet: show it to the agent as "Looks like …". */
+  likely_problem: { ref: string; title: string; report_count: number } | null;
   /** Opens the report on the dashboard, for agents with an account. */
   dashboard_url: string;
 }
@@ -38,7 +40,8 @@ export function registerCxRoutes(
   const base = deps.publicBaseUrl.replace(/\/+$/, '');
 
   async function view(dto: SubmissionDto): Promise<CxReportView> {
-    const links = await kinds.forSubmission(dto.id);
+    const links = await kinds.forSubmissionWithCounts(dto.id, dto.is_test);
+    const likely = links.find((k) => k.state === 'suggested');
     return {
       id: dto.id,
       ref: dto.ref,
@@ -52,7 +55,8 @@ export function registerCxRoutes(
       status_changed_at: dto.status_changed_at,
       created_at: dto.created_at,
       created_at_ist: dto.created_at_ist,
-      problems: links.map((k) => ({ ref: k.ref, title: k.title, status: k.status })),
+      problems: links.filter((k) => k.state === 'linked').map((k) => ({ ref: k.ref, title: k.title, status: k.status, report_count: k.counts?.count ?? 0 })),
+      likely_problem: likely ? { ref: likely.ref, title: likely.title, report_count: likely.counts?.count ?? 0 } : null,
       dashboard_url: `${base}/i/${dto.ref}`,
     };
   }

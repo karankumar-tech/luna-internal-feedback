@@ -77,9 +77,13 @@ export const SCREENSHOT_CLIENT_RESIZE = { max_dimension: 1600, jpeg_quality: 0.8
 
 export function registerFeedbackRoutes(
   app: FastifyInstance,
-  deps: { service: FeedbackService; categories: CategoriesRepo; timeZone: string; uploads: ScreenshotUploads | null },
+  deps: {
+    service: FeedbackService; categories: CategoriesRepo; timeZone: string; uploads: ScreenshotUploads | null;
+    /** The problems each listed report is confirmed as part of, so the list can show them. */
+    kindsFor?: (ids: string[]) => Promise<Map<string, { id: string; ref: string; title: string }[]>>;
+  },
 ) {
-  const { service, categories, timeZone, uploads } = deps;
+  const { service, categories, timeZone, uploads, kindsFor } = deps;
   const uploadsDescriptor = () => ({
     screenshots: uploads
       ? { enabled: true, auth_endpoint: '/v1/uploads/screenshot-auth', upload_url: 'https://upload.imagekit.io/api/v1/files/upload', max_count: uploads.maxCount, max_bytes: uploads.maxBytes, accepted_types: [...SCREENSHOT_TYPES], url_endpoint: uploads.urlEndpoint, client_resize: SCREENSHOT_CLIENT_RESIZE }
@@ -146,7 +150,10 @@ export function registerFeedbackRoutes(
     const parsed = ListQuery.safeParse(req.query);
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error), 'Invalid query');
     const { ref, ...filters } = parsed.data;
-    return service.list({ ...filters, ref_no: ref });
+    const page = await service.list({ ...filters, ref_no: ref });
+    if (!kindsFor) return page;
+    const kinds = await kindsFor(page.items.map((i) => i.id));
+    return { ...page, items: page.items.map((i) => ({ ...i, kinds: kinds.get(i.id) ?? [] })) };
   });
 
   /** By uuid or by reference (LN-00042, ln-42, 42). */
