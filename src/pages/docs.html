@@ -679,6 +679,11 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
     <tr><td><span class="method post">POST</span></td><td><code>/v1/admin/submissions/{id}/ask-reporter</code></td><td><code>{ "questions" }</code> posts them as a note and sets <code>needs_info</code></td></tr>
     <tr><td><span class="method post">POST</span></td><td><code>/v1/admin/submissions/bulk</code></td><td><code>{ "ids", "status"?, "assigned_to"?, "priority"?, "is_test"?, "kind_id"? }</code></td></tr>
     <tr><td><span class="method get">GET</span></td><td><code>/v1/admin/assignees</code></td><td>everyone a report can be assigned to</td></tr>
+    <tr><td><span class="method patch">PATCH</span></td><td><code>/v1/admin/kinds/{id}</code></td><td>also <code>{ "fixed_in_app_version", "fixed_in_firmware_version" }</code>: the versions a fix ships in. A report linked later that ran one of them or newer is flagged as a regression and a fixed problem reopens as watching</td></tr>
+    <tr><td><span class="method get">GET</span></td><td><code>/v1/kinds/{id}</code></td><td>adds <code>skew</code> (firmware, app, OS and platform shares against all reports in the same filters), <code>oldest_versions</code> and <code>regressions</code></td></tr>
+    <tr><td><span class="method get">GET</span></td><td><code>/v1/feedback/{id}/same-device</code></td><td>problem reports from the same ring (or reporter) in the 14 days up to this one; <code>flagged</code> at 3</td></tr>
+    <tr><td><span class="method get">GET</span></td><td><code>/v1/attention</code></td><td>adds <code>growing</code> (problems and categories at 3× their usual rate over 3 days, and problems that came back) and <code>repeat_devices</code></td></tr>
+    <tr><td><span class="method get">GET</span></td><td><code>/v1/analytics/overview</code></td><td>adds <code>caught_first</code>: how many problems customers hit that internal testing reported first, and by how long</td></tr>
     <tr><td><span class="method get">GET</span></td><td><code>/v1/admin/test-data</code></td><td>→ <code>{ "count" }</code> of rows flagged <code>is_test</code></td></tr>
     <tr><td><span class="method" style="background:var(--crit)">DELETE</span></td><td><code>/v1/admin/test-data?confirm=delete</code></td><td>deletes only <code>is_test</code> rows → <code>{ "deleted" }</code>; <code>422</code> without the confirm parameter</td></tr>
   </table></div>

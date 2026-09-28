@@ -1,4 +1,7 @@
 import type { CommonFilters } from '../feedback/feedback.repo.js';
+import { todayInZone } from '../../lib/time.js';
+import { CATCH_ALL_CATEGORIES } from '../similar/similarity.js';
+import { REGRESSION_RECENT_DAYS, REPEAT, SPIKE, isSpike, spikeRatio } from '../kinds/pinpoint.js';
 import type { AttentionRepo, OpenIssueRow } from './attention.repo.js';
 
 /**
@@ -105,13 +108,57 @@ function section(items: AttentionItem[]) {
 }
 
 export class AttentionService {
-  constructor(private readonly repo: AttentionRepo) {}
+  constructor(private readonly repo: AttentionRepo, private readonly timeZone = 'Asia/Kolkata') {}
+
+  /**
+   * Getting worse: problems and categories reported at least 3× their usual rate over the last
+   * 3 days, and fixed problems that came back on the fix version or later.
+   * Owner and priority are about who handles a report, not where it breaks, so they do not narrow this.
+   */
+  async growing(filters: Partial<CommonFilters>) {
+    const { assigned_to: _a, priority: _p, ...where } = filters;
+    const today = todayInZone(this.timeZone);
+    const w = { recentDays: SPIKE.recent_days, priorDays: SPIKE.prior_days, minRecent: SPIKE.min_reports };
+    const [kinds, categories, regressions] = await Promise.all([
+      this.repo.kindSpikeCounts(where, today, w),
+      this.repo.categorySpikeCounts(where, today, w, [...CATCH_ALL_CATEGORIES]),
+      // Regressions are only ever flagged on real reports.
+      filters.is_test ? Promise.resolve([]) : this.repo.recentRegressions(REGRESSION_RECENT_DAYS),
+    ]);
+    const spike = <T extends { recent: number; prior: number }>(r: T) => ({
+      ...r,
+      /** Reports per day over the 14 days before. */
+      prior_daily: Math.round((r.prior / SPIKE.prior_days) * 100) / 100,
+      ratio: spikeRatio(r.recent, r.prior),
+      is_new: r.prior === 0,
+    });
+    return {
+      today,
+      kind_spikes: kinds.filter((r) => isSpike(r.recent, r.prior)).map(spike),
+      category_spikes: categories.filter((r) => isSpike(r.recent, r.prior)).map(spike),
+      regressions: regressions.map((r) => ({ ...r, regressed_at: new Date(r.regressed_at).toISOString() })),
+    };
+  }
+
+  /** Rings with 3+ problem reports in 14 days, customers first. Owner, priority and feature do not narrow this: a faulty ring shows up everywhere. */
+  async repeatDevices(filters: Partial<CommonFilters>) {
+    const { assigned_to: _a, priority: _p, feature: _f, ...where } = filters;
+    return this.repo.repeatDevices(where, todayInZone(this.timeZone), REPEAT.days, REPEAT.min_reports);
+  }
+
+  /** This report's ring (or reporter) over the 14 days up to it: flagged at 3 or more problem reports. */
+  async sameDevice(submissionId: string) {
+    const out = await this.repo.sameDevice(submissionId, REPEAT.days);
+    return { ...out, count: out.items.length, window_days: REPEAT.days, min_reports: REPEAT.min_reports, flagged: out.items.length >= REPEAT.min_reports };
+  }
 
   /** Everything someone should look at now, in one read. Not windowed by date: an old open report is exactly the point. */
   async overview(filters: Partial<CommonFilters>, me: string | null = null) {
-    const [rows, kinds] = await Promise.all([
+    const [rows, kinds, growing, repeatDevices] = await Promise.all([
       this.repo.openIssues(filters),
       this.repo.kindsWithoutJira(filters, KIND_TICKET_MIN_REPORTS),
+      this.growing(filters),
+      this.repeatDevices(filters),
     ]);
 
     const untouched: AttentionItem[] = [];
@@ -149,7 +196,10 @@ export class AttentionService {
     };
     return {
       generated_at: new Date().toISOString(),
-      thresholds: { ...ATTENTION_THRESHOLDS, critical_factor: 0.5, kind_ticket_min_reports: KIND_TICKET_MIN_REPORTS, priority: PRIORITY_THRESHOLDS, needs_info_days: NEEDS_INFO_DAYS },
+      thresholds: {
+        ...ATTENTION_THRESHOLDS, critical_factor: 0.5, kind_ticket_min_reports: KIND_TICKET_MIN_REPORTS, priority: PRIORITY_THRESHOLDS, needs_info_days: NEEDS_INFO_DAYS,
+        spike: SPIKE, repeat: REPEAT, regression_recent_days: REGRESSION_RECENT_DAYS,
+      },
       counts: {
         open: rows.length,
         mine,
@@ -159,9 +209,13 @@ export class AttentionService {
         needs_info: sections.needs_info.total,
         diagnosis_stuck: sections.diagnosis_stuck.total,
         kinds_without_jira: kinds.length,
+        growing: growing.kind_spikes.length + growing.category_spikes.length + growing.regressions.length,
+        repeat_devices: repeatDevices.length,
       },
       sections,
       kinds_without_jira: kinds,
+      growing,
+      repeat_devices: repeatDevices,
       age_buckets: (['cx', 'internal'] as const).flatMap((origin) =>
         AGE_BUCKETS.map((b) => ({ origin, bucket: b.key, count: buckets.get(`${origin}|${b.key}`) ?? 0 }))),
     };

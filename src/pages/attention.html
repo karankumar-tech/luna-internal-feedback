@@ -12,7 +12,7 @@
   :root {
     --black: #000; --white: #fff; --gray-dark: #737373; --gray-mid: #9E9E9E; --gray-light: #D9D9D9;
     --bg: #F0EFEA; --brief: #E8E6E0; --border-warm: #E2E0D9; --border-ghost: #F0F0F0; --hero: #1A1A18; --hero-muted: #8A887F;
-    --yellow: #F5F85D; --yellow-50: #FEFFD6; --blue: #2E64E4; --orange: #EF7432; --magenta: #E0237A; --ok: #00C37A; --ok-bg: #E6F8F0; --crit: #FF3B3B; --crit-bg: #FFECEC;
+    --yellow: #F5F85D; --yellow-50: #FEFFD6; --blue: #2E64E4; --orange: #EF7432; --orange-50: #FFF3EC; --magenta: #E0237A; --ok: #00C37A; --ok-bg: #E6F8F0; --crit: #FF3B3B; --crit-bg: #FFECEC;
     --sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
     --r-xs: 2px; --r-s: 4px; --r-m: 6px; --r-l: 8px; --r-xl: 12px;
   }
@@ -39,8 +39,17 @@
   .card { background: var(--white); border: 1px solid var(--gray-light); border-radius: var(--r-xl); padding: 16px 20px; min-width: 0; margin-bottom: 12px; }
   .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
   .card-head .sub { font-size: 12px; line-height: 18px; color: var(--gray-dark); }
+  /* The title block takes the room, so a long subtitle wraps inside it and the count stays on the right. */
+  .card-head > div:first-child { flex: 1 1 0; min-width: 0; }
   .count { font-family: var(--mono); font-size: 12px; color: var(--gray-dark); }
-  .kpis { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .kpis .kpi.hero { grid-row: span 2; justify-content: flex-end; }
+  .kind-type { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 1px 6px; border-radius: var(--r-xs); white-space: nowrap; }
+  .kind-type.spike { background: var(--orange-50); color: #A03600; border: 1px solid var(--orange); }
+  .kind-type.new { background: var(--yellow-50); color: #545500; border: 1px solid #545500; }
+  .kind-type.back { background: var(--crit-bg); color: #8A1010; border: 1px solid #FFB3B3; }
+  .refs a { font-family: var(--mono); font-size: 12px; color: inherit; } .refs { font-size: 12px; color: var(--gray-dark); }
+  .hint { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: #A03600; }
   .prio { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; padding: 0 5px; border-radius: var(--r-xs); margin-left: 4px; }
   .prio.p0 { background: var(--crit); color: var(--white); } .prio.p1 { background: var(--orange); color: var(--white); } .prio.p2, .prio.p3 { background: var(--brief); }
   .miss { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: #A03600; }
@@ -67,8 +76,9 @@
   .snippet { color: var(--gray-dark); font-size: 12px; max-width: 360px; }
   .bar { height: 6px; border-radius: 3px; background: var(--brief); overflow: hidden; min-width: 80px; } .bar i { display: block; height: 100%; }
   .loading { opacity: .45; }
-  @media (max-width: 1100px) { .kpis { grid-template-columns: repeat(3, 1fr); } }
-  @media (max-width: 600px) { .kpis { grid-template-columns: 1fr 1fr; } }
+  /* Nine tiles: the hero spans two rows where that fills the grid evenly (5 and 2 columns), not at 3. */
+  @media (max-width: 1100px) { .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } .kpis .kpi.hero { grid-row: auto; } }
+  @media (max-width: 600px) { .kpis { grid-template-columns: 1fr 1fr; } .kpis .kpi.hero { grid-row: span 2; } }
 </style>
 </head>
 <body>
@@ -111,6 +121,8 @@
       <a class="kpi" href="#needs"><div class="v" id="kNeeds">–</div><div class="l">Waiting on reporter</div><div class="d" id="kNeedsD"></div></a>
       <a class="kpi" href="#stuck"><div class="v" id="kStuck">–</div><div class="l">Diagnosis stuck</div><div class="d">failed, or waiting &gt; 2 days</div></a>
       <a class="kpi" href="#kinds"><div class="v" id="kKinds">–</div><div class="l">Problems missing owner/ticket</div><div class="d" id="kKindsD"></div></a>
+      <a class="kpi" href="#growing"><div class="v" id="kGrowing">–</div><div class="l">Getting worse</div><div class="d" id="kGrowingD"></div></a>
+      <a class="kpi" href="#repeat"><div class="v" id="kRepeat">–</div><div class="l">Same ring, many reports</div><div class="d" id="kRepeatD"></div></a>
     </section>
 
     <section class="card" id="untouched">
@@ -138,9 +150,19 @@
       <div class="table-scroll" id="tStuck"></div>
     </section>
 
+    <section class="card" id="growing">
+      <div class="card-head"><div><h2>Getting worse</h2><div class="sub" id="subGrowing">Problems and categories reported far more than usual over the last 3 days, and fixed problems that came back.</div></div><span class="count" id="cGrowing"></span></div>
+      <div class="table-scroll" id="tGrowing"></div>
+    </section>
+
     <section class="card" id="kinds">
       <div class="card-head"><div><h2>Problems missing an owner or a ticket</h2><div class="sub" id="subKinds">Recurring problems with enough reports, or any from a customer, that have no owner or no Jira ticket yet.</div></div><span class="count" id="cKinds"></span></div>
       <div class="table-scroll" id="tKinds"></div>
+    </section>
+
+    <section class="card" id="repeat">
+      <div class="card-head"><div><h2>Same ring, many reports</h2><div class="sub" id="subRepeat">One ring (or, without a serial, one person) with several problem reports in two weeks. For a customer this often means a faulty ring and a replacement, not a software bug.</div></div><span class="count" id="cRepeat"></span></div>
+      <div class="table-scroll" id="tRepeat"></div>
     </section>
 
     <section class="card">
@@ -218,7 +240,12 @@
     $('kStuck').textContent = fmtN(c.diagnosis_stuck);
     $('kNeeds').textContent = fmtN(c.needs_info); $('kNeedsD').textContent = `quiet > ${t.needs_info_days} days`;
     $('kKinds').textContent = fmtN(c.kinds_without_jira); $('kKindsD').textContent = `${t.kind_ticket_min_reports}+ reports, or any from CX`;
-    for (const [id, n] of [['kUntouched', c.untouched], ['kCx', c.cx_waiting], ['kStale', c.stale], ['kNeeds', c.needs_info], ['kStuck', c.diagnosis_stuck], ['kKinds', c.kinds_without_jira]]) $(id).parentElement.classList.toggle('warn', n > 0);
+    $('kGrowing').textContent = fmtN(c.growing);
+    $('kGrowingD').textContent = `${o.growing.kind_spikes.length + o.growing.category_spikes.length} spiking · ${o.growing.regressions.length} came back`;
+    $('kRepeat').textContent = fmtN(c.repeat_devices);
+    const cxRings = o.repeat_devices.filter((r) => r.cx_reports > 0).length;
+    $('kRepeatD').textContent = `${t.repeat.min_reports}+ in ${t.repeat.days}d · ${cxRings} customer${cxRings === 1 ? '' : 's'}`;
+    for (const [id, n] of [['kUntouched', c.untouched], ['kCx', c.cx_waiting], ['kStale', c.stale], ['kNeeds', c.needs_info], ['kStuck', c.diagnosis_stuck], ['kKinds', c.kinds_without_jira], ['kGrowing', c.growing], ['kRepeat', cxRings]]) $(id).parentElement.classList.toggle('warn', n > 0);
 
     $('subUntouched').textContent = `Nobody on the team has acted on it yet. Flagged after ${t.cx.untouched_days} day for CX and ${t.internal.untouched_days} days for internal reports; P0 after 4 hours, P1 after a day, P3 after twice as long.`;
     $('subStale').textContent = `Someone picked it up, but nothing has moved for ${t.cx.stale_days} days (CX) or ${t.internal.stale_days} days (internal).`;
@@ -256,6 +283,56 @@
       { h: 'via CX', num: true, render: (r) => r.cx_reports ? el('span', 'over', String(r.cx_reports)) : '0' },
       { h: 'last seen', k: 'last_seen' },
     ], o.kinds_without_jira, 'Every big problem has a ticket.', (r) => { location.href = '/dashboard/kinds/' + encodeURIComponent(r.ref); });
+
+    // Getting worse: spikes (problems, then categories) and problems that came back after a fix.
+    const sp = t.spike;
+    $('subGrowing').textContent = `Reported at least ${sp.factor}× their usual daily rate over the last ${sp.recent_days} days (compared with the ${sp.prior_days} days before, and at least ${sp.min_reports} reports), and fixed problems that came back on the fix version or later in the last ${t.regression_recent_days} days.`;
+    const usual = (r) => (r.prior_daily * sp.recent_days).toFixed(1).replace(/\.0$/, '');
+    const growRows = [
+      ...o.growing.regressions.map((r) => ({ kind: 'back', r })),
+      ...o.growing.kind_spikes.map((r) => ({ kind: r.is_new ? 'new' : 'spike', r, problem: true })),
+      ...o.growing.category_spikes.map((r) => ({ kind: r.is_new ? 'new' : 'spike', r, category: true })),
+    ];
+    $('cGrowing').textContent = fmtN(growRows.length);
+    table($('tGrowing'), [
+      { h: 'what', render: (x) => el('span', 'kind-type ' + x.kind, x.kind === 'back' ? 'came back' : x.kind === 'new' ? 'new, busy' : 'spike') },
+      { h: 'problem or category', render: (x) => {
+        const w = el('span', 'kind');
+        if (x.category) { w.appendChild(el('b', null, FEATURE[x.r.feature_key] || x.r.feature_key)); w.appendChild(document.createTextNode(' · ' + x.r.label)); return w; }
+        w.appendChild(el('b', null, x.r.ref)); w.appendChild(document.createTextNode(' ' + x.r.title)); return w;
+      } },
+      { h: `last ${sp.recent_days}d`, num: true, render: (x) => x.kind === 'back' ? '—' : String(x.r.recent) },
+      { h: 'usual', num: true, render: (x) => x.kind === 'back' ? '—' : usual(x.r) },
+      { h: '×', num: true, render: (x) => x.kind === 'back' ? '—' : x.r.ratio === null ? 'new' : el('span', 'over', x.r.ratio + '×') },
+      { h: 'via CX', num: true, render: (x) => x.kind === 'back' ? String(x.r.reports.filter((y) => y.origin === 'cx').length) : String(x.r.cx_recent) },
+      { h: 'detail', render: (x) => {
+        if (x.kind !== 'back') return x.category ? el('span', 'tertiary', 'category') : el('span', 'tertiary', x.r.status + (x.r.owner ? ' · ' + x.r.owner.split('@')[0] : ''));
+        const w = el('span', 'refs');
+        const fix = [x.r.fixed_in_app_version && 'app ' + x.r.fixed_in_app_version, x.r.fixed_in_firmware_version && 'fw ' + x.r.fixed_in_firmware_version].filter(Boolean).join(', ');
+        w.appendChild(document.createTextNode(`fixed in ${fix}; seen again on `));
+        x.r.reports.forEach((y, i) => { if (i) w.appendChild(document.createTextNode(', ')); const a = el('a', null, y.ref); a.href = '/dashboard/submissions/' + encodeURIComponent(y.ref); a.addEventListener('click', (e) => e.stopPropagation()); w.appendChild(a); const v = [y.app_version && 'app ' + y.app_version, y.firmware_version && 'fw ' + y.firmware_version].filter(Boolean).join(' '); if (v) w.appendChild(document.createTextNode(` (${v})`)); });
+        return w;
+      } },
+    ], growRows, 'Nothing is getting worse.', (x) => { if (x.category) { location.href = '/dashboard?feature=' + encodeURIComponent(x.r.feature_key) + '&category=' + encodeURIComponent(x.r.key); return; } location.href = '/dashboard/kinds/' + encodeURIComponent(x.r.ref); });
+
+    // Same ring, many reports.
+    $('cRepeat').textContent = fmtN(o.repeat_devices.length);
+    table($('tRepeat'), [
+      { h: 'source', render: (r) => originPill(r.cx_reports > 0 ? 'cx' : 'internal') },
+      { h: 'ring', cls: 'nowrap', render: (r) => el('span', 'mono', r.device_serial || (r.user_id ? 'user ' + r.user_id : '—')) },
+      { h: 'luna user', render: (r) => r.device_serial && r.user_id ? el('span', 'mono', String(r.user_id)) : el('span', 'tertiary', '—') },
+      { h: `reports (${t.repeat.days}d)`, k: 'reports', num: true },
+      { h: 'open', k: 'open_reports', num: true },
+      { h: 'features', k: 'features', num: true },
+      { h: 'last', k: 'last_on', cls: 'nowrap' },
+      { h: 'reports', render: (r) => {
+        const w = el('span', 'refs');
+        r.items.slice(0, 6).forEach((y, i) => { if (i) w.appendChild(document.createTextNode(', ')); const a = el('a', null, y.ref); a.href = '/dashboard/submissions/' + encodeURIComponent(y.ref); a.title = `${y.feature_key} · ${y.occurred_on} · ${y.status}`; w.appendChild(a); });
+        if (r.items.length > 6) w.appendChild(document.createTextNode(` +${r.items.length - 6}`));
+        return w;
+      } },
+      { h: '', render: (r) => r.cx_reports > 0 && r.device_serial ? el('span', 'hint', 'possible faulty ring') : '' },
+    ], o.repeat_devices, `No ring has ${t.repeat.min_reports} or more problem reports in ${t.repeat.days} days.`);
 
     const buckets = [...new Set(o.age_buckets.map((b) => b.bucket))];
     const max = Math.max(1, ...o.age_buckets.map((b) => b.count));

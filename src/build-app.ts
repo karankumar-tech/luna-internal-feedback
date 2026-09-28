@@ -208,7 +208,7 @@ export function buildApp(opts: BuildOptions = {}): App {
   registerChatRoutes(app, { service: chat });
   registerAnalyticsRoutes(app, { repo: new AnalyticsRepo(db), timeZone: config.APP_TIMEZONE });
   registerCxRoutes(app, { feedback: service, kinds, activity, publicBaseUrl: config.PUBLIC_BASE_URL });
-  registerAttentionRoutes(app, { service: new AttentionService(new AttentionRepo(db)) });
+  registerAttentionRoutes(app, { service: new AttentionService(new AttentionRepo(db), config.APP_TIMEZONE), feedback: service });
 
   app.addHook('onClose', async () => {
     if (!opts.db) await db.end();

@@ -68,6 +68,15 @@
   .kpi .d { font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--gray-mid); }
 
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .caught { display: grid; grid-template-columns: minmax(220px, 1fr) 2fr; gap: 12px 24px; align-items: start; }
+  .caught .big { font-family: var(--mono); font-size: 32px; line-height: 36px; }
+  .caught .big small { font-size: 14px; color: var(--gray-dark); }
+  .caught .line { font-size: 13px; color: var(--gray-dark); margin: 4px 0 0; } .caught .line b { color: var(--black); font-family: var(--mono); font-weight: 500; }
+  .caught .split { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--brief); margin: 10px 0 4px; }
+  .caught .split i { display: block; height: 100%; }
+  .caught h4 { margin: 14px 0 4px; font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); font-weight: 400; }
+  .caught td a { color: inherit; }
+  @media (max-width: 980px) { .caught { grid-template-columns: 1fr; } }
   .grid1 { display: grid; gap: 12px; margin-bottom: 12px; }
   .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--gray-dark); }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: var(--r-xs); margin-right: 6px; vertical-align: -1px; }
@@ -224,6 +233,11 @@
       </div>
     </div>
 
+    <section class="card" style="margin-bottom:12px">
+      <div class="card-head"><div><h2>Caught by testing first?</h2><div class="sub">Problems whose first customer report is in this window: did an internal report of the same problem come in earlier? Only as good as the grouping, and ignores the source and environment filters.</div></div></div>
+      <div id="caught"></div>
+    </section>
+
     <div class="grid2">
       <div class="card">
         <div class="card-head"><div><h2>Triage</h2><div class="sub">Where reported issues sit right now</div></div></div>
@@ -300,6 +314,47 @@
     if ($('fPlatform').value) f.platform = $('fPlatform').value;
     if ($('fTest').value) f.is_test = $('fTest').value;
     return f;
+  }
+
+  // ---------- caught by testing first ----------
+  function renderCaught(c) {
+    const host = $('caught'); host.replaceChildren();
+    if (!c || !c.problems) { host.appendChild(el('div', 'empty', 'No problem got its first customer report in this window. Customer reports need to be grouped into problems to show here.')); return; }
+    const wrap = el('div', 'caught');
+    const left = el('div');
+    const big = el('div', 'big', `${c.caught} `); big.appendChild(el('small', null, `of ${c.problems} caught first`)); left.appendChild(big);
+    const split = el('div', 'split'); const a = el('i'); a.style.width = pct(c.caught, c.problems); a.style.background = OK; const b = el('i'); b.style.width = pct(c.missed, c.problems); b.style.background = CRIT; split.append(a, b); left.appendChild(split);
+    const l1 = el('p', 'line'); l1.appendChild(document.createTextNode('Internal testing reported ')); l1.appendChild(el('b', null, pct(c.caught, c.problems))); l1.appendChild(document.createTextNode(' of the problems customers hit before they did'));
+    if (c.lead_p50_days !== null) {
+      l1.appendChild(document.createTextNode(', a median of '));
+      l1.appendChild(el('b', null, c.lead_p50_days < 1 ? 'less than a day' : `${c.lead_p50_days} day${c.lead_p50_days === 1 ? '' : 's'}`));
+      l1.appendChild(document.createTextNode(' earlier'));
+    }
+    l1.appendChild(document.createTextNode('.')); left.appendChild(l1);
+    const l2 = el('p', 'line'); l2.appendChild(el('b', null, String(c.missed))); l2.appendChild(document.createTextNode(` reached customers first: testing missed ${c.missed === 1 ? 'it' : 'them'}.`)); left.appendChild(l2);
+    left.appendChild(el('h4', null, 'By feature'));
+    const bf = el('div'); left.appendChild(bf);
+    table(bf, [
+      { label: 'Feature', render: (r) => r.label || r.feature_key || 'unknown' },
+      { label: 'Problems', cls: 'num', render: (r) => fmtN(r.problems) },
+      { label: 'Caught', cls: 'num', render: (r) => fmtN(r.caught) },
+      { label: 'Missed', cls: 'num', render: (r) => fmtN(r.missed) },
+    ], c.by_feature);
+    wrap.appendChild(left);
+    const right = el('div');
+    right.appendChild(el('h4', null, 'Reached customers first'));
+    const mt = el('div'); right.appendChild(mt);
+    const link = (ref) => { const x = el('a', 'code', ref); x.href = '/dashboard/kinds/' + encodeURIComponent(ref); return x; };
+    table(mt, [
+      { label: 'Problem', cls: 'code', render: (r) => link(r.ref) },
+      { label: 'Title', render: (r) => r.title },
+      { label: 'Feature', render: (r) => r.feature_label || r.feature_key || '—' },
+      { label: 'Customers', cls: 'num', render: (r) => fmtN(r.customers) },
+      { label: 'First customer report', cls: 'code', render: (r) => r.first_cx_at.slice(0, 10) },
+      { label: 'Testing', render: (r) => r.first_internal_at ? `later, ${r.first_internal_at.slice(0, 10)}` : 'never reported it' },
+    ], c.missed_items, { empty: 'Testing reported every one of them first.' });
+    wrap.appendChild(right);
+    host.appendChild(wrap);
   }
 
   // ---------- charts ----------
@@ -450,6 +505,8 @@
       { label: 'Median', cls: 'num', render: (r) => hrs(r.p50_hours) },
       { label: 'Average', cls: 'num', render: (r) => hrs(r.avg_hours) },
     ], d.time_in_status || [], { empty: 'No status history in this window yet.' });
+
+    renderCaught(d.caught_first);
 
     table($('tReporters'), [
       { label: 'Who', cls: 'code', render: (r) => r.user_id ? String(r.user_id) : r.device_serial || '—' },

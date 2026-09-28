@@ -35,6 +35,28 @@ export interface AnalyticsResult {
   }[];
   /** Average and median hours reports spend in each open status, from the activity log. */
   time_in_status: { status: string; stints: number; avg_hours: number; p50_hours: number }[];
+  /**
+   * Did testing catch it before customers did? For every problem whose first customer report falls
+   * in the range: whether an internal report was linked to it earlier, and by how long.
+   */
+  caught_first: CaughtFirst;
+}
+
+export interface CaughtFirstProblem {
+  id: string; ref: string; title: string; status: string; feature_key: string | null; feature_label: string | null;
+  first_cx_at: string; first_internal_at: string | null; cx_reports: number; customers: number; internal_reports: number;
+  /** Days internal testing was ahead; null when a customer reported it first. */
+  lead_days: number | null;
+}
+
+export interface CaughtFirst {
+  problems: number;
+  caught: number;
+  missed: number;
+  lead_p50_days: number | null;
+  by_feature: { feature_key: string | null; label: string | null; problems: number; caught: number; missed: number }[];
+  /** Problems a customer reported first, most customer reports first. */
+  missed_items: CaughtFirstProblem[];
 }
 
 /**
@@ -55,7 +77,7 @@ export class AnalyticsRepo {
     const [
       totals, byDay, byEnvironment, byOrigin, byStatus, byFeature, byCategory,
       bySide, bySeverity, byTag, byEvent, byKind, topReporters, fwVersions, appVersions, jiraByStatus,
-      responseTimes, timeInStatus,
+      responseTimes, timeInStatus, caughtFirst,
     ] = await Promise.all([
       q<{ submissions: number; issues: number; positive: number; users: number; with_jira: number; open_issues: number; closed_issues: number; diagnosed: number }>(
         `select count(*)::int as submissions,
@@ -189,6 +211,8 @@ export class AnalyticsRepo {
                 (percentile_cont(0.5) within group (order by extract(epoch from coalesce(until, now()) - since)) / 3600)::float8 as p50_hours
            from st where status in ('open', 'triaged', 'in_progress', 'needs_info')
           group by status order by array_position(array['open','triaged','in_progress','needs_info'], status)`),
+
+      this.caughtFirst(f),
     ]);
 
     const t = totals.rows[0]!;
@@ -232,6 +256,71 @@ export class AnalyticsRepo {
         resolve_p90_h: r.resolve_p90_h === null ? null : Number(r.resolve_p90_h),
       })),
       time_in_status: timeInStatus.rows,
+      caught_first: caughtFirst,
+    };
+  }
+
+  /**
+   * Problems whose first customer report is in the range, and whether an internal report came first.
+   * Source and environment filters do not apply: the point is comparing the two sources, and an
+   * internal report from stage counts as testing having caught it. The feature filter does.
+   */
+  async caughtFirst(f: StatsFilters): Promise<CaughtFirst> {
+    const params: unknown[] = [f.is_test ?? false, f.from, f.to];
+    let featureClause = '';
+    if (f.feature) { params.push(f.feature); featureClause = `and p.feature_key = $${params.length}`; }
+    const r = await this.db.query<Omit<CaughtFirstProblem, 'lead_days' | 'first_cx_at' | 'first_internal_at'> & { first_cx_at: Date; first_internal_at: Date | null }>(
+      `with p as (
+         select k.id, k.ref, k.title, k.status,
+                coalesce(k.feature_key, (array_agg(s.feature_key order by s.created_at))[1]) as feature_key,
+                min(s.created_at) filter (where s.origin = 'cx') as first_cx_at,
+                min(s.occurred_on) filter (where s.origin = 'cx') as first_cx_on,
+                min(s.created_at) filter (where s.origin = 'internal') as first_internal_at,
+                count(*) filter (where s.origin = 'cx')::int as cx_reports,
+                count(distinct ${personSql()}) filter (where s.origin = 'cx')::int as customers,
+                count(*) filter (where s.origin = 'internal')::int as internal_reports
+           from luna_feedback.issue_kinds k
+           join luna_feedback.submission_issue_kinds sk on sk.kind_id = k.id and sk.state = 'linked'
+           join luna_feedback.submissions s on s.id = sk.submission_id
+          where not s.is_positive and s.is_test = $1 and k.merged_into is null
+          group by k.id, k.ref, k.title, k.status, k.feature_key)
+       select p.id, p.ref, p.title, p.status, p.feature_key, f.label as feature_label,
+              p.first_cx_at, p.first_internal_at, p.cx_reports, p.customers, p.internal_reports
+         from p left join luna_feedback.features f on f.key = p.feature_key
+        where p.first_cx_at is not null and p.first_cx_on between $2::date and $3::date ${featureClause}
+        order by p.cx_reports desc, p.first_cx_at desc`,
+      params,
+    );
+
+    const items: CaughtFirstProblem[] = r.rows.map((x) => {
+      const cx = new Date(x.first_cx_at).getTime();
+      const internal = x.first_internal_at ? new Date(x.first_internal_at).getTime() : null;
+      return {
+        ...x,
+        first_cx_at: new Date(cx).toISOString(),
+        first_internal_at: internal === null ? null : new Date(internal).toISOString(),
+        lead_days: internal !== null && internal < cx ? Math.round(((cx - internal) / 86_400_000) * 10) / 10 : null,
+      };
+    });
+    const caught = items.filter((x) => x.lead_days !== null);
+    const leads = caught.map((x) => x.lead_days!).sort((a, b) => a - b);
+    const median = leads.length ? (leads.length % 2 ? leads[(leads.length - 1) / 2]! : (leads[leads.length / 2 - 1]! + leads[leads.length / 2]!) / 2) : null;
+
+    const byFeature = new Map<string, CaughtFirst['by_feature'][number]>();
+    for (const x of items) {
+      const key = x.feature_key ?? '';
+      const row = byFeature.get(key) ?? { feature_key: x.feature_key, label: x.feature_label, problems: 0, caught: 0, missed: 0 };
+      row.problems += 1;
+      if (x.lead_days !== null) row.caught += 1; else row.missed += 1;
+      byFeature.set(key, row);
+    }
+    return {
+      problems: items.length,
+      caught: caught.length,
+      missed: items.length - caught.length,
+      lead_p50_days: median === null ? null : Math.round(median * 10) / 10,
+      by_feature: [...byFeature.values()].sort((a, b) => b.missed - a.missed || b.problems - a.problems),
+      missed_items: items.filter((x) => x.lead_days === null).slice(0, 15),
     };
   }
 }

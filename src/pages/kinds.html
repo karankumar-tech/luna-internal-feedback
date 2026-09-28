@@ -51,6 +51,7 @@
   input[type=text], input[type=date], select, textarea { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-m); padding: 7px 10px; line-height: 18px; min-width: 0; }
   select { appearance: none; -webkit-appearance: none; padding-right: 28px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5l3.5 3.5 3.5-3.5' fill='none' stroke='%23737373' stroke-width='1.2'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; }
   label.field { display: flex; flex-direction: column; gap: 4px; }
+  label.field[hidden] { display: none; }
   label.field > span { font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); }
   .filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; margin: 20px 0 16px; }
 
@@ -74,6 +75,21 @@
   .jira-link[hidden] { display: none; }
   .refline { margin-top: 10px; font-size: 13px; color: var(--gray-dark); } .refline a { color: var(--black); font-family: var(--mono); font-size: 12px; }
   .banner { margin-top: 10px; border: 1px solid #545500; background: #FEFFD6; border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+  .banner.crit { border-color: #FFB3B3; background: var(--crit-bg); color: #5A0A0A; }
+  .banner a { font-family: var(--mono); font-size: 12px; color: inherit; }
+  .fixline { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 10px; font-size: 13px; }
+  .fixline input[type=text] { width: 130px; font-family: var(--mono); font-size: 12px; }
+  .fixline .hint { font-size: 12px; color: var(--gray-dark); flex: 1 1 220px; }
+  .came-back { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; padding: 1px 5px; border-radius: var(--r-xs); background: var(--crit-bg); color: #8A1010; border: 1px solid #FFB3B3; white-space: nowrap; }
+  .headline { font-size: 14px; line-height: 20px; margin: 0 0 4px; } .headline b { font-family: var(--mono); font-weight: 500; }
+  .oldest { font-size: 12px; color: var(--gray-dark); margin: 0 0 12px; } .oldest b { font-family: var(--mono); font-weight: 500; color: var(--black); }
+  .skew { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; }
+  .skew h4 { margin: 0 0 4px; font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); font-weight: 400; }
+  .skew td { padding: 5px 8px; } .skew th { padding: 6px 8px; }
+  .skew tr.notable td { background: var(--orange-50); } .skew tr.notable td.x { color: #A03600; font-weight: 600; }
+  .skew .share { display: flex; align-items: center; gap: 6px; } .skew .share i { display: block; height: 6px; border-radius: 3px; background: var(--crit); min-width: 2px; }
+  .skew .share i.base { background: var(--gray-light); }
+  @media (max-width: 800px) { .skew { grid-template-columns: 1fr; } }
   .why { display: flex; flex-wrap: wrap; gap: 4px; } .why span { font-family: var(--mono); font-size: 10px; line-height: 14px; padding: 1px 5px; border-radius: 2px; background: var(--brief); white-space: nowrap; }
   .why span.strong { background: #EAF0FD; color: #0C3AAA; }
   .star { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: #545500; background: #FEFFD6; padding: 1px 5px; border-radius: 2px; white-space: nowrap; }
@@ -189,6 +205,13 @@
       <div class="chips" id="dChips" style="margin-top:10px"></div>
       <div class="refline" id="dRef" hidden></div>
       <div class="banner" id="dMerged" hidden></div>
+      <div class="banner crit" id="dRegressed" hidden></div>
+      <div class="fixline" id="dFix" hidden>
+        <label class="field"><span>Fixed in app</span><input type="text" id="dFixApp" placeholder="e.g. 2.4.0" maxlength="40"></label>
+        <label class="field"><span>Fixed in firmware</span><input type="text" id="dFixFw" placeholder="e.g. 1.9.4" maxlength="40"></label>
+        <button class="btn small" id="btnFix" type="button">Save</button>
+        <span class="hint" id="dFixHint">Optional. A report on this version or later that gets linked here is flagged as the problem coming back, and the problem reopens as watching.</span>
+      </div>
     </section>
 
     <section class="kpis" style="margin-top:12px">
@@ -203,6 +226,11 @@
     <section class="card">
       <div class="card-head"><div><h2>How often it is happening</h2><div class="sub">Reports per day in the selected range</div></div></div>
       <div class="chart" id="dTrend"></div>
+    </section>
+
+    <section class="card" id="whereCard">
+      <div class="card-head"><div><h2>Where it happens</h2><div class="sub">Firmware, app version, phone OS and platform among this problem's reports, next to all problem reports in the same range and filters. The baseline is reports, not installs, which we don't have.</div></div></div>
+      <div id="dWhere"><div class="empty">Loading…</div></div>
     </section>
 
     <section class="card">
@@ -295,7 +323,9 @@
         tr.appendChild(el('td', 'num', fmtN(k.open_count)));
         tr.appendChild(el('td', 'code', shortDate(k.first_seen)));
         tr.appendChild(el('td', 'code', shortDate(k.last_seen)));
-        const st = el('td'); st.appendChild(el('span', 'kstatus ' + k.status, k.status.replace('_', ' '))); tr.appendChild(st);
+        const st = el('td'); st.appendChild(el('span', 'kstatus ' + k.status, k.status.replace('_', ' ')));
+        if (k.regressed_at && k.status !== 'fixed' && k.status !== 'wont_fix') { st.appendChild(document.createTextNode(' ')); const cb = el('span', 'came-back', 'came back'); cb.title = 'A report on the fix version or later was linked on ' + String(k.regressed_at).slice(0, 10); st.appendChild(cb); }
+        tr.appendChild(st);
         tr.appendChild(el('td', null, k.owner ? k.owner.split('@')[0] : '—'));
         const j = el('td', 'code');
         if (k.jira_key) { const link = el('a', null, k.jira_key); link.href = k.jira_url || '#'; link.target = '_blank'; link.rel = 'noopener'; j.appendChild(link); } else j.textContent = '—';
@@ -371,8 +401,99 @@
     renderOwner(k);
     $('dMergeSel').hidden = $('btnMerge').hidden = !can('manage_kinds') || !!k.merged_into_ref;
 
+    renderFix(k);
     renderTrend(k.trend || []);
+    renderWhere(k);
     renderTickets(tickets);
+  }
+
+  // ---------- fix versions and regressions ----------
+  const platformName = (p) => p === 'ios' ? 'iOS' : p === 'android' ? 'Android' : p || '';
+  function renderFix(k) {
+    const hasFix = !!(k.fixed_in_app_version || k.fixed_in_firmware_version);
+    $('dFix').hidden = !(k.status === 'fixed' || hasFix || (k.regressions || []).length) || !!k.merged_into_ref;
+    $('dFixApp').value = k.fixed_in_app_version || '';
+    $('dFixFw').value = k.fixed_in_firmware_version || '';
+    const ro = !can('manage_kinds');
+    $('dFixApp').disabled = $('dFixFw').disabled = ro; $('btnFix').hidden = ro;
+    $('dFixHint').textContent = hasFix
+      ? 'A report on this version or later that gets linked here is flagged as the problem coming back' + (k.status === 'fixed' ? ', and the problem reopens as watching.' : '.')
+      : 'Optional. Add the version the fix ships in: a report on it or later that gets linked here is flagged as the problem coming back, and the problem reopens as watching.';
+
+    const box = $('dRegressed'); const regs = k.regressions || [];
+    box.hidden = !regs.length; box.replaceChildren();
+    if (!regs.length) return;
+    box.appendChild(el('b', null, k.status === 'fixed' ? 'Came back before the latest fix: ' : 'Came back after the fix: '));
+    regs.slice(0, 6).forEach((r, i) => {
+      if (i) box.appendChild(document.createTextNode(', '));
+      const a = el('a', null, r.ref); a.href = '/dashboard/submissions/' + encodeURIComponent(r.ref); box.appendChild(a);
+      const v = [r.app_version && `${platformName(r.platform)} app ${r.app_version}`.trim(), r.firmware_version && `fw ${r.firmware_version}`].filter(Boolean).join(', ');
+      if (v) box.appendChild(document.createTextNode(` (${v})`));
+    });
+    if (regs.length > 6) box.appendChild(document.createTextNode(` and ${regs.length - 6} more`));
+    box.appendChild(document.createTextNode(k.status === 'watching' ? '. Reopened as watching.' : '.'));
+  }
+  $('btnFix').addEventListener('click', async () => {
+    const b = $('btnFix'); b.disabled = true;
+    const body = { fixed_in_app_version: $('dFixApp').value.trim() || null, fixed_in_firmware_version: $('dFixFw').value.trim() || null };
+    try { await api(`/v1/admin/kinds/${kindId}`, { method: 'PATCH', body: JSON.stringify(body) }); toast(body.fixed_in_app_version || body.fixed_in_firmware_version ? 'Fix version saved' : 'Fix version cleared'); loadDetail(); }
+    catch (err) { toast('Could not save: ' + err.message); }
+    finally { b.disabled = false; }
+  });
+
+  // ---------- where it happens ----------
+  const DIM_LABEL = { firmware: 'Firmware', app: 'App version', os: 'Phone OS', platform: 'Platform' };
+  const pct = (x) => Math.round(x * 100) + '%';
+  const times = (r) => (Math.round(r * 10) / 10) + '×';
+  const valueLabel = (dim, v) => {
+    if (dim === 'platform') return platformName(v);
+    const m = /^(ios|android) (.*)$/.exec(v);
+    return m ? `${platformName(m[1])} ${m[2]}` : v;
+  };
+  function renderWhere(k) {
+    const host = $('dWhere'); host.replaceChildren();
+    const sk = k.skew; if (!sk) return;
+    const total = k.count || 0;
+    if (!total) { host.appendChild(el('div', 'empty', 'No reports in this range.')); return; }
+    if (sk.headline) {
+      const h = sk.headline; const p = el('p', 'headline');
+      p.appendChild(el('b', null, `${DIM_LABEL[h.dim]} ${valueLabel(h.dim, h.value)}`));
+      p.appendChild(document.createTextNode(`: ${pct(h.kind_share)} of this problem's reports vs ${pct(h.base_share)} of all reports (${times(h.ratio)} more common).`));
+      host.appendChild(p);
+    } else if (total < 3) {
+      host.appendChild(el('p', 'headline tertiary', 'Too few reports in this range to say where it happens; 3 or more are needed.'));
+    } else {
+      host.appendChild(el('p', 'headline tertiary', 'No version or platform stands out: this problem\'s reports look like everyone else\'s.'));
+    }
+    const ov = k.oldest_versions || {};
+    const oldest = [ov.firmware && ['firmware', ov.firmware], ...((ov.app || []).map((a) => [`${platformName(a.platform)} app`.trim(), a.version]))].filter(Boolean);
+    if (oldest.length) {
+      const o = el('p', 'oldest'); o.appendChild(document.createTextNode('Oldest versions it has been reported on, all time: '));
+      oldest.forEach(([l, v], i) => { if (i) o.appendChild(document.createTextNode(' · ')); o.appendChild(document.createTextNode(l + ' ')); o.appendChild(el('b', null, v)); });
+      o.appendChild(document.createTextNode('. Usually where it came in.'));
+      host.appendChild(o);
+    }
+    const grid = el('div', 'skew');
+    for (const d of sk.dims) {
+      if (!d.values.length) continue;
+      const box = el('div');
+      const unknown = total - d.kind_known;
+      box.appendChild(el('h4', null, DIM_LABEL[d.dim] + (unknown > 0 ? ` · ${unknown} unknown` : '')));
+      const t = el('table'); const head = el('tr');
+      for (const h of ['', 'This problem', 'All reports', '']) head.appendChild(el('th', null, h));
+      t.appendChild(head);
+      for (const v of d.values) {
+        const tr = el('tr', v.notable ? 'notable' : null);
+        tr.appendChild(el('td', 'code', valueLabel(d.dim, v.value)));
+        const mine = el('td'); const sm = el('span', 'share'); const bar = el('i'); bar.style.width = Math.round(v.kind_share * 60) + 'px'; sm.appendChild(bar); sm.appendChild(el('span', 'mono', `${v.kind_count} · ${pct(v.kind_share)}`)); mine.appendChild(sm); tr.appendChild(mine);
+        const base = el('td'); const sb = el('span', 'share'); const bb = el('i', 'base'); bb.style.width = Math.round(v.base_share * 60) + 'px'; sb.appendChild(bb); sb.appendChild(el('span', 'mono', pct(v.base_share))); base.appendChild(sb); tr.appendChild(base);
+        const x = el('td', 'num x', v.ratio === null ? '—' : times(v.ratio)); x.title = 'How many times more common in this problem than in all reports'; tr.appendChild(x);
+        t.appendChild(tr);
+      }
+      box.appendChild(t); grid.appendChild(box);
+    }
+    if (grid.childNodes.length) host.appendChild(grid);
+    else host.appendChild(el('div', 'empty', 'None of these reports say which versions they ran.'));
   }
 
   function renderTrend(days) {
@@ -415,7 +536,9 @@
     for (const r of rows) {
       const tr = el('tr'); tr.style.cursor = 'pointer';
       tr.addEventListener('click', () => { location.href = '/dashboard/submissions/' + encodeURIComponent(r.ref); });
-      tr.appendChild(el('td', 'code', r.ref));
+      const refCell = el('td', 'code', r.ref);
+      if (state.detail && (state.detail.regressions || []).some((x) => x.id === r.id)) { refCell.appendChild(document.createTextNode(' ')); refCell.appendChild(el('span', 'came-back', 'came back')); }
+      tr.appendChild(refCell);
       tr.appendChild(el('td', 'code', r.occurred_on));
       tr.appendChild(el('td', null, r.feature_key));
       const who = el('td', 'code', r.origin === 'cx' ? (r.user_id ? String(r.user_id) : r.device_serial) : String(r.user_id));
@@ -521,7 +644,12 @@
 
   $('dStatus').addEventListener('change', async (ev) => {
     const next = ev.target.value;
-    try { await api(`/v1/admin/kinds/${kindId}`, { method: 'PATCH', body: JSON.stringify({ status: next }) }); toast('Status updated'); }
+    try {
+      await api(`/v1/admin/kinds/${kindId}`, { method: 'PATCH', body: JSON.stringify({ status: next }) });
+      state.detail.status = next; renderFix(state.detail);
+      if (next === 'fixed' && !state.detail.fixed_in_app_version && !state.detail.fixed_in_firmware_version) { toast('Marked fixed. Add the version the fix ships in to catch it coming back.'); $('dFixApp').focus(); }
+      else toast('Status updated');
+    }
     catch (err) { toast('Could not update: ' + err.message); }
   });
 

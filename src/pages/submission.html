@@ -163,6 +163,11 @@
   .problem-line { margin-top: 6px; font-size: 13px; color: var(--gray-dark); }
   .problem-line b { color: var(--black); font-weight: 600; }
   .problem-line a { color: inherit; }
+  .device-line { margin-top: 6px; font-size: 13px; color: var(--gray-dark); }
+  .device-line b { color: var(--black); font-weight: 600; }
+  .device-line a { color: inherit; font-family: var(--mono); font-size: 12px; }
+  .device-line .flag { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 1px 6px; border-radius: var(--r-xs); background: var(--orange-50); color: #A03600; border: 1px solid var(--orange); margin-right: 6px; }
+  .kind .came-back { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; padding: 0 5px; border-radius: var(--r-xs); background: var(--crit-bg); color: #8A1010; border: 1px solid #FFB3B3; white-space: nowrap; }
   .sim-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
   .sim-actions { display: flex; gap: 6px; flex-wrap: wrap; }
   .sim-scroll { overflow-x: auto; }
@@ -242,6 +247,7 @@
         <h1 id="title"></h1>
         <div class="meta" id="meta"></div>
         <div class="problem-line" id="problemLine" hidden></div>
+        <div class="device-line" id="deviceLine" hidden></div>
       </div>
     </section>
 
@@ -393,6 +399,7 @@
     // Independent of each other and of the diagnosis; none of them should hold up the page.
     loadKinds();
     loadSimilar();
+    loadSameDevice();
     loadActivity();
     loadAssignees();
     loadJiraStatus();
@@ -551,6 +558,7 @@
     kind_reject: (e) => `said it is not ${e.to_value}`,
     jira: (e) => `filed Jira ${e.to_value}`,
     diagnosis: (e) => `ran a diagnosis (${e.to_value})`,
+    regression: (e) => `flagged it as ${e.to_value} coming back after its fix`,
   };
   const label = (st) => (TRIAGE.find((t) => t[0] === st) || [, st || '—'])[1];
   const nameOf = (email) => { const p = (state.people || []).find((x) => x.email === email); return p && p.name ? p.name : email; };
@@ -650,6 +658,7 @@
       const a = el('a', null, k.title); a.href = '/dashboard/kinds/' + encodeURIComponent(k.ref); chip.appendChild(a);
       if (k.counts) chip.appendChild(el('span', 'n', countsText(k.counts)));
       if (k.source === 'ai') chip.appendChild(el('span', 'by', 'ai'));
+      if (k.regression) { const cb = el('span', 'came-back', 'came back'); cb.title = 'Reported on the version this problem was fixed in, or later'; chip.appendChild(cb); }
       const x = el('button', 'x' + (can('manage_kinds') ? '' : ' ro'), '×'); x.type = 'button'; x.title = 'Not this problem (remembered, so it is not suggested again)';
       x.addEventListener('click', () => decide(k, 'reject'));
       chip.appendChild(x);
@@ -690,6 +699,27 @@
       el('span', null, 'Part of '), Object.assign(el('a', null, `${k.ref} ${k.title}`), { href: '/dashboard/kinds/' + encodeURIComponent(k.ref) }),
       el('span', null, ' · reported '), el('b', null, `${c.count}×`),
       el('span', null, ` · ${c.users} ${c.users === 1 ? 'person' : 'people'}${c.cx_count ? ` · ${c.cx_count} via CX` : ''} · first ${shortDate(c.first_seen)} · last ${shortDate(c.last_seen)}`));
+  }
+
+  /** "This ring has sent 4 problem reports in 14 days": for a customer, often a faulty ring rather than a bug. */
+  async function loadSameDevice() {
+    const line = $('deviceLine');
+    try {
+      const d = await api(`/v1/feedback/${id}/same-device`);
+      line.hidden = !d.flagged; if (!d.flagged) return;
+      const cx = state.sub.origin === 'cx';
+      const parts = [];
+      if (cx && d.by === 'ring') parts.push(el('span', 'flag', 'possible faulty ring'));
+      parts.push(el('span', null, d.by === 'ring' ? (cx ? 'This ring has sent ' : "This tester's ring has sent ") : 'This tester has sent '));
+      parts.push(el('b', null, `${d.count} problem reports`));
+      parts.push(el('span', null, ` in the ${d.window_days} days up to this one: `));
+      d.items.filter((x) => x.id !== id).slice(0, 8).forEach((x, i) => {
+        if (i) parts.push(el('span', null, ', '));
+        const a = el('a', null, x.ref); a.href = '/dashboard/submissions/' + encodeURIComponent(x.ref); a.title = `${x.feature_key} · ${x.occurred_on} · ${x.status.replace('_', ' ')}`; parts.push(a);
+      });
+      if (d.count - 1 > 8) parts.push(el('span', null, ` and ${d.count - 9} more`));
+      line.replaceChildren(...parts);
+    } catch { line.hidden = true; }
   }
 
   async function decide(k, decision) {

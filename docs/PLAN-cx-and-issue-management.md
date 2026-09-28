@@ -612,6 +612,16 @@ backfill). Decisions: anyone with a dashboard account can own a report or proble
 notes (team-only or customer-safe), the CX tool reads the latest customer-safe note and posts replies,
 which reopen a needs_info report; priority sets both ordering and time limits (P0 4 h / 1 d, P1 1 d /
 3 d, P2 defaults, P3 double); assignment shows as My queue and a count, no notifications.
+Shipped 2026-09-28.
+
+**Phase 4 status (2026-09-28, branch `cx-phase-4`, not merged):** built and tested locally. Migration
+`20261001000000_fix_versions_regressions.sql` (fix versions and `regressed_at` on problems, a
+regression flag on links, the `regression` history action). Decisions: a regression reopens a fixed
+problem as watching automatically; the fix version is optional (none = no regression check); the
+faulty-ring hint is dashboard only, not in what the CX tool reads; spikes at 3× over 3 days with at
+least 3 reports, repeat rings at 3 in 14 days. Deviations from §4: "caught first" orders by when
+reports arrived (`created_at`); the skew compares phone OS instead of phone model, which reports
+don't carry; one app fix version covers iOS and Android.
 
 | phase | scope | size |
 |---|---|---|

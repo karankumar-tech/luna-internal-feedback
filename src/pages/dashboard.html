@@ -701,6 +701,10 @@
     $('gate').hidden = true; $('app').hidden = false;
     fillFeatureSelect(); fillCategorySelect(); await fillKindSelect(); await loadPeople();
     if (!state.filters) applyPreset(30);
+    // Links from other pages (a spiking category on Needs attention) open the list already narrowed.
+    const pre = new URLSearchParams(location.search);
+    if (state.features.some((f) => f.key === pre.get('feature'))) { $('fFeature').value = pre.get('feature'); fillCategorySelect(); }
+    if (pre.get('category') && [...$('fCategory').options].some((o) => o.value === pre.get('category'))) $('fCategory').value = pre.get('category');
     await refresh();
     loadManage();
     loadTestCount();

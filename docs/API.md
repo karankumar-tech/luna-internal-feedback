@@ -603,6 +603,8 @@ Not for the app. Listed so the front-end team knows how categories change.
 | `POST` | `/v1/admin/features/{feature}/issue-categories` | `{ "key", "label", "sort_order"? }` · key is a lowercase slug · `409` on duplicate |
 | `PATCH` | `/v1/admin/issue-categories/{id}` | `{ "label"?, "sort_order"?, "is_active"? }` |
 | `PATCH` | `/v1/admin/submissions/{id}` | `{ "is_test": true \| false }` marks one submission as test data or real (also a button in the dashboard) |
+| `GET` | `/v1/admin/test-data` | → `{ "count" }` of rows flagged `is_test` |
+| `DELETE` | `/v1/admin/test-data?confirm=delete` | deletes only `is_test` rows → `{ "deleted" }`; `422` without the confirm parameter |
 
 **Same-issue linking** (dashboard; `manage_kinds` unless noted). A report is linked to a problem (`LNK-0007`) as *suggested*, *linked* or *rejected*; only linked ones count.
 
@@ -634,8 +636,21 @@ Every new issue is matched against open problems when it arrives; a clear match 
 | `GET` | `/v1/admin/assignees` | everyone a report can be assigned to |
 
 List, stats and the attention page accept `assigned_to` (an email, `me` or `none`) and `priority` (`p0`..`p3` or `none`). Reports carry `first_touched_at` (the team's first action), `last_activity_at` and `resolved_at`; the analytics overview adds `response_times` and `time_in_status`.
-| `GET` | `/v1/admin/test-data` | → `{ "count" }` of rows flagged `is_test` |
-| `DELETE` | `/v1/admin/test-data?confirm=delete` | deletes only `is_test` rows → `{ "deleted" }`; `422` without the confirm parameter |
+
+**Pinpointing** (dashboard). Nothing here is stored except the fix versions and the regression flag; the rest is computed when asked.
+
+| method | path | body / notes |
+|---|---|---|
+| `PATCH` | `/v1/admin/kinds/{id}` | also `{ "fixed_in_app_version", "fixed_in_firmware_version" }`: the versions the fix ships in (must start with a version number; `""` or `null` clears). Optional |
+| `GET` | `/v1/kinds/{id}` | adds `skew` (firmware, app version, phone OS and platform shares against all problem reports in the same filters, with a `headline` when one stands out), `oldest_versions` (all time) and `regressions` |
+| `GET` | `/v1/feedback/{id}/kinds` | each link carries `regression: true` when the report ran the fix version or later |
+| `GET` | `/v1/feedback/{id}/same-device` | the problem reports from this report's ring (or, without a serial, its reporter) in the 14 days up to it → `{ by, count, flagged, items }`; flagged at 3 |
+| `GET` | `/v1/attention` | adds `growing` (`kind_spikes`, `category_spikes`, `regressions`) and `repeat_devices`, with `counts.growing` and `counts.repeat_devices` |
+| `GET` | `/v1/analytics/overview` | adds `caught_first`: problems whose first customer report is in range, how many an internal report reached first, the median lead, by feature, and the ones customers found first |
+
+A **regression**: a report is linked to a problem that has a fix version, and it ran that version or later (every fix version set must be met; versions compare as dotted numbers, so 2.10 is newer than 2.9). The link is flagged, a `fixed` problem reopens as `watching`, and the report's history records why. Test data, positive feedback and reports with no readable version never count. App versions are compared across iOS and Android as one number.
+
+A **spike**: at least 3 reports of a problem (or a category, catch-all "something else" excepted) over the last 3 days, and at least 3× the daily average of the 14 days before. A problem that came back stays under *Getting worse* for 14 days, or until it is marked fixed again.
 
 Categories are never deleted. Deactivating one removes it from the schema and makes the server reject it on new submissions, so a client holding a stale cached schema may get a `422` on `issue_categories.N`. Handle that by refetching the schema and asking the user to re-pick.
 

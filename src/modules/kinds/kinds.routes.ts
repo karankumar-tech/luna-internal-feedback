@@ -7,6 +7,7 @@ import { isValidCalendarDate, todayInZone } from '../../lib/time.js';
 import { zodIssues } from '../../schema/buildValidator.js';
 import { CommonQuery } from '../feedback/feedback.routes.js';
 import { KIND_STATUSES } from './kinds.repo.js';
+import { parseVersion } from '../../lib/version.js';
 import type { KindsService } from './kinds.service.js';
 import type { FeedbackService } from '../feedback/feedback.service.js';
 
@@ -29,12 +30,20 @@ const KindBody = z.object({
   status: z.enum(KIND_STATUSES).optional(),
 }).strict();
 
+const FixVersion = z.string().trim().max(40)
+  .refine((v) => v === '' || parseVersion(v) !== null, 'must start with a version number, like 2.4.0')
+  .transform((v) => v || null)
+  .nullable().optional();
+
 const PatchBody = KindBody.partial().extend({
   is_archived: z.boolean().optional(),
   /** The report to read first: an id or a reference (LN-00042); null clears it. */
   reference_submission_id: z.string().trim().max(60).nullable().optional(),
   /** Any dashboard user's email; null clears it. */
   owner: z.string().trim().toLowerCase().email().max(254).nullable().optional(),
+  /** The versions the fix ships in; a linked report on one of these or later is flagged as a regression. "" or null clears. */
+  fixed_in_app_version: FixVersion,
+  fixed_in_firmware_version: FixVersion,
 }).strict();
 
 function shiftDate(iso: string, days: number): string {

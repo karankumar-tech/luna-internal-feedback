@@ -38,6 +38,11 @@ export interface IssueKindRow {
   merged_into: string | null;
   /** Dashboard user (email) who owns the problem. */
   owner: string | null;
+  /** The versions the fix ships in. A linked report on one of these or later is a regression. */
+  fixed_in_app_version: string | null;
+  fixed_in_firmware_version: string | null;
+  /** When a report on the fix version or later was last linked. */
+  regressed_at: Date | null;
   created_by: string | null;
   created_at: Date;
   updated_at: Date;
@@ -83,10 +88,27 @@ export interface KindLink {
   created_at: Date;
   decided_by: string | null;
   decided_at: Date | null;
+  /** The report is on the problem's fix version or later. */
+  regression: boolean;
 }
 
+/** What a report ran, for comparing against a fix version. The diagnosis's reading of the logs wins over what the app sent. */
+export interface ReportVersions {
+  id: string;
+  ref: string;
+  is_test: boolean;
+  is_positive: boolean;
+  platform: string | null;
+  app_version: string | null;
+  firmware_version: string | null;
+}
+
+/** One value of one dimension (firmware, app, platform, os): how often it appears in a problem vs in all reports. */
+export interface SkewRow { dim: 'firmware' | 'app' | 'platform' | 'os'; value: string; kind_count: number; base_count: number }
+
 const K_COLS = `k.id, k.ref, k.key, k.title, k.description, k.feature_key, k.tags, k.event_codes, k.status, k.severity,
-  k.jira_key, k.jira_url, k.is_archived, k.reference_submission_id, k.aliases, k.merged_into, k.owner, k.created_by, k.created_at, k.updated_at`;
+  k.jira_key, k.jira_url, k.is_archived, k.reference_submission_id, k.aliases, k.merged_into, k.owner,
+  k.fixed_in_app_version, k.fixed_in_firmware_version, k.regressed_at, k.created_by, k.created_at, k.updated_at`;
 
 /** Only confirmed links count toward a problem's size. */
 const LINKED = `sk.state = 'linked'`;
@@ -216,7 +238,7 @@ export class KindsRepo {
     return r.rows[0]!;
   }
 
-  async update(id: string, patch: Partial<Pick<IssueKindRow, 'title' | 'description' | 'feature_key' | 'tags' | 'event_codes' | 'status' | 'severity' | 'is_archived' | 'jira_key' | 'jira_url' | 'reference_submission_id' | 'owner'>>): Promise<IssueKindRow | undefined> {
+  async update(id: string, patch: Partial<Pick<IssueKindRow, 'title' | 'description' | 'feature_key' | 'tags' | 'event_codes' | 'status' | 'severity' | 'is_archived' | 'jira_key' | 'jira_url' | 'reference_submission_id' | 'owner' | 'fixed_in_app_version' | 'fixed_in_firmware_version'>>): Promise<IssueKindRow | undefined> {
     const sets: string[] = [];
     const vals: unknown[] = [id];
     for (const [col, value] of Object.entries(patch)) {
@@ -283,7 +305,7 @@ export class KindsRepo {
   async forSubmission(submissionId: string): Promise<KindLink[]> {
     const r = await this.db.query<KindLink>(
       `select k.id as kind_id, k.ref, k.key, k.title, k.status, k.severity, k.jira_key, k.jira_url,
-              sk.source, sk.state, sk.confidence::float8 as confidence, sk.created_by, sk.created_at, sk.decided_by, sk.decided_at
+              sk.source, sk.state, sk.confidence::float8 as confidence, sk.created_by, sk.created_at, sk.decided_by, sk.decided_at, sk.regression
          from luna_feedback.submission_issue_kinds sk
          join luna_feedback.issue_kinds k on k.id = sk.kind_id
         where sk.submission_id = $1 and sk.state <> 'rejected'
@@ -392,5 +414,98 @@ export class KindsRepo {
       out.set(row.submission_id, list);
     }
     return out;
+  }
+
+  // ---- pinpointing -----------------------------------------------------------
+
+  /** The versions a report ran, the logs' reading first. */
+  async reportVersions(submissionId: string): Promise<ReportVersions | undefined> {
+    const r = await this.db.query<ReportVersions>(
+      `select s.id, s.ref, s.is_test, s.is_positive, s.platform,
+              coalesce(d.app_version_seen, s.app_version) as app_version,
+              coalesce(d.fw_version_seen, s.firmware_version) as firmware_version
+         from luna_feedback.submissions s
+         left join luna_feedback.diagnoses d on d.submission_id = s.id
+        where s.id = $1`,
+      [submissionId],
+    );
+    return r.rows[0];
+  }
+
+  /** Flags the link as a regression; `reopen` also moves a fixed problem back to watching. */
+  async markRegression(submissionId: string, kindId: string, reopen: boolean): Promise<void> {
+    await this.db.query(
+      `update luna_feedback.submission_issue_kinds set regression = true where submission_id = $1 and kind_id = $2`,
+      [submissionId, kindId],
+    );
+    await this.db.query(
+      `update luna_feedback.issue_kinds
+          set regressed_at = now(), status = case when $2 and status = 'fixed' then 'watching' else status end
+        where id = $1`,
+      [kindId, reopen],
+    );
+  }
+
+  /** The reports that showed the problem on its fix version or later, newest first. */
+  async regressions(kindId: string, limit = 10): Promise<{ id: string; ref: string; app_version: string | null; firmware_version: string | null; platform: string | null; linked_at: string }[]> {
+    const r = await this.db.query<{ id: string; ref: string; app_version: string | null; firmware_version: string | null; platform: string | null; linked_at: Date }>(
+      `select s.id, s.ref, s.platform,
+              coalesce(d.app_version_seen, s.app_version) as app_version,
+              coalesce(d.fw_version_seen, s.firmware_version) as firmware_version,
+              coalesce(sk.decided_at, sk.created_at) as linked_at
+         from luna_feedback.submission_issue_kinds sk
+         join luna_feedback.submissions s on s.id = sk.submission_id
+         left join luna_feedback.diagnoses d on d.submission_id = s.id
+        where sk.kind_id = $1 and ${LINKED} and sk.regression
+        order by coalesce(sk.decided_at, sk.created_at) desc
+        limit $2`,
+      [kindId, limit],
+    );
+    return r.rows.map((x) => ({ ...x, linked_at: new Date(x.linked_at).toISOString() }));
+  }
+
+  /**
+   * How often each firmware, app version, platform and phone OS appears among a problem's reports,
+   * next to how often it appears among all problem reports in the same slice. App and OS versions
+   * carry the platform ("ios 2.4.0"), since the two apps number their versions separately.
+   */
+  async skew(kindId: string, filters: Partial<CommonFilters> & { from?: string; to?: string }): Promise<SkewRow[]> {
+    const { where, vals } = buildWhere(filters);
+    const params = [...vals, kindId];
+    const r = await this.db.query<SkewRow>(
+      `with base as (
+         select coalesce(d.fw_version_seen, s.firmware_version) as firmware,
+                case when coalesce(d.app_version_seen, s.app_version) is null then null
+                     else concat_ws(' ', s.platform, coalesce(d.app_version_seen, s.app_version)) end as app,
+                s.platform,
+                case when s.os_version is null then null else concat_ws(' ', s.platform, s.os_version) end as os,
+                exists (select 1 from luna_feedback.submission_issue_kinds sk
+                         where sk.submission_id = s.id and sk.kind_id = $${params.length}::uuid and ${LINKED}) as in_kind
+           from luna_feedback.submissions s
+           left join luna_feedback.diagnoses d on d.submission_id = s.id
+          ${where ? where + ' and' : 'where'} not s.is_positive)
+       select v.dim, v.value, count(*) filter (where b.in_kind)::int as kind_count, count(*)::int as base_count
+         from base b
+         cross join lateral (values ('firmware', b.firmware), ('app', b.app), ('platform', b.platform), ('os', b.os)) as v(dim, value)
+        where v.value is not null
+        group by v.dim, v.value`,
+      params,
+    );
+    return r.rows;
+  }
+
+  /** Every firmware and app version a problem has been reported on, all time, for "oldest version seen". */
+  async versionsSeen(kindId: string, isTest: boolean | null): Promise<{ platform: string | null; app_version: string | null; firmware_version: string | null }[]> {
+    const r = await this.db.query<{ platform: string | null; app_version: string | null; firmware_version: string | null }>(
+      `select distinct s.platform,
+              coalesce(d.app_version_seen, s.app_version) as app_version,
+              coalesce(d.fw_version_seen, s.firmware_version) as firmware_version
+         from luna_feedback.submission_issue_kinds sk
+         join luna_feedback.submissions s on s.id = sk.submission_id
+         left join luna_feedback.diagnoses d on d.submission_id = s.id
+        where sk.kind_id = $1 and ${LINKED} and ($2::boolean is null or s.is_test = $2) and not s.is_positive`,
+      [kindId, isTest],
+    );
+    return r.rows;
   }
 }

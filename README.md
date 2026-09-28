@@ -11,7 +11,7 @@ anything in `public`. See [PLAN.md](PLAN.md) for the full design.
 |---|---|---|
 | API reference for front-end teams | `/docs` | public |
 | Review dashboard (filters, charts, table, category management) | `/dashboard` | signed-in account |
-| Needs attention (untouched, stale, CX waiting, stuck diagnoses) | `/dashboard/attention` | signed-in account |
+| Needs attention (untouched, stale, CX waiting, stuck diagnoses, getting worse, same ring) | `/dashboard/attention` | signed-in account |
 | Analytics (what kind of issues, where the fault sits) | `/dashboard/analytics` | signed-in account |
 | Issue kinds (recurring problems and how often) | `/dashboard/kinds` | signed-in account |
 | Diagnosis overview | `/dashboard/diagnosis` | signed-in account |
@@ -225,6 +225,20 @@ problems with no owner or no Jira ticket. A priority replaces the limits: P0 aft
 critical AI severity halves them. Within a list, items sort by severity × (1 + log2(people
 affected)) × (1 + age / 7), where a customer counts twice. The limits live in
 `src/modules/attention/attention.service.ts`.
+
+It also shows what is **getting worse**: problems and categories with at least 3 reports over the
+last 3 days and 3× their daily average of the 14 days before, and fixed problems that **came back**.
+Give a fixed problem the app or firmware version its fix ships in; a report later linked to it that
+ran that version or newer is flagged as a regression, the problem reopens as watching, and the report's
+history says why (versions compare as dotted numbers; a missing or unreadable version never flags).
+**Same ring, many reports** lists rings (or, without a serial, people) with 3+ problem reports in 14
+days, customers first, since for them it often means a faulty ring; the report page says the same.
+
+A problem's page shows **where it happens** (its firmware, app version, phone OS and platform mix
+against all problem reports in the same filters, and the oldest versions it was reported on), and
+Analytics shows **caught by testing first?**: of the problems customers reported, how many an internal
+report reached first, by how long, and which ones testing missed. The rules live in
+`src/modules/kinds/pinpoint.ts`.
 
 ## AI diagnosis
 

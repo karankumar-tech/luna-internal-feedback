@@ -5,13 +5,14 @@ import {
   KindsRepo, normalizeTitle, parseKindRef, slugify,
   type IssueKindRow, type KindCounts, type KindLink, type KindLinkSource, type KindStatus,
 } from './kinds.repo.js';
+import { oldestVersions, regressionVerdict, summarizeSkew } from './pinpoint.js';
 
 /** A link on a report, with how big that problem is overall. */
 export interface KindLinkWithCounts extends KindLink { counts: KindCounts | null }
 
-type KindEvent = 'kind_link' | 'kind_suggest' | 'kind_confirm' | 'kind_reject';
+type KindEvent = 'kind_link' | 'kind_suggest' | 'kind_confirm' | 'kind_reject' | 'regression';
 /** Where grouping decisions go in a report's history. */
-export interface KindActivity { record(e: { submissionId: string; actor: string | null; action: KindEvent; to: string; touch: boolean }): Promise<unknown> }
+export interface KindActivity { record(e: { submissionId: string; actor: string | null; action: KindEvent; to: string; note?: string | null; touch: boolean }): Promise<unknown> }
 import type { CommonFilters } from '../feedback/feedback.repo.js';
 
 export interface NewKind {
@@ -55,11 +56,14 @@ export class KindsService {
   async detail(idOrRef: string, filters: Partial<CommonFilters> & { from?: string; to?: string }) {
     const kind = await this.get(idOrRef);
     const id = kind.id;
-    const [withCounts, trend, referenceRef, mergedInto] = await Promise.all([
+    const [withCounts, trend, referenceRef, mergedInto, skewRows, seen, regressions] = await Promise.all([
       this.repo.list({ ...filters, includeArchived: true }),
       this.repo.trend(id, filters),
       kind.reference_submission_id ? this.repo.submissionRef(kind.reference_submission_id) : Promise.resolve(null),
       kind.merged_into ? this.repo.byId(kind.merged_into) : Promise.resolve(undefined),
+      this.repo.skew(id, filters),
+      this.repo.versionsSeen(id, filters.is_test ?? null),
+      this.repo.regressions(id),
     ]);
     const counts = withCounts.find((k) => k.id === id);
     return {
@@ -75,6 +79,12 @@ export class KindsService {
       first_seen: counts?.first_seen ?? null,
       last_seen: counts?.last_seen ?? null,
       trend,
+      /** Where it happens: this problem's firmware, app, OS and platform mix against all problem reports in the same slice. */
+      skew: summarizeSkew(skewRows),
+      /** The oldest versions it has been reported on, all time: usually where it came in. */
+      oldest_versions: oldestVersions(seen),
+      /** Reports on the fix version or later. */
+      regressions,
     };
   }
 
@@ -126,7 +136,33 @@ export class KindsService {
     await this.log(submissionId, kind, 'kind_link', by, source === 'manual');
     if (source === 'manual') await this.repo.clearRuleSuggestions(submissionId, kind.id);
     if (!kind.reference_submission_id && source === 'manual') await this.repo.update(kind.id, { reference_submission_id: submissionId });
+    await this.checkRegression(submissionId, kind.id);
     return this.repo.forSubmission(submissionId);
+  }
+
+  /**
+   * A report newly counted under a problem that has a fix version: if it ran that version or later,
+   * the fix did not hold. The link is flagged, a fixed problem reopens as watching, and the report's
+   * history says why. Test data and positive feedback never count, and a report whose version is
+   * missing or unreadable is never flagged.
+   */
+  async checkRegression(submissionId: string, kindId: string): Promise<boolean> {
+    const kind = await this.repo.byId(kindId);
+    if (!kind || kind.status === 'wont_fix' || kind.merged_into) return false;
+    if (!kind.fixed_in_app_version && !kind.fixed_in_firmware_version) return false;
+    const link = (await this.repo.forSubmission(submissionId)).find((l) => l.kind_id === kindId);
+    if (!link || link.state !== 'linked' || link.regression) return false;
+    const ran = await this.repo.reportVersions(submissionId);
+    if (!ran || ran.is_test || ran.is_positive) return false;
+    const verdict = regressionVerdict(kind, ran);
+    if (!verdict) return false;
+    const reopen = kind.status === 'fixed';
+    await this.repo.markRegression(submissionId, kind.id, reopen);
+    await this.activity?.record({
+      submissionId, actor: 'rule', action: 'regression', to: kind.ref, touch: false,
+      note: `${verdict.reason}: ${kind.ref} came back.${reopen ? ' The problem was reopened as watching.' : ''}`,
+    });
+    return true;
   }
 
   /** CX (or anyone) thinks this report belongs to that problem; someone who can manage problems confirms it. */
@@ -151,6 +187,7 @@ export class KindsService {
       await this.repo.link(submissionId, kind.id, 'manual', null, by, 'linked');
       await this.repo.clearRuleSuggestions(submissionId, kind.id);
       await this.log(submissionId, kind, 'kind_confirm', by, true);
+      await this.checkRegression(submissionId, kind.id);
       return this.repo.forSubmission(submissionId);
     }
     if (!(await this.repo.reject(submissionId, kind.id, by))) throw AppError.notFound('That submission is not linked to this issue kind');
@@ -203,6 +240,7 @@ export class KindsService {
       await this.repo.link(id, kind.id, 'manual', null, by, 'linked');
       await this.repo.clearRuleSuggestions(id, kind.id);
       await this.log(id, kind, 'kind_link', by, true);
+      await this.checkRegression(id, kind.id);
     }
     if (!kind.reference_submission_id && submissionIds[0]) await this.repo.update(kind.id, { reference_submission_id: submissionIds[0] });
     return (await this.repo.byId(kind.id))!;
@@ -249,7 +287,10 @@ export class KindsService {
 
     // A diagnosis link counts straight away, but never overrides a person's "not this".
     await this.repo.link(submissionId, kind.id, 'ai', null, 'ai', 'linked');
-    if ((await this.repo.forSubmission(submissionId)).some((l) => l.kind_id === kind.id)) await this.log(submissionId, kind, 'kind_link', 'ai', false);
+    if ((await this.repo.forSubmission(submissionId)).some((l) => l.kind_id === kind.id && l.state === 'linked')) {
+      await this.log(submissionId, kind, 'kind_link', 'ai', false);
+      await this.checkRegression(submissionId, kind.id);
+    }
     if (!kind.reference_submission_id) await this.repo.update(kind.id, { reference_submission_id: submissionId });
     return kind;
   }
