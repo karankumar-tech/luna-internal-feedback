@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Luna Feedback · Settings</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --black: #000000; --white: #FFFFFF;
+    --gray-dark: #737373; --gray-mid: #9E9E9E; --gray-light: #D9D9D9;
+    --bg: #F0EFEA; --brief: #E8E6E0; --border-warm: #E2E0D9; --border-ghost: #F0F0F0;
+    --yellow: #F5F85D; --crit-ink: #8A1010;
+    --sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --r-xs: 2px; --r-s: 4px; --r-m: 6px; --r-l: 8px; --r-xl: 12px;
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: light; }
+  body { margin: 0; background: var(--bg); color: var(--black); font-family: var(--sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased; }
+  button, input { font: inherit; color: inherit; }
+  a { color: inherit; }
+  h1, h2, h3, p { margin: 0; }
+  h1 { font-size: 22px; line-height: 28px; font-weight: 700; letter-spacing: -0.01em; }
+  h2 { font-size: 16px; line-height: 20px; font-weight: 600; }
+  [hidden] { display: none !important; }
+  .top { background: var(--white); border-bottom: 1px solid var(--gray-light); }
+  .top-inner { max-width: 1240px; margin: 0 auto; padding: 12px 16px; display: flex; align-items: center; gap: 16px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-size: 16px; line-height: 20px; font-weight: 700; letter-spacing: -0.01em; text-decoration: none; }
+  .brand .dot { width: 10px; height: 10px; background: var(--yellow); border: 1px solid var(--black); border-radius: var(--r-xs); }
+  .top a.back { margin-left: auto; font-size: 13px; color: var(--gray-dark); text-decoration: none; }
+  .top a.back:hover { color: var(--black); }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 24px 16px 64px; }
+  .intro { margin-bottom: 16px; } .intro p { color: var(--gray-dark); margin-top: 2px; }
+  .card { background: var(--white); border: 1px solid var(--gray-light); border-radius: var(--r-xl); padding: 16px 20px; }
+  .card + .card { margin-top: 12px; }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .card-head .sub { font-size: 13px; line-height: 20px; color: var(--gray-dark); max-width: 72ch; margin-top: 2px; }
+  .stats { font-family: var(--mono); font-size: 12px; color: var(--gray-dark); }
+  .btn { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-l); padding: 7px 12px; line-height: 18px; cursor: pointer; font-weight: 500; }
+  .btn:hover { border-color: var(--gray-mid); }
+  .btn:focus-visible, input:focus-visible { outline: none; border-color: var(--black); box-shadow: 0 0 0 1px var(--black); }
+  .btn.primary { background: var(--black); color: var(--white); border-color: var(--black); }
+  .btn.small { padding: 4px 10px; font-size: 12px; line-height: 16px; border-radius: var(--r-s); }
+  .btn[disabled] { opacity: .5; cursor: default; }
+  input[type=text] { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-m); padding: 5px 8px; line-height: 18px; min-width: 0; }
+  .note { font-size: 12px; line-height: 18px; color: var(--gray-dark); margin: 6px 0 0; }
+  .note.err { color: var(--crit-ink); }
+  .mgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; margin-top: 16px; }
+  .mgrid { column-gap: 32px; row-gap: 20px; }
+  .mcard { min-width: 0; border-top: 2px solid var(--black); padding-top: 10px; }
+  .mcard h3 { margin: 0 0 4px; font-size: 14px; line-height: 18px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+  .mcard h3 .n { font-family: var(--mono); font-weight: 400; color: var(--gray-dark); font-size: 11px; }
+  .crow { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--border-ghost); }
+  .crow .lbl { grid-column: 1; grid-row: 1; min-width: 0; }
+  .crow .lbl input { width: 100%; padding: 3px 6px; margin-left: -7px; border-color: transparent; background: transparent; font-weight: 500; }
+  .crow .lbl input:hover { border-color: var(--gray-light); }
+  .crow .lbl input:focus { background: var(--white); }
+  .crow .k { grid-column: 1; grid-row: 2; font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--gray-dark); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .crow .btn { grid-column: 2; grid-row: 1 / span 2; }
+  .crow.off .lbl input, .crow.off .k { color: var(--gray-mid); }
+  .crow.off .lbl input { text-decoration: line-through; font-weight: 400; }
+  .addrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-warm); }
+  .addrow input:first-child { font-family: var(--mono); font-size: 12px; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--black); color: var(--white); padding: 8px 14px; border-radius: var(--r-l); font-size: 13px; z-index: 40; display: none; }
+  @media (max-width: 480px) { .mgrid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <a class="brand" href="/dashboard"><span class="dot" aria-hidden="true"></span>Luna Feedback</a>
+    <a class="back" href="/dashboard">Back to reports</a>
+  </div>
+</header>
+<main class="wrap">
+  <div class="intro"><h1>Settings</h1><p>Report categories, the AI diagnosis queue and test data.</p></div>
+
+  <section class="card" id="categories">
+    <div class="card-head"><div><h2>Report categories</h2><div class="sub">Rename a category (edit, then press Enter), deactivate it, or add a new one. A deactivated category leaves the app's form but keeps its history.</div></div></div>
+    <p class="note" id="catNote"></p>
+    <div class="mgrid" id="mgrid"></div>
+  </section>
+
+  <section class="card" id="diag">
+    <div class="card-head">
+      <div><h2>AI diagnosis</h2><div class="sub" id="diagSub">Runs on demand from a report's page. Requests made before the evening log sync wait and finish automatically.</div></div>
+      <button class="btn small" id="btnRunPending" type="button">Run pending now</button>
+    </div>
+    <p class="stats" id="diagStats" style="margin-top:10px"></p>
+  </section>
+
+  <section class="card" id="testdata">
+    <div class="card-head">
+      <div><h2>Test data</h2><div class="sub">Reports sent with <code>is_test: true</code> (demo rows and app integration runs) sit alongside real ones with a TEST tag. Delete them whenever you want; real reports are never touched.</div></div>
+      <button class="btn small" id="btnDeleteTest" type="button">Delete test data…</button>
+    </div>
+    <p class="stats" id="testCount" style="margin-top:10px"></p>
+  </section>
+</main>
+<div class="toast" id="toast" role="status"></div>
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+  const fmtN = (n) => new Intl.NumberFormat('en-IN').format(n || 0);
+  let toastT; const toast = (m) => { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', 2400); };
+  const HERE = '/dashboard/settings';
+  let me = null;
+  const can = (p) => !!(me && me.permissions && me.permissions[p]);
+
+  async function api(path, opts = {}) {
+    const headers = Object.assign({ 'x-requested-with': 'dashboard' }, opts.headers || {});
+    if (opts.body) headers['content-type'] = 'application/json';
+    const r = await fetch(path, Object.assign({ credentials: 'same-origin' }, opts, { headers }));
+    const text = await r.text(); let body = null; try { body = text ? JSON.parse(text) : null; } catch {}
+    if (!r.ok) { const e = new Error((body && body.error && body.error.message) || `HTTP ${r.status}`); e.status = r.status; e.body = body; throw e; }
+    return body;
+  }
+  // The home page caches its last view; category renames should show there on the next visit.
+  const dropHomeCache = () => { try { localStorage.removeItem('luna.home.v1'); } catch {} };
+
+  // ---------- categories ----------
+  async function loadCategories() {
+    const note = $('catNote'); const grid = $('mgrid'); grid.replaceChildren(); note.className = 'note'; note.textContent = '';
+    if (!can('manage_categories')) { note.textContent = `Your role (${me.role}) can see categories on reports but not change them.`; return; }
+    let features;
+    try { features = (await api('/v1/admin/features')).items; }
+    catch (err) { note.className = 'note err'; note.textContent = 'Could not load categories: ' + err.message; return; }
+    for (const f of features) {
+      const card = el('div', 'mcard');
+      const h = el('h3'); h.appendChild(el('span', null, f.label + (f.is_active ? '' : ' (hidden)'))); const n = el('span', 'n'); h.appendChild(n); card.appendChild(h);
+      const list = el('div'); card.appendChild(list);
+      const add = el('div', 'addrow'); const ki = el('input'); ki.type = 'text'; ki.placeholder = 'new_key'; ki.pattern = '[a-z][a-z0-9_]*'; ki.setAttribute('aria-label', `New ${f.label} category key`);
+      const li = el('input'); li.type = 'text'; li.placeholder = 'Label'; li.setAttribute('aria-label', `New ${f.label} category label`);
+      const ab = el('button', 'btn small primary', 'Add'); ab.type = 'button';
+      add.append(ki, li, ab); card.appendChild(add);
+      const render = async () => {
+        list.replaceChildren();
+        const cats = (await api(`/v1/admin/features/${encodeURIComponent(f.key)}/issue-categories`)).items;
+        n.textContent = `${cats.filter((c) => c.is_active).length} active`;
+        for (const c of cats) {
+          const row = el('div', 'crow' + (c.is_active ? '' : ' off'));
+          const lbl = el('div', 'lbl'); const inp = el('input'); inp.type = 'text'; inp.value = c.label; inp.title = 'Edit the label, then press Enter'; inp.setAttribute('aria-label', 'Label for ' + c.key);
+          inp.addEventListener('keydown', async (e) => { if (e.key !== 'Enter') return; const v = inp.value.trim(); if (!v || v === c.label) return; try { await api(`/v1/admin/issue-categories/${c.id}`, { method: 'PATCH', body: JSON.stringify({ label: v }) }); toast('Renamed'); c.label = v; dropHomeCache(); } catch (err) { toast(err.message); } });
+          lbl.appendChild(inp); row.appendChild(lbl);
+          row.appendChild(el('span', 'k', c.key));
+          const tg = el('button', 'btn small', c.is_active ? 'Deactivate' : 'Activate'); tg.type = 'button';
+          tg.addEventListener('click', async () => { try { await api(`/v1/admin/issue-categories/${c.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !c.is_active }) }); toast(c.is_active ? 'Deactivated' : 'Activated'); dropHomeCache(); await render(); } catch (err) { toast(err.message); } });
+          row.appendChild(tg); list.appendChild(row);
+        }
+      };
+      ab.addEventListener('click', async () => {
+        const key = ki.value.trim(), label = li.value.trim(); if (!key || !label) { toast('A key and a label are both needed'); return; }
+        try { await api(`/v1/admin/features/${encodeURIComponent(f.key)}/issue-categories`, { method: 'POST', body: JSON.stringify({ key, label, sort_order: 100 }) }); ki.value = ''; li.value = ''; toast('Added'); dropHomeCache(); await render(); }
+        catch (err) { toast(err.body && err.body.error && err.body.error.issues ? err.body.error.issues.map((i) => i.message).join('; ') : err.message); }
+      });
+      grid.appendChild(card); render().catch((err) => toast(err.message));
+    }
+  }
+
+  // ---------- AI diagnosis ----------
+  async function loadDiag() {
+    try {
+      const s = await api('/v1/admin/diagnoses/summary');
+      if (!s.enabled) { $('diagStats').textContent = 'Off: set LUNA_LOGS_APIKEY and OPEN_ROUTER_KEY to turn it on.'; $('btnRunPending').disabled = true; return; }
+      $('diagSub').textContent = s.auto
+        ? 'Every reported issue is diagnosed automatically. Same-day reports wait for the evening log sync.'
+        : 'Runs on demand from a report\'s page. Requests made before the evening log sync wait and finish automatically.';
+      $('diagStats').textContent = `${fmtN(s.done)} diagnosed · ${fmtN(s.waiting)} waiting for logs · ${fmtN(s.no_logs)} no logs · ${fmtN(s.failed)} failed · queue ${fmtN(s.queued + s.running)} · today $${s.spend_today.toFixed(3)} (${s.runs_today} runs) · this month $${s.spend_month.toFixed(2)}`;
+      $('btnRunPending').disabled = false;
+    } catch (err) { $('diagStats').textContent = 'Could not load: ' + err.message; }
+  }
+  $('btnRunPending').addEventListener('click', async () => {
+    const b = $('btnRunPending'); b.disabled = true; const old = b.textContent; b.textContent = 'Running…';
+    try { const r = await api('/v1/admin/diagnoses/run-pending?limit=5', { method: 'POST' }); toast(r.ran ? `Ran ${r.ran}: ` + r.results.map((x) => x.status).join(', ') : 'Nothing due right now'); await loadDiag(); }
+    catch (err) { toast('Could not run: ' + err.message); } finally { b.disabled = false; b.textContent = old; }
+  });
+
+  // ---------- test data ----------
+  async function loadTestCount() {
+    try { const { count } = await api('/v1/admin/test-data'); $('testCount').textContent = `${fmtN(count)} test report${count === 1 ? '' : 's'}`; $('btnDeleteTest').disabled = count === 0 || !can('delete_test_data'); }
+    catch (err) { $('testCount').textContent = 'Could not count: ' + err.message; }
+  }
+  $('btnDeleteTest').addEventListener('click', async () => {
+    const { count } = await api('/v1/admin/test-data');
+    if (!count) { toast('No test data to delete'); return; }
+    if (!confirm(`Delete ${count} test report${count === 1 ? '' : 's'}? Real reports are not affected. This cannot be undone.`)) return;
+    try { const r = await api('/v1/admin/test-data?confirm=delete', { method: 'DELETE' }); toast(`Deleted ${r.deleted} test report${r.deleted === 1 ? '' : 's'}`); dropHomeCache(); await loadTestCount(); }
+    catch (err) { toast('Could not delete: ' + err.message); }
+  });
+
+  // ---------- start ----------
+  (async () => {
+    const s = await api('/dashboard/session').catch(() => ({ authenticated: false }));
+    if (!s.authenticated) { location.replace('/dashboard?next=' + encodeURIComponent(HERE)); return; }
+    me = await api('/v1/me').catch(() => null);
+    if (!me) { location.replace('/dashboard?next=' + encodeURIComponent(HERE)); return; }
+    $('btnDeleteTest').hidden = !can('delete_test_data');
+    loadCategories(); loadDiag(); loadTestCount();
+    // Diagnoses due while nobody was looking: run a few now, as the dashboard used to on every visit.
+    api('/v1/admin/diagnoses/run-pending?limit=3', { method: 'POST' }).then((r) => { if (r.ran) { toast(`Diagnosed ${r.ran} pending`); loadDiag(); } }).catch(() => {});
+  })().catch((err) => toast('Could not start: ' + err.message));
+})();
+</script>
+</body>
+</html>

@@ -409,7 +409,8 @@ describe('pages', () => {
     expect(docs.body).toContain('Luna Feedback API');
     const dash = await app.inject({ method: 'GET', url: '/dashboard' });
     expect(dash.statusCode).toBe(200);
-    expect(dash.body).toContain('Feedback Dashboard');
+    expect(dash.body).toContain('<title>Luna Feedback</title>');
+    expect(dash.body).toContain('Where the issues are');
     const root = await app.inject({ method: 'GET', url: '/' });
     expect(root.statusCode).toBe(302);
     expect(root.headers.location).toBe('/docs');

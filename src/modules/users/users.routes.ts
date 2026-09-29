@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { AppError } from '../../lib/errors.js';
-import { ROLES, can } from '../../lib/actor.js';
+import { ROLES, permissionsOf } from '../../lib/actor.js';
 import { requirePermission } from '../../plugins/auth.js';
 import { zodIssues } from '../../schema/buildValidator.js';
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from './password.js';
@@ -36,18 +36,7 @@ export function registerUserRoutes(app: FastifyInstance, deps: { service: UsersS
       id: actor.id, email: actor.email, name: actor.name, role: actor.role, via: actor.via,
       password,
       password_rules: service.passwordRules,
-      permissions: {
-        manage_users: can(actor, 'manage_users'),
-        manage_jira: can(actor, 'manage_jira'),
-        manage_triage: can(actor, 'manage_triage'),
-        manage_kinds: can(actor, 'manage_kinds'),
-        suggest_kinds: can(actor, 'suggest_kinds'),
-        add_notes: can(actor, 'add_notes'),
-        run_diagnosis: can(actor, 'run_diagnosis'),
-        review_diagnosis: can(actor, 'review_diagnosis'),
-        manage_categories: can(actor, 'manage_categories'),
-        delete_test_data: can(actor, 'delete_test_data'),
-      },
+      permissions: permissionsOf(actor),
     };
   });
 

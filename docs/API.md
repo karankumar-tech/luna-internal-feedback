@@ -637,6 +637,13 @@ Every new issue is matched against open problems when it arrives; a clear match 
 
 List, stats and the attention page accept `assigned_to` (an email, `me` or `none`) and `priority` (`p0`..`p3` or `none`). Reports carry `first_touched_at` (the team's first action), `last_activity_at` and `resolved_at`; the analytics overview adds `response_times` and `time_in_status`.
 
+**Home page** (dashboard). The home page makes one request on arrival and keeps its last copy in the browser.
+
+| method | path | body / notes |
+|---|---|---|
+| `GET` | `/v1/home` | `{ viewer, today, summary: { today, last_7_days, previous_7_days }, categories, labels, counts, reports }`: real issues received today and over the last 7 days (the app's time zone), issues per category for those 7 days, feature and category display names, the badge counts, and the first page of real issues (25) |
+| `GET` | `/v1/home/reports` | one page of the list: the usual filters plus `view` (`issues` default · `mine`: my open issues · `fine`: working fine · `all`), `data` (`real` default · `test` · `all`), `received` (`today` · `7d`), `from`/`to` (when it happened), `page`, `page_size` (5–100, default 25) → `{ items, total, page, page_size }`. Items are lean: each carries its owner's name and its problems with their report counts |
+
 **Pinpointing** (dashboard). Nothing here is stored except the fix versions and the regression flag; the rest is computed when asked.
 
 | method | path | body / notes |

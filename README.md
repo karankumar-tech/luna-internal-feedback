@@ -10,7 +10,8 @@ anything in `public`. See [PLAN.md](PLAN.md) for the full design.
 | page | URL | access |
 |---|---|---|
 | API reference for front-end teams | `/docs` | public |
-| Review dashboard (filters, charts, table, category management) | `/dashboard` | signed-in account |
+| Home: issues today and over 7 days, issues by category, and the paginated report list (filters on demand) | `/dashboard` | signed-in account |
+| Settings: report categories, AI diagnosis queue, test data | `/dashboard/settings` | signed-in account (changes need admin or QC) |
 | Needs attention (untouched, stale, CX waiting, stuck diagnoses, getting worse, same ring) | `/dashboard/attention` | signed-in account |
 | Analytics (what kind of issues, where the fault sits) | `/dashboard/analytics` | signed-in account |
 | Issue kinds (recurring problems and how often) | `/dashboard/kinds` | signed-in account |

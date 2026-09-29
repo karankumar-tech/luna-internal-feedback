@@ -51,6 +51,11 @@ export function can(actor: Actor | undefined, permission: Permission): boolean {
   return (PERMISSIONS[permission] as readonly Role[]).includes(actor.role);
 }
 
+/** Every permission as true/false for this actor, for pages to show or hide controls. */
+export function permissionsOf(actor: Actor | undefined): Record<Permission, boolean> {
+  return Object.fromEntries((Object.keys(PERMISSIONS) as Permission[]).map((p) => [p, can(actor, p)])) as Record<Permission, boolean>;
+}
+
 /**
  * Whether a request is someone on the team acting on a report (a dashboard session, or automation
  * with the admin key). Only those start the response clock; the app, the CX tool and cron do not.

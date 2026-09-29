@@ -59,8 +59,13 @@ function safeEqual(a: string, b: string): boolean {
  * serverless bundle never reads files at runtime.
  */
 export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
+  // The pages carry no data (they fetch it after loading), so Vercel's edge keeps a copy close to the
+  // reader and every visit skips a trip to the function. A deploy replaces the cached copies.
   const html = (body: string) => async (_req: FastifyRequest, reply: FastifyReply) =>
-    reply.header('content-type', 'text/html; charset=utf-8').header('cache-control', 'no-cache').send(body);
+    reply.header('content-type', 'text/html; charset=utf-8')
+      .header('cache-control', 'public, max-age=0, must-revalidate')
+      .header('cdn-cache-control', 'public, s-maxage=86400, stale-while-revalidate=604800')
+      .send(body);
 
   const isSecure = (req: FastifyRequest) => req.protocol === 'https';
   const ttlMs = deps.sessionDays * 86_400_000;
@@ -74,6 +79,7 @@ export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
   app.get('/dashboard/kinds/:id', html(PAGES.kinds));
   app.get('/dashboard/users', html(PAGES.users));
   app.get('/dashboard/attention', html(PAGES.attention));
+  app.get('/dashboard/settings', html(PAGES.settings));
   app.get('/', async (_req, reply) => reply.redirect('/docs', 302));
 
   // Short links for sharing: /i/LN-00042 and /k/LNK-0007. The page behind them still needs a sign-in.

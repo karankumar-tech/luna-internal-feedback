@@ -35,6 +35,9 @@ import { registerCxRoutes } from './modules/cx/cx.routes.js';
 import { AttentionRepo } from './modules/attention/attention.repo.js';
 import { AttentionService } from './modules/attention/attention.service.js';
 import { registerAttentionRoutes } from './modules/attention/attention.routes.js';
+import { HomeRepo } from './modules/home/home.repo.js';
+import { HomeService } from './modules/home/home.service.js';
+import { registerHomeRoutes } from './modules/home/home.routes.js';
 import { SimilarRepo } from './modules/similar/similar.repo.js';
 import { SimilarService } from './modules/similar/similar.service.js';
 import { registerSimilarRoutes } from './modules/similar/similar.routes.js';
@@ -204,7 +207,9 @@ export function buildApp(opts: BuildOptions = {}): App {
   registerChatRoutes(app, { service: chat });
   registerAnalyticsRoutes(app, { repo: new AnalyticsRepo(db), timeZone: config.APP_TIMEZONE });
   registerCxRoutes(app, { feedback: service, kinds, activity, publicBaseUrl: config.PUBLIC_BASE_URL });
-  registerAttentionRoutes(app, { service: new AttentionService(new AttentionRepo(db), config.APP_TIMEZONE), feedback: service });
+  const attention = new AttentionService(new AttentionRepo(db), config.APP_TIMEZONE);
+  registerAttentionRoutes(app, { service: attention, feedback: service });
+  registerHomeRoutes(app, { service: new HomeService(new HomeRepo(db, config.APP_TIMEZONE), { categories, attention, timeZone: config.APP_TIMEZONE }) });
 
   app.addHook('onClose', async () => {
     if (!opts.db) await db.end();

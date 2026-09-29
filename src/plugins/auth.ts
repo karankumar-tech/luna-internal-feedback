@@ -18,7 +18,7 @@ function header(req: { headers: Record<string, unknown> }, name: string): string
 /** Routes that serve HTML pages or handle the dashboard sign-in. Data behind them still needs auth. */
 export const PUBLIC_PATHS = new Set([
   '/', '/healthz', '/docs',
-  '/dashboard', '/dashboard/diagnosis', '/dashboard/analytics', '/dashboard/kinds', '/dashboard/users', '/dashboard/attention',
+  '/dashboard', '/dashboard/diagnosis', '/dashboard/analytics', '/dashboard/kinds', '/dashboard/users', '/dashboard/attention', '/dashboard/settings',
   '/dashboard/login', '/dashboard/logout', '/dashboard/session', '/dashboard/bootstrap',
 ]);
 

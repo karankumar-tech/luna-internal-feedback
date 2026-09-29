@@ -76,6 +76,15 @@ export class CategoriesRepo {
     return map;
   }
 
+  /** Display names for every feature and category, retired ones included, so old reports still read well. */
+  async labels(): Promise<{ features: Record<string, string>; categories: Record<string, Record<string, string>> }> {
+    const { features, categories } = await this.get();
+    const out = { features: {} as Record<string, string>, categories: {} as Record<string, Record<string, string>> };
+    for (const f of features) out.features[f.key] = f.label;
+    for (const c of categories) (out.categories[c.feature_key] ??= {})[c.key] = c.label;
+    return out;
+  }
+
   async activeKeysFor(featureKey: string): Promise<string[]> {
     const { categories } = await this.get();
     return categories.filter((c) => c.feature_key === featureKey && c.is_active).map((c) => c.key);
