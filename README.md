@@ -16,6 +16,7 @@ anything in `public`. See [PLAN.md](PLAN.md) for the full design.
 | Analytics (what kind of issues, where the fault sits) | `/dashboard/analytics` | signed-in account |
 | Issue kinds (recurring problems and how often) | `/dashboard/kinds` | signed-in account |
 | Diagnosis overview | `/dashboard/diagnosis` | signed-in account |
+| Benchmarks: the same workout or night on Luna and another device, from an Apple Health export | `/dashboard/benchmarks` | signed-in account (importing and editing need admin, QC or developer) |
 | People (accounts, roles, passwords) | `/dashboard/users` | admin |
 
 Reports are tagged `stage`, `uat` or `production`, defaulting to `stage`, and every screen
@@ -24,10 +25,11 @@ problems filed by CX from its own tool), with its own filter on every screen.
 
 Every report has a readable reference, `LN-00042`, and every issue kind one of its own, `LNK-0007`.
 Existing rows were numbered oldest first; numbers are never reused. `/i/LN-00042` and `/k/LNK-0007`
-are short links to share (the page behind them needs a sign-in), and `GET /v1/feedback/{id}` accepts
+(and `/b/BM-0007` for a benchmark session) are short links to share (the page behind them needs a sign-in), and `GET /v1/feedback/{id}` accepts
 a reference as well as the uuid.
 
-The pages are plain HTML in `src/pages/` and are embedded into the server bundle by
+The pages are plain HTML in `src/pages/`, with the scripts they load in `src/pages/scripts/`
+(served at `/dashboard/assets/<name>.js`), and are embedded into the server bundle by
 `npm run pages:embed` (runs automatically before dev/build/test; the generated
 `src/pages/generated.ts` is committed). Design tokens follow
 [docs/design/luna-design-system.html](docs/design/luna-design-system.html).
@@ -85,8 +87,8 @@ removed or disabled, so a deployment can never become unreachable. Two more ways
 | role | can |
 |---|---|
 | `admin` | everything, including adding and removing people |
-| `qc` | Jira, triage and issue status, issue kinds, diagnosis and review |
-| `developer` | issue kinds, diagnosis and review. No Jira, triage or people |
+| `qc` | Jira, triage and issue status, issue kinds, diagnosis and review, benchmarks |
+| `developer` | issue kinds, diagnosis and review, benchmarks. No Jira, triage or people |
 | `business` | read-only across the dashboard |
 | `cx` | read-only, plus the AI on a report (diagnose, chat). CX files reports from its own tool, not the dashboard |
 
@@ -323,6 +325,72 @@ recurring problem. `POST /v1/admin/jira/check` verifies the credentials without 
 list so any two numbers can be compared: reports per day, issue kinds by share, reported categories,
 catalog events seen in logs, where the fault sits, environment split, triage state, who is
 reporting, and firmware and app versions. Served by `GET /v1/analytics/overview`.
+
+## Benchmarks
+
+`/dashboard/benchmarks` compares what Luna recorded with what another device (Polar, Garmin,
+Fitbit, Apple Watch…) recorded for the same workout or the same night. A tester wears both, lets
+both apps sync to Apple Health, exports from the Health app (profile picture, Export All Health
+Data) and drops `export.zip` (or the `export.xml` inside it) on the page.
+
+**The file never leaves the browser.** An export is often hundreds of megabytes and a request to
+the API may carry 4.5 MB, so [`src/pages/scripts/health-export.js`](src/pages/scripts/health-export.js)
+reads it where it is, as a stream, in two passes: first it lists every workout and night in the
+file, then it collects the samples recorded during the sessions someone ticked. Only that is sent,
+one session per request. Nothing of the file is stored anywhere.
+
+**Already imported?** `POST /v1/admin/benchmarks/check` takes the list from the first pass and says
+which workouts from different sources are one session (they mostly overlap in time; two from the
+same source never are), and which are stored already. A recording is recognised by its source, kind,
+start and end, so uploading a later export adds only what is new. When a later export has another
+device's recording of a stored session (same tester, overlapping time), it joins that session
+instead of making a second one.
+
+**What is stored** (migration `20261002000000_benchmarks.sql`): `benchmark_sessions` (`BM-0007`, a
+workout or a night for one tester, with the comparison in `summary`) and `benchmark_recordings`
+(one per Apple Health source: its totals in `metrics`, samples over time in `series`, sleep
+`stages`, GPS `route`). Metrics are keyed by name, not by column, so whatever a device writes is
+kept: an identifier the code has never seen still gets a key, a label and a way to total it
+([`metrics.ts`](src/modules/benchmarks/metrics.ts)). A source that logged no workout of its own but
+has samples in the window (the phone counting steps) is kept as background.
+
+**Who is tested against whom.** Each source gets a brand tag, guessed from its name and hardware and
+correctable on the session page (a correction is remembered for that source). The recording tagged
+`luna` is the device under test; the others are references, best first (chest straps and sports
+watches before the phone). With no Luna recording the best reference stands and the rest are
+measured against it.
+
+**The numbers** ([`analyze.ts`](src/modules/benchmarks/analyze.ts), pure functions, no model):
+
+- Heart rate on its own: average and time per range weigh each reading by how long it stood, so a
+  burst of readings does not count for more; coverage, gaps, and stretches of 40 s or more on one
+  exact value (a device repeating itself).
+- Heart rate against the reference, in half-minute blocks over the time both were recording:
+  typical (mean absolute) gap, lean high or low, correlation, share within 5 and 10 bpm, the first
+  three minutes apart from the rest, and whether the device trails the reference.
+- Every total both reported (duration, distance, pace, calories, steps…) with the difference and a
+  verdict: match within about 2% or 3 bpm, close within about 5% or 7 bpm, otherwise differs.
+  Calories are "not comparable" when the two apps were given different body weights.
+- Sleep: stages laid on 30-second steps; time in bed, time asleep, time to fall asleep, time awake
+  after that, awakenings, efficiency and each stage; and epoch by epoch agreement with the
+  reference (asleep or awake, stage by stage, kappa, the confusion table).
+
+The page's heart rate line uses the same averaging as the sample report it was modelled on (5 s up
+to half an hour, 10 s beyond), on round clock times; "Every reading" shows the raw samples.
+
+| endpoint | does |
+|---|---|
+| `GET /v1/admin/benchmarks?kind=&device=&tester=&is_test=&limit=&offset=` | sessions, newest first, with each one's comparison summary and the filter values in use |
+| `GET /v1/admin/benchmarks/{id or BM-ref}` | one session with every recording's metrics, series, stages and route |
+| `POST /v1/admin/benchmarks/check` | which workouts and nights from an export are one session, and which are stored |
+| `POST /v1/admin/benchmarks/import` | one session's recordings (201 created, 200 updated or unchanged) |
+| `PATCH /v1/admin/benchmarks/{id}` | title, notes, tester, test flag |
+| `PATCH /v1/admin/benchmarks/{id}/recordings/{rid}` | brand tag and device name; redoes the comparison |
+| `DELETE /v1/admin/benchmarks/{id}` and `…/recordings/{rid}` | remove a session, or one device from it |
+
+All under `/v1/admin`, so a dashboard session or the admin key is needed: this is testers' health
+data and the app's key cannot read it. Reading is open to every role; the rest needs
+`manage_benchmarks` (admin, QC, developer).
 
 ## Adding a field or feature
 

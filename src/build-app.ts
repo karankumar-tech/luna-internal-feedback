@@ -43,6 +43,9 @@ import { SimilarService } from './modules/similar/similar.service.js';
 import { registerSimilarRoutes } from './modules/similar/similar.routes.js';
 import { ActivityRepo } from './modules/activity/activity.repo.js';
 import { registerActivityRoutes } from './modules/activity/activity.routes.js';
+import { BenchmarksRepo } from './modules/benchmarks/benchmarks.repo.js';
+import { BenchmarksService } from './modules/benchmarks/benchmarks.service.js';
+import { registerBenchmarkRoutes } from './modules/benchmarks/benchmarks.routes.js';
 import { runInBackground } from './modules/diagnosis/background.js';
 import type { Environment } from './schema/registry.js';
 
@@ -210,6 +213,8 @@ export function buildApp(opts: BuildOptions = {}): App {
   const attention = new AttentionService(new AttentionRepo(db), config.APP_TIMEZONE);
   registerAttentionRoutes(app, { service: attention, feedback: service });
   registerHomeRoutes(app, { service: new HomeService(new HomeRepo(db, config.APP_TIMEZONE), { categories, attention, timeZone: config.APP_TIMEZONE }) });
+
+  registerBenchmarkRoutes(app, { service: new BenchmarksService(new BenchmarksRepo(db)) });
 
   app.addHook('onClose', async () => {
     if (!opts.db) await db.end();

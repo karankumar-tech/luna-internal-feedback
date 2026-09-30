@@ -42,6 +42,8 @@ export const PERMISSIONS = {
   manage_categories: ['admin', 'qc'],
   /** Delete every test submission. */
   delete_test_data: ['admin'],
+  /** Import device benchmark sessions from a health export, and tag, edit or delete them. */
+  manage_benchmarks: ['admin', 'qc', 'developer'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

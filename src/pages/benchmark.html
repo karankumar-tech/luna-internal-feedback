@@ -1,0 +1,1040 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Luna Benchmark</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&display=swap">
+<style>
+  :root {
+    --black: #000; --white: #fff; --gray-dark: #737373; --gray-mid: #9E9E9E; --gray-light: #D9D9D9;
+    --bg: #F0EFEA; --brief: #E8E6E0; --border-warm: #E2E0D9; --border-ghost: #F0F0F0; --hero: #1A1A18; --hero-muted: #8A887F;
+    --yellow: #F5F85D; --yellow-50: #FEFFD6; --blue: #2E64E4; --blue-50: #EAF0FD; --orange: #EF7432; --orange-50: #FFF3EC; --ok: #00C37A; --ok-bg: #E6F8F0; --crit: #FF3B3B; --crit-bg: #FFECEC;
+    --sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --r-xs: 2px; --r-s: 4px; --r-m: 6px; --r-l: 8px; --r-xl: 12px;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { color-scheme: light; }
+  body { margin: 0; background: var(--bg); color: var(--black); font-family: var(--sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; } button, input, select, textarea { font: inherit; color: inherit; }
+  .overline { font-family: var(--mono); font-size: 11px; line-height: 16px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); }
+  h1 { font-size: 24px; line-height: 28px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 16px; line-height: 20px; font-weight: 600; margin: 0; }
+  h3 { font-size: 14px; line-height: 20px; font-weight: 600; margin: 0; }
+  p { margin: 0; }
+  .tertiary { color: var(--gray-mid); } .muted { color: var(--gray-dark); }
+  .mono { font-family: var(--mono); font-size: 12px; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 20px 16px 64px; }
+  .top { background: var(--white); border-bottom: 1px solid var(--gray-light); }
+  .top-inner { max-width: 1240px; margin: 0 auto; padding: 14px 16px; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .crumb { font-size: 13px; color: var(--gray-dark); text-decoration: none; } .crumb:hover { color: var(--black); }
+  .meta { font-size: 12px; color: var(--gray-dark); text-align: right; line-height: 18px; }
+  .btn { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-l); padding: 7px 12px; line-height: 18px; cursor: pointer; font-weight: 500; text-decoration: none; display: inline-block; }
+  .btn:hover { border-color: var(--gray-mid); }
+  .btn.primary { background: var(--black); border-color: var(--black); color: var(--white); }
+  .btn.small { padding: 4px 10px; font-size: 12px; line-height: 16px; border-radius: var(--r-s); }
+  .btn.ghost { border-color: transparent; background: transparent; } .btn.ghost:hover { background: var(--brief); }
+  .btn.danger { color: #8A1010; } .btn.danger:hover { border-color: var(--crit); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible { outline: none; border-color: var(--black); box-shadow: 0 0 0 1px var(--black); }
+  select, input[type=text], textarea { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-m); padding: 6px 10px; line-height: 18px; min-width: 0; }
+  textarea { width: 100%; min-height: 72px; resize: vertical; }
+  label.field { display: flex; flex-direction: column; gap: 4px; }
+  label.field > span { font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); }
+  .seg { display: inline-flex; border: 1px solid var(--gray-light); border-radius: var(--r-l); overflow: hidden; background: var(--white); }
+  .seg button { border: 0; background: transparent; padding: 5px 10px; font-size: 12px; line-height: 18px; cursor: pointer; font-weight: 500; color: var(--gray-dark); }
+  .seg button + button { border-left: 1px solid var(--border-ghost); }
+  .seg button.on { background: var(--black); color: var(--white); }
+  .seg button:focus-visible { outline: 2px solid var(--black); outline-offset: -2px; }
+
+  .card { background: var(--white); border: 1px solid var(--gray-light); border-radius: var(--r-xl); padding: 16px 20px; min-width: 0; margin-bottom: 12px; }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .card-head .sub { font-size: 12px; line-height: 18px; color: var(--gray-dark); max-width: 84ch; }
+  .card-head > div:first-child { flex: 1 1 0; min-width: 0; }
+  .card-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+  .grid2 > .card { margin-bottom: 12px; }
+  .note { font-size: 12px; line-height: 18px; color: var(--gray-dark); margin-top: 10px; max-width: 96ch; }
+  .empty { padding: 20px 0; text-align: center; color: var(--gray-dark); font-size: 13px; }
+  .banner { background: var(--yellow-50); border: 1px solid #DADC6B; border-radius: var(--r-xl); padding: 12px 16px; margin-bottom: 12px; font-size: 13px; }
+  .banner b { font-weight: 600; }
+
+  .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .tile { background: var(--white); border: 1px solid var(--gray-light); border-radius: var(--r-l); padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .tile .l { font-size: 12px; line-height: 16px; color: var(--gray-dark); }
+  .tile .v { font-family: var(--mono); font-size: 28px; line-height: 32px; letter-spacing: -0.01em; white-space: nowrap; } .tile .v small { font-size: 14px; }
+  .tile .d { font-size: 12px; line-height: 17px; color: var(--gray-dark); }
+  .tile.hero { background: var(--hero); border-color: var(--hero); color: var(--white); } .tile.hero .l, .tile.hero .d { color: var(--hero-muted); }
+
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 18px; }
+  th { text-align: left; font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); font-weight: 400; padding: 8px 10px; border-bottom: 1px solid var(--gray-light); white-space: nowrap; }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--border-ghost); vertical-align: middle; }
+  td.num, th.num { text-align: right; } td.num { font-family: var(--mono); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  td.val { font-family: var(--mono); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  td.val small, td.rowlabel small { display: block; font-family: var(--sans); color: var(--gray-dark); font-size: 11px; white-space: normal; }
+  td.rowlabel { font-weight: 500; }
+  th .sw, .sw { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 6px; }
+  .vd { display: inline-block; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 7px; border-radius: var(--r-xs); white-space: nowrap; line-height: 14px; }
+  .vd.match { background: var(--black); color: var(--white); }
+  .vd.close { box-shadow: inset 0 0 0 1px var(--black); }
+  .vd.differs { background: var(--orange-50); color: #A03600; box-shadow: inset 0 0 0 1px var(--orange); }
+  .vd.not_comparable, .vd.only_test, .vd.only_reference { color: var(--gray-dark); padding-left: 0; }
+  .role { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--gray-dark); white-space: nowrap; }
+  .role.test { color: var(--black); }
+  .devname { width: 170px; }
+
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--gray-dark); align-items: center; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .legend i { display: inline-block; width: 16px; height: 3px; border-radius: 2px; }
+  .legend i.box { width: 10px; height: 10px; border-radius: 2px; }
+  .legend i.band { width: 14px; height: 10px; border-radius: 0; background: rgba(0,0,0,.08); box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); }
+  .legend i.mark { width: 8px; height: 8px; border-radius: 1px; }
+  .chart { position: relative; }
+  .chart svg { display: block; width: 100%; overflow: visible; }
+  .chart svg:focus-visible { outline: 2px solid var(--black); outline-offset: 4px; border-radius: 4px; }
+  .chart text { font-family: var(--mono); font-size: 11px; fill: var(--gray-dark); }
+  .chart text.cat { font-family: var(--sans); font-size: 12px; fill: var(--black); }
+  .chart text.val { fill: var(--black); }
+  .tip { position: absolute; pointer-events: none; background: var(--black); color: var(--white); border-radius: var(--r-m); padding: 7px 10px; font-size: 12px; line-height: 17px; z-index: 5; white-space: nowrap; display: none; }
+  .tip .t { font-family: var(--mono); font-size: 11px; color: #BDBDBD; margin-bottom: 2px; }
+  .tip .r { display: flex; align-items: center; gap: 8px; } .tip .r i { width: 12px; height: 3px; border-radius: 2px; display: inline-block; }
+  .tip .r b { font-family: var(--mono); font-weight: 500; min-width: 44px; } .tip .r span { color: #BDBDBD; }
+  .multi { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px 28px; }
+  .multi h3 { margin-bottom: 2px; } .multi .legend { margin-bottom: 6px; }
+
+  .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
+  .stat { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-ghost); font-size: 13px; }
+  .stat span { color: var(--gray-dark); } .stat b { font-family: var(--mono); font-weight: 500; font-size: 12px; white-space: nowrap; }
+  .findings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .finding { border: 1px solid var(--border-warm); border-radius: var(--r-l); padding: 12px 14px; }
+  .finding h3 { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .finding p { font-size: 13px; line-height: 19px; color: var(--gray-dark); }
+  .finding .lv { font-family: var(--mono); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; padding: 1px 6px; border-radius: var(--r-xs); flex: none; }
+  .finding .lv.good { background: var(--ok-bg); color: #00603C; } .finding .lv.warn { background: var(--orange-50); color: #A03600; box-shadow: inset 0 0 0 1px var(--orange); } .finding .lv.info { background: var(--brief); color: var(--gray-dark); }
+  .matrix td, .matrix th { text-align: right; } .matrix td:first-child, .matrix th:first-child { text-align: left; }
+  .matrix td.cell { font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .edit { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+  .edit-actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+  .check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--gray-dark); cursor: pointer; }
+  .method { font-size: 13px; line-height: 20px; color: var(--gray-dark); } .method li { margin-bottom: 4px; } .method b { color: var(--black); font-weight: 500; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--black); color: var(--white); padding: 8px 14px; border-radius: var(--r-l); font-size: 13px; z-index: 40; display: none; }
+  .loading { opacity: .45; pointer-events: none; }
+  @media (max-width: 980px) { .grid2, .multi, .findings, .edit { grid-template-columns: 1fr; } .tiles { grid-template-columns: 1fr 1fr; } .stats { grid-template-columns: 1fr; } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body data-palette="#E8642A,#2E64E4,#1BAF7A,#4A3AA7,#E87BA4">
+<header class="top">
+  <div class="top-inner">
+    <div>
+      <a class="crumb" href="/dashboard/benchmarks">← Benchmarks</a>
+      <div class="overline" id="over" style="margin-top:2px">Luna · Benchmark</div>
+      <h1 id="title">…</h1>
+    </div>
+    <div class="meta" id="meta"></div>
+  </div>
+</header>
+
+<main class="wrap" id="content">
+  <div class="banner" id="banner" hidden></div>
+  <section class="tiles" id="tiles" aria-label="Headline numbers"></section>
+
+  <section class="card" id="devicesCard">
+    <div class="card-head"><div><h2>Devices</h2><div class="sub" id="devicesSub">What each device recorded. Set the brand if the guess is wrong: the device tagged Luna is the one under test.</div></div></div>
+    <div class="table-scroll" id="devices"></div>
+  </section>
+
+  <section class="card" id="compareCard" hidden>
+    <div class="card-head">
+      <div><h2>Side by side</h2><div class="sub" id="compareSub"></div></div>
+      <div class="card-tools"><label class="field" id="pairField" hidden><span>Compare</span><select id="pairSel"></select></label></div>
+    </div>
+    <div class="table-scroll" id="compare"></div>
+  </section>
+
+  <section class="card" id="allCard" hidden>
+    <div class="card-head"><div><h2 id="allTitle">What was recorded</h2><div class="sub" id="allSub"></div></div></div>
+    <div class="table-scroll" id="all"></div>
+  </section>
+
+  <section class="card" id="hypnoCard" hidden>
+    <div class="card-head">
+      <div><h2>Sleep stages</h2><div class="sub">Each device's night on the same clock. Higher is lighter: awake at the top, deep sleep at the bottom.</div></div>
+      <div class="legend" id="hypnoLegend"></div>
+    </div>
+    <div class="chart" id="hypno"></div>
+  </section>
+
+  <section class="card" id="hrCard" hidden>
+    <div class="card-head">
+      <div><h2>Heart rate</h2><div class="sub" id="hrSub"></div></div>
+      <div class="card-tools">
+        <div class="legend" id="hrLegend"></div>
+        <div class="seg" id="hrView" role="group" aria-label="Heart rate view" hidden><button type="button" data-view="lines" class="on">Lines</button><button type="button" data-view="diff">Difference</button></div>
+        <div class="seg" id="hrDetail" role="group" aria-label="Heart rate detail"><button type="button" data-detail="avg" class="on">Averaged</button><button type="button" data-detail="raw">Every reading</button></div>
+      </div>
+    </div>
+    <div class="chart" id="hrChart"></div>
+    <p class="note" id="hrNote"></p>
+  </section>
+
+  <div class="grid2" id="hrRow" hidden>
+    <section class="card">
+      <div class="card-head"><div><h2>Time in heart rate ranges</h2><div class="sub">Share of the session each device spent in each range.</div></div><div class="legend" id="zoneLegend"></div></div>
+      <div class="chart" id="zones"></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><div><h2 id="agreeTitle">Heart rate agreement</h2><div class="sub" id="agreeSub"></div></div></div>
+      <div class="stats" id="agree"></div>
+    </section>
+  </div>
+
+  <div class="grid2" id="sleepRow" hidden>
+    <section class="card">
+      <div class="card-head"><div><h2>Time in each stage</h2><div class="sub">Minutes per stage, by device.</div></div><div class="legend" id="stageLegend"></div></div>
+      <div class="chart" id="stageBars"></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><div><h2>Where the stages agree</h2><div class="sub" id="matrixSub"></div></div></div>
+      <div class="table-scroll" id="matrix"></div>
+    </section>
+  </div>
+
+  <section class="card" id="overCard" hidden>
+    <div class="card-head"><div><h2>Over time</h2><div class="sub">Everything else the devices wrote during the session. Totals build up from the left; a device that only reports a total shows as a single mark at the end.</div></div></div>
+    <div class="multi" id="over2"></div>
+  </section>
+
+  <section class="card" id="routeCard" hidden>
+    <div class="card-head"><div><h2>Route</h2><div class="sub" id="routeSub"></div></div><div class="legend" id="routeLegend"></div></div>
+    <div class="chart" id="route"></div>
+  </section>
+
+  <section class="card" id="findingsCard" hidden>
+    <div class="card-head"><div><h2>What stands out</h2><div class="sub">Worked out from the recordings by fixed rules, not by a model.</div></div></div>
+    <div class="findings" id="findings"></div>
+  </section>
+
+  <section class="card" id="editCard" hidden>
+    <div class="card-head"><div><h2>Notes</h2><div class="sub">Conditions of the test: where each device was worn, firmware and app versions, anything odd.</div></div></div>
+    <div class="edit">
+      <label class="field"><span>Notes</span><textarea id="notes" maxlength="4000"></textarea></label>
+      <div style="display:grid;gap:10px">
+        <label class="field"><span>Title</span><input type="text" id="fTitle" maxlength="120" placeholder="Optional"></label>
+        <label class="field"><span>Who wore the devices</span><input type="text" id="fTester" maxlength="80"></label>
+      </div>
+    </div>
+    <div class="edit-actions">
+      <button class="btn primary" id="btnSave" type="button">Save</button>
+      <label class="check"><input type="checkbox" id="fTest"> Test data</label>
+      <span style="flex:1"></span>
+      <button class="btn danger" id="btnDelete" type="button">Delete this session</button>
+    </div>
+  </section>
+  <section class="card" id="notesRead" hidden><div class="card-head"><div><h2>Notes</h2></div></div><p id="notesText" style="white-space:pre-wrap;font-size:13px"></p></section>
+
+  <section class="card">
+    <div class="card-head"><div><h2>How this was measured</h2></div></div>
+    <ul class="method" id="method"></ul>
+  </section>
+</main>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; };
+  const svgEl = (tag, attrs) => { const e = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+  const REF = decodeURIComponent(location.pathname.split('/').filter(Boolean).pop() || '');
+  const HERE = '/dashboard/benchmarks/' + encodeURIComponent(REF);
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // Luna is always orange; the brands we test against keep their own colour on every page.
+  const TAG_COLORS = { luna: '#E8642A', polar: '#2E64E4', garmin: '#1BAF7A', apple_watch: '#4A3AA7', fitbit: '#E87BA4', phone: '#9E9E9E' };
+  const SPARE = ['#2E64E4', '#1BAF7A', '#4A3AA7', '#E87BA4', '#EDA100'];
+  const ACTIVITY = { traditional_strength_training: 'Strength training', functional_strength_training: 'Functional strength', high_intensity_interval_training: 'HIIT', other: 'Other workout' };
+  const STAGES = [
+    { key: 'awake', label: 'Awake', level: 0, color: '#E8A33D' },
+    { key: 'rem', label: 'REM', level: 1, color: '#7FC6E8' },
+    { key: 'core', label: 'Light', level: 2, color: '#2E64E4' },
+    { key: 'asleep', label: 'Asleep, no stage', level: 2, color: '#8FA9EE' },
+    { key: 'deep', label: 'Deep', level: 3, color: '#1B2A6B' },
+    { key: 'in_bed', label: 'In bed', level: 0, color: '#D9D9D9' },
+  ];
+  const state = { s: null, canManage: false, tags: [], pair: 0, hrView: 'lines', hrDetail: 'avg', colors: new Map() };
+
+  let toastT; const toast = (m) => { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', 3200); };
+  async function api(path, opts = {}) {
+    const r = await fetch(path, { method: opts.method || 'GET', credentials: 'same-origin', headers: { 'x-requested-with': 'dashboard', ...(opts.body ? { 'content-type': 'application/json' } : {}) }, body: opts.body ? JSON.stringify(opts.body) : undefined });
+    const b = await r.json().catch(() => null);
+    if (!r.ok) { const e = new Error((b && b.error && b.error.message) || `HTTP ${r.status}`); e.status = r.status; throw e; }
+    return b;
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Formatting
+  // ---------------------------------------------------------------------------------------------
+  const pad = (n) => String(n).padStart(2, '0');
+  const offset = () => (state.s ? state.s.utc_offset_min : 330);
+  const local = (seconds) => new Date((seconds + offset() * 60) * 1000);
+  const clock = (seconds, withSeconds) => { const d = local(seconds); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}${withSeconds ? ':' + pad(d.getUTCSeconds()) : ''}`; };
+  const day = (seconds) => { const d = local(seconds); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`; };
+  const epoch = (isoText) => Date.parse(isoText) / 1000;
+  const nf = (n, digits = 0) => new Intl.NumberFormat('en-IN', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
+  const signed = (n, digits = 0) => (n > 0 ? '+' : n < 0 ? '−' : '') + nf(Math.abs(n), digits);
+  const isSleep = () => state.s.kind === 'sleep';
+  /** 1216 -> "20:16"; for a night, "7 h 12 min". */
+  function duration(s) {
+    s = Math.round(s);
+    if (isSleep()) { const m = Math.round(s / 60); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${pad(m % 60)} min`; }
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    return h ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
+  }
+  const span = (s) => { s = Math.abs(Math.round(s)); return s < 90 ? `${s} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`; };
+  /** A value in its unit, as a person would write it. */
+  function value(v, unit) {
+    if (v === null || v === undefined) return '—';
+    if (unit === 'clock') return clock(v, !isSleep());
+    if (unit === 's') return duration(v);
+    if (unit === 's/km') return `${Math.floor(v / 60)}:${pad(Math.round(v % 60))} /km`;
+    if (unit === 'bpm') return `${nf(v)} bpm`;
+    if (unit === 'km') return `${nf(v, 2)} km`;
+    if (unit === 'kcal') return `${nf(v)} kcal`;
+    if (unit === '') return nf(v);
+    if (unit === '%') return `${nf(v, 1)}%`;
+    return `${nf(v, Math.abs(v) >= 100 ? 0 : 1)} ${unit}`;
+  }
+  /** Test minus reference, as a person would write it. */
+  function difference(row) {
+    if (row.diff === null) return '—';
+    const d = row.diff, pct = row.pct !== null ? ` (${signed(row.pct, 1)}%)` : '';
+    if (row.unit === 'clock') return d === 0 ? 'same moment' : `${span(d)} ${d < 0 ? 'earlier' : 'later'}`;
+    if (row.unit === 's') return d === 0 ? 'same' : `${d > 0 ? '+' : '−'}${span(d)}${isSleep() ? '' : pct}`;
+    if (row.unit === 's/km') return `${signed(d)} s/km${pct}`;
+    if (row.unit === 'bpm') return `${signed(d)} bpm`;
+    if (row.unit === 'km') return (Math.abs(d) < 1 ? `${signed(d * 1000)} m` : `${signed(d, 2)} km`) + pct;
+    if (row.unit === '%') return `${signed(d, 1)} points`;
+    if (row.unit === '') return `${signed(d)}${row.key === 'awakenings' ? '' : pct}`;
+    return `${signed(d, Math.abs(d) >= 100 ? 0 : 1)} ${row.unit}${pct}`;
+  }
+  const activityLabel = (key) => { if (!key) return 'Workout'; if (ACTIVITY[key]) return ACTIVITY[key]; const s = key.replace(/_/g, ' '); return s.charAt(0).toUpperCase() + s.slice(1); };
+  const recById = (id) => state.s.recordings.find((r) => r.id === id);
+  const colorOf = (rec) => state.colors.get(rec.id);
+  const nameOf = (rec) => rec.device_label;
+  const METRIC_ORDER = ['duration', 'time_in_bed', 'total_sleep', 'sleep_latency', 'waso', 'awakenings', 'sleep_efficiency', 'deep_sleep', 'core_sleep', 'rem_sleep', 'unstaged_sleep', 'distance', 'pace', 'speed', 'active_energy', 'basal_energy', 'steps', 'cadence', 'heart_rate'];
+  const rank = (key) => { const i = METRIC_ORDER.indexOf(key); return i === -1 ? METRIC_ORDER.length : i; };
+  const VERDICT = { match: 'Match', close: 'Close', differs: 'Differs', not_comparable: 'Not comparable' };
+
+  function assignColors() {
+    state.colors = new Map();
+    const used = new Set();
+    for (const r of state.s.recordings) if (TAG_COLORS[r.device_tag] && !used.has(TAG_COLORS[r.device_tag])) { state.colors.set(r.id, TAG_COLORS[r.device_tag]); used.add(TAG_COLORS[r.device_tag]); }
+    for (const r of state.s.recordings) {
+      if (state.colors.has(r.id)) continue;
+      const c = SPARE.find((x) => !used.has(x)) || '#737373';
+      state.colors.set(r.id, c); used.add(c);
+    }
+  }
+  const legendItem = (color, text, cls) => { const s = el('span'); const i = el('i', cls || null); if (color) i.style.background = color; s.appendChild(i); s.appendChild(document.createTextNode(text)); return s; };
+
+  // ---------------------------------------------------------------------------------------------
+  // Charts
+  // ---------------------------------------------------------------------------------------------
+  function niceTicks(min, max, count) {
+    if (!(max > min)) { max = min + 1; }
+    const raw = (max - min) / count, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p;
+    const step = (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p;
+    const lo = Math.floor(min / step) * step, hi = Math.ceil(max / step) * step;
+    const ticks = []; for (let v = lo; v <= hi + step / 2; v += step) ticks.push(Math.round(v * 1e6) / 1e6);
+    return { ticks, lo, hi };
+  }
+  /** Tick moments on round clock times in the wearer's zone. */
+  function timeTicks(from, to, want) {
+    const steps = [60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600];
+    const step = steps.find((s) => (to - from) / s <= want) || 43200;
+    const shift = offset() * 60, out = [];
+    for (let t = Math.ceil((from + shift) / step) * step - shift; t <= to; t += step) out.push(t);
+    return out;
+  }
+  const chartTip = (host) => { let t = host.querySelector('.tip'); if (!t) { t = el('div', 'tip'); host.appendChild(t); } return t; };
+  function placeTip(host, tip, x, y) {
+    tip.style.display = 'block';
+    const w = tip.offsetWidth, hostW = host.clientWidth;
+    tip.style.left = Math.max(0, Math.min(hostW - w, x + 14 + w > hostW ? x - w - 14 : x + 14)) + 'px';
+    tip.style.top = Math.max(0, y) + 'px';
+  }
+  /** Redraws when the card changes width, so text stays the size it was set in. */
+  const observers = new Map();
+  function responsive(host, draw) {
+    if (observers.has(host)) observers.get(host).disconnect();
+    let last = 0;
+    const ro = new ResizeObserver(() => { const w = host.clientWidth; if (Math.abs(w - last) > 4) { last = w; draw(w); } });
+    observers.set(host, ro); ro.observe(host);
+  }
+
+  /**
+   * Lines over time with a crosshair that reads every series at once.
+   * cfg: { from, to, series: [{ name, color, pts: [[t, v]], breakGap, unit }], bands, markers, yMin, yMax, zero, height, label, fmt }
+   */
+  function lineChart(host, cfg) {
+    responsive(host, (width) => {
+      for (const c of [...host.children]) if (!c.classList.contains('tip')) c.remove();
+      const W = Math.max(320, width), H = cfg.height || 300, padL = 46, padR = 14, padT = 10, padB = 26;
+      const plotW = W - padL - padR, plotH = H - padT - padB;
+      let lo = Infinity, hi = -Infinity;
+      for (const s of cfg.series) for (const p of s.pts) { if (p[1] < lo) lo = p[1]; if (p[1] > hi) hi = p[1]; }
+      for (const m of cfg.markers || []) { if (m.v < lo) lo = m.v; if (m.v > hi) hi = m.v; }
+      if (!Number.isFinite(lo)) { lo = 0; hi = 1; }
+      if (cfg.yMin !== undefined) lo = Math.min(lo, cfg.yMin);
+      if (cfg.yMax !== undefined) hi = Math.max(hi, cfg.yMax);
+      const y = niceTicks(lo, hi, 5);
+      const X = (t) => padL + ((t - cfg.from) / (cfg.to - cfg.from)) * plotW;
+      const Y = (v) => padT + plotH - ((v - y.lo) / (y.hi - y.lo)) * plotH;
+      const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, height: H, role: 'img', 'aria-label': cfg.label, tabindex: '0' });
+
+      for (const b of cfg.bands || []) {
+        const x1 = Math.max(padL, X(b.t0)), x2 = Math.min(W - padR, X(b.t1));
+        if (x2 > x1) svg.appendChild(svgEl('rect', { x: x1, y: padT, width: Math.max(2, x2 - x1), height: plotH, fill: 'rgba(0,0,0,.07)' }));
+      }
+      for (const v of y.ticks) {
+        const zero = cfg.zero && v === 0;
+        svg.appendChild(svgEl('line', { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v), stroke: zero ? '#9E9E9E' : '#F0F0F0', 'stroke-width': 1 }));
+        const t = svgEl('text', { x: padL - 8, y: Y(v) + 4, 'text-anchor': 'end' }); t.textContent = cfg.fmtAxis ? cfg.fmtAxis(v) : nf(v, y.ticks.some((x) => x % 1) ? 1 : 0); svg.appendChild(t);
+      }
+      svg.appendChild(svgEl('line', { x1: padL, x2: W - padR, y1: padT + plotH, y2: padT + plotH, stroke: '#D9D9D9', 'stroke-width': 1 }));
+      for (const t of timeTicks(cfg.from, cfg.to, Math.max(3, Math.floor(plotW / 90)))) {
+        const tx = svgEl('text', { x: X(t), y: H - 8, 'text-anchor': 'middle' }); tx.textContent = clock(t); svg.appendChild(tx);
+      }
+      const clipId = 'clip' + Math.random().toString(36).slice(2);
+      const clip = svgEl('clipPath', { id: clipId }); clip.appendChild(svgEl('rect', { x: padL, y: padT - 2, width: plotW, height: plotH + 4 })); svg.appendChild(clip);
+      for (const s of cfg.series) {
+        let d = '', prev = null;
+        for (const p of s.pts) {
+          d += (prev === null || p[0] - prev > s.breakGap ? 'M' : 'L') + X(p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1);
+          prev = p[0];
+        }
+        svg.appendChild(svgEl('path', { d, fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', 'clip-path': `url(#${clipId})` }));
+      }
+      // A device that only reports a total: one square mark where its session ended.
+      for (const m of cfg.markers || []) {
+        const x = Math.min(W - padR, Math.max(padL, X(m.t)));
+        svg.appendChild(svgEl('rect', { x: x - 5, y: Y(m.v) - 5, width: 10, height: 10, fill: m.color, stroke: '#fff', 'stroke-width': 2 }));
+      }
+      const cross = svgEl('line', { y1: padT, y2: padT + plotH, stroke: '#000', 'stroke-width': 1, opacity: 0 }); svg.appendChild(cross);
+      const dots = cfg.series.map((s) => { const c = svgEl('circle', { r: 4, fill: s.color, stroke: '#fff', 'stroke-width': 2, opacity: 0 }); svg.appendChild(c); return c; });
+      const hit = svgEl('rect', { x: padL, y: padT, width: plotW, height: plotH, fill: 'transparent' }); svg.appendChild(hit);
+      host.insertBefore(svg, host.firstChild);
+
+      const tip = chartTip(host);
+      const nearest = (pts, t) => { let a = 0, b = pts.length - 1; if (b < 0) return null; while (b - a > 1) { const m = (a + b) >> 1; if (pts[m][0] <= t) a = m; else b = m; } return Math.abs(pts[a][0] - t) <= Math.abs(pts[b][0] - t) ? pts[a] : pts[b]; };
+      const showAt = (t) => {
+        t = Math.max(cfg.from, Math.min(cfg.to, t));
+        cross.setAttribute('x1', X(t)); cross.setAttribute('x2', X(t)); cross.setAttribute('opacity', 0.35);
+        tip.replaceChildren(el('div', 't', clock(t, true)));
+        cfg.series.forEach((s, i) => {
+          const p = nearest(s.pts, t);
+          const ok = p && Math.abs(p[0] - t) <= s.breakGap;
+          dots[i].setAttribute('opacity', ok ? 1 : 0);
+          if (ok) { dots[i].setAttribute('cx', X(p[0])); dots[i].setAttribute('cy', Y(p[1])); }
+          const r = el('div', 'r'); const k = el('i'); k.style.background = s.color; r.appendChild(k);
+          r.appendChild(el('b', null, ok ? (cfg.fmt ? cfg.fmt(p[1]) : nf(p[1])) : '—')); r.appendChild(el('span', null, s.name)); tip.appendChild(r);
+        });
+        for (const m of cfg.markers || []) { const r = el('div', 'r'); const k = el('i'); k.style.background = m.color; r.appendChild(k); r.appendChild(el('b', null, cfg.fmt ? cfg.fmt(m.v) : nf(m.v))); r.appendChild(el('span', null, m.name)); tip.appendChild(r); }
+        placeTip(host, tip, X(t), padT);
+      };
+      const hide = () => { cross.setAttribute('opacity', 0); dots.forEach((d) => d.setAttribute('opacity', 0)); tip.style.display = 'none'; };
+      let cursor = (cfg.from + cfg.to) / 2;
+      hit.addEventListener('pointermove', (e) => { const r = svg.getBoundingClientRect(); cursor = cfg.from + ((e.clientX - r.left - padL * (r.width / W)) / (plotW * (r.width / W))) * (cfg.to - cfg.from); showAt(cursor); });
+      hit.addEventListener('pointerleave', hide);
+      // The same readout from the keyboard: arrows move the crosshair.
+      svg.addEventListener('keydown', (e) => { if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return; e.preventDefault(); cursor += (e.key === 'ArrowLeft' ? -1 : 1) * (cfg.to - cfg.from) / (e.shiftKey ? 20 : 120); cursor = Math.max(cfg.from, Math.min(cfg.to, cursor)); showAt(cursor); });
+      svg.addEventListener('focus', () => showAt(cursor)); svg.addEventListener('blur', hide);
+    });
+  }
+
+  /** Horizontal bars in groups: one group per category, one bar per device. */
+  function groupedBars(host, groups, fmt) {
+    responsive(host, (width) => {
+      for (const c of [...host.children]) if (!c.classList.contains('tip')) c.remove();
+      if (!groups.length) { host.appendChild(el('div', 'empty', 'Nothing to show.')); return; }
+      const W = Math.max(300, width), padL = 118, padR = 70, bar = 10, gap = 2, groupGap = 14;
+      const max = Math.max(1e-9, ...groups.flatMap((g) => g.values.map((v) => v.value)));
+      let H = 6; for (const g of groups) H += g.values.length * (bar + gap) - gap + groupGap;
+      const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, height: H, role: 'img', 'aria-label': 'Bars by device' });
+      const tip = chartTip(host);
+      let y = 6;
+      for (const g of groups) {
+        const h = g.values.length * (bar + gap) - gap;
+        const lbl = svgEl('text', { x: padL - 12, y: y + h / 2 + 4, 'text-anchor': 'end', class: 'cat' }); lbl.textContent = g.label; svg.appendChild(lbl);
+        g.values.forEach((v, i) => {
+          const w = Math.max((v.value / max) * (W - padL - padR), v.value ? 2 : 0), y0 = y + i * (bar + gap);
+          const grp = svgEl('g', {});
+          // Square at the baseline, rounded at the data end. Nothing at all for zero.
+          const rr = Math.min(4, w / 2);
+          if (w > 0) grp.appendChild(svgEl('path', { d: `M${padL} ${y0}h${w - rr}a${rr} ${rr} 0 0 1 ${rr} ${rr}v${bar - 2 * rr}a${rr} ${rr} 0 0 1 ${-rr} ${rr}h${-(w - rr)}z`, fill: v.color }));
+          const t = svgEl('text', { x: padL + w + 6, y: y0 + bar - 1, class: 'val' }); t.textContent = fmt(v.value); grp.appendChild(t);
+          const hit = svgEl('rect', { x: padL, y: y0 - 1, width: W - padL, height: bar + 2, fill: 'transparent' });
+          hit.addEventListener('pointermove', () => { tip.replaceChildren(el('div', 't', g.label)); const r = el('div', 'r'); const k = el('i'); k.style.background = v.color; r.appendChild(k); r.appendChild(el('b', null, fmt(v.value))); r.appendChild(el('span', null, v.name)); tip.appendChild(r); placeTip(host, tip, padL + w, y0 - 8); });
+          hit.addEventListener('pointerleave', () => { tip.style.display = 'none'; });
+          grp.appendChild(hit); svg.appendChild(grp);
+        });
+        y += h + groupGap;
+      }
+      host.insertBefore(svg, host.firstChild);
+    });
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Series helpers
+  // ---------------------------------------------------------------------------------------------
+  const windowOf = (rec) => rec.logged ? [epoch(rec.started_at), epoch(rec.ended_at)] : [epoch(state.s.started_at), epoch(state.s.ended_at)];
+  /** Mean per bucket, as points at the bucket's start; buckets without a reading are left out. */
+  function bucketed(series, from, to, step) {
+    const n = Math.ceil((to - from) / step), sum = new Float64Array(n), cnt = new Uint32Array(n);
+    for (let i = 0; i < series.t.length; i++) {
+      const at = series.t0 + series.t[i] + (series.d ? series.d[i] / 2 : 0), b = Math.floor((at - from) / step);
+      if (b >= 0 && b < n) { sum[b] += series.v[i]; cnt[b]++; }
+    }
+    const out = []; for (let i = 0; i < n; i++) if (cnt[i]) out.push([from + i * step, sum[i] / cnt[i]]);
+    return out;
+  }
+  const rawPoints = (series, from, to) => { const out = []; for (let i = 0; i < series.t.length; i++) { const at = series.t0 + series.t[i] + (series.d ? series.d[i] / 2 : 0); if (at >= from && at <= to) out.push([at, series.v[i]]); } return out; };
+  /** How far a reading reaches before the line breaks: a few sampling intervals. */
+  const reachOf = (rec) => Math.max(10, ((rec.details.hr && rec.details.hr.interval_s) || 1) * 3);
+  /** The averaging step, as the sample report used: 5 s for short sessions, 10 s for long ones. */
+  const stepFor = (seconds) => seconds <= 1800 ? 5 : seconds <= 3 * 3600 ? 10 : seconds <= 8 * 3600 ? 30 : 60;
+
+  // ---------------------------------------------------------------------------------------------
+  // Sections
+  // ---------------------------------------------------------------------------------------------
+  const pairs = () => (state.s.summary && state.s.summary.pairs) || [];
+  const currentPair = () => pairs()[state.pair] || null;
+
+  function renderHeader() {
+    const s = state.s, start = epoch(s.started_at), end = epoch(s.ended_at);
+    const what = s.kind === 'sleep' ? 'Sleep' : activityLabel(s.activity);
+    const names = s.recordings.filter((r) => r.logged).map(nameOf);
+    $('title').textContent = s.title || `${what}: ${names.join(' vs ') || 'no device'}`;
+    document.title = `${s.ref} · ${s.title || what} · Luna Benchmarks`;
+    $('over').textContent = `${s.ref} · ${what} · ${day(start)}, ${clock(start)} to ${clock(end)}`;
+    const meta = $('meta'); meta.replaceChildren();
+    meta.appendChild(el('div', null, `Worn by ${s.tester}${s.is_test ? ' · test data' : ''}`));
+    meta.appendChild(el('div', null, `Imported ${day(epoch(s.created_at))}${s.uploaded_by ? ' by ' + s.uploaded_by.split('@')[0] : ''}`));
+    const hasLuna = s.recordings.some((r) => r.device_tag === 'luna');
+    const b = $('banner');
+    if (!hasLuna) {
+      b.hidden = false; b.replaceChildren(el('b', null, 'No Luna recording in this session. '));
+      b.appendChild(document.createTextNode(s.recordings.filter((r) => r.logged).length > 1
+        ? 'None of the devices is tagged Luna, so they are compared with each other. If one of them is the Luna band, set its brand below.'
+        : 'Only one device logged it, so there is nothing to compare against yet. When a later export has Luna’s recording of the same session, importing it adds Luna here.'));
+    } else b.hidden = true;
+  }
+
+  function tile(label, big, small, hero) {
+    const t = el('div', 'tile' + (hero ? ' hero' : ''));
+    t.appendChild(el('div', 'l', label));
+    const v = el('div', 'v'); v.appendChild(document.createTextNode(big.value)); if (big.unit) v.appendChild(el('small', null, ' ' + big.unit)); t.appendChild(v);
+    t.appendChild(el('div', 'd', small || ''));
+    return t;
+  }
+  function renderTiles() {
+    const host = $('tiles'); host.replaceChildren();
+    const p = pairs()[state.s.summary.primary ?? 0];
+    const tiles = [];
+    if (p && (p.hr || p.sleep)) {
+      const test = recById(p.test), ref = recById(p.reference);
+      const row = (key) => p.rows.find((r) => r.key === key && r.diff !== null);
+      if (p.hr) {
+        const one = (n) => nf(Math.round(n));
+        if (p.hr.slow_start) {
+          tiles.push(tile('Heart rate, typical gap', { value: '±' + one(p.hr.steady.typical_gap), unit: 'bpm' }, `Against ${nameOf(ref)} once it settled, from minute 3 on. ${nameOf(test)} reads about ${nf(Math.abs(p.hr.warmup.bias))} bpm ${p.hr.warmup.bias < 0 ? 'low' : 'high'} during the first 3 minutes.`, true));
+        } else {
+          const lean = Math.abs(p.hr.bias) >= 1 ? `${nameOf(test)} reads ${one(Math.abs(p.hr.bias))} bpm ${p.hr.bias < 0 ? 'low' : 'high'} on average.` : 'It leans neither high nor low.';
+          tiles.push(tile('Heart rate, typical gap', { value: '±' + one(p.hr.typical_gap), unit: 'bpm' }, `Against ${nameOf(ref)}, half-minute by half-minute. ${lean}`, true));
+        }
+        const avg = row('heart_rate');
+        if (avg) tiles.push(tile('Average heart rate', { value: `${nf(avg.test)} vs ${nf(avg.reference)}` }, `${nameOf(test)} against ${nameOf(ref)}, ${difference(avg)}.`));
+      }
+      if (p.sleep) {
+        tiles.push(tile('Asleep or awake', { value: nf(p.sleep.sleep_wake_pct, 1), unit: '%' }, `Of the night, ${nameOf(test)} and ${nameOf(ref)} agree on whether the wearer was asleep.`, true));
+        if (p.sleep.stage_pct !== null) tiles.push(tile('Same stage', { value: nf(p.sleep.stage_pct, 1), unit: '%' }, `Of the night, both name the same stage${p.sleep.kappa !== null ? ` (kappa ${p.sleep.kappa})` : ''}.`));
+      }
+      for (const key of isSleep() ? ['total_sleep', 'sleep_latency', 'deep_sleep', 'rem_sleep'] : ['distance', 'active_energy', 'duration', 'steps']) {
+        const r = row(key); if (!r || tiles.length >= 4) continue;
+        const big = r.unit === 's' ? { value: (r.diff > 0 ? '+' : r.diff < 0 ? '−' : '') + span(r.diff) } : r.pct !== null ? { value: signed(r.pct, 1), unit: '%' } : { value: signed(r.diff) };
+        tiles.push(tile(r.label, big, `${value(r.test, r.unit)} on ${nameOf(test)}, ${value(r.reference, r.unit)} on ${nameOf(ref)}.${r.verdict === 'not_comparable' ? ' Not comparable: different body weights.' : ''}`));
+      }
+    } else {
+      const rec = state.s.recordings.find((r) => r.logged) || state.s.recordings[0];
+      if (rec) for (const key of isSleep() ? ['total_sleep', 'time_in_bed', 'sleep_efficiency', 'deep_sleep', 'sleep_latency'] : ['duration', 'heart_rate', 'active_energy', 'distance', 'steps']) {
+        const m = rec.metrics[key]; if (!m || tiles.length >= 4) continue;
+        const text = value(m.value, m.unit), cut = text.lastIndexOf(' ');
+        const big = m.unit === 's' || cut === -1 ? { value: text } : { value: text.slice(0, cut), unit: text.slice(cut + 1) };
+        const extra = key === 'heart_rate' && m.max !== undefined ? `Average on ${nameOf(rec)}; between ${nf(m.min)} and ${nf(m.max)} bpm.` : `On ${nameOf(rec)}.`;
+        tiles.push(tile(key === 'heart_rate' ? 'Average heart rate' : m.label, big, extra, !tiles.length));
+      }
+    }
+    host.hidden = !tiles.length; host.append(...tiles);
+  }
+
+  function renderDevices() {
+    const host = $('devices'); host.replaceChildren();
+    const p = pairs()[state.s.summary.primary ?? 0];
+    const t = el('table'); const head = el('tr');
+    for (const h of ['Device', 'Brand', 'Written to Health by', 'Role', 'Heart rate readings', 'Recorded', '']) head.appendChild(el('th', null, h));
+    t.appendChild(head);
+    for (const r of state.s.recordings) {
+      const tr = el('tr');
+      const name = el('td'); const sw = el('span', 'sw'); sw.style.background = colorOf(r); name.appendChild(sw);
+      if (state.canManage) {
+        const inp = el('input', 'devname'); inp.type = 'text'; inp.value = r.device_label; inp.maxLength = 80; inp.setAttribute('aria-label', 'Device name');
+        inp.addEventListener('change', () => patchRecording(r.id, { device_label: inp.value.trim() === r.source_name ? null : inp.value.trim() }));
+        name.appendChild(inp);
+      } else name.appendChild(document.createTextNode(r.device_label));
+      tr.appendChild(name);
+
+      const brand = el('td');
+      if (state.canManage) {
+        const sel = el('select'); sel.setAttribute('aria-label', 'Brand');
+        const known = state.tags.some((x) => x.tag === r.device_tag);
+        for (const x of state.tags) { const o = el('option', null, x.label); o.value = x.tag; sel.appendChild(o); }
+        if (!known) { const o = el('option', null, r.tag_label); o.value = r.device_tag; sel.appendChild(o); }
+        const custom = el('option', null, 'Another brand…'); custom.value = '__custom'; sel.appendChild(custom);
+        sel.value = r.device_tag;
+        sel.addEventListener('change', () => {
+          if (sel.value !== '__custom') { patchRecording(r.id, { device_tag: sel.value }); return; }
+          const inp = el('input'); inp.type = 'text'; inp.placeholder = 'brand, e.g. huawei'; inp.maxLength = 30; inp.style.width = '150px';
+          inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); if (e.key === 'Escape') render(); });
+          inp.addEventListener('blur', () => { const tag = inp.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''); if (tag) patchRecording(r.id, { device_tag: tag }); else render(); });
+          brand.replaceChildren(inp); inp.focus();
+        });
+        brand.appendChild(sel);
+      } else brand.textContent = r.tag_label;
+      tr.appendChild(brand);
+
+      const hw = r.details.device ? [r.details.device.name, r.details.device.hardware].filter(Boolean).join(', ') : '';
+      const src = el('td', 'rowlabel'); src.style.fontWeight = '400'; src.appendChild(document.createTextNode(r.source_name + (r.source_version ? ` ${r.source_version}` : ''))); if (hw) src.appendChild(el('small', null, hw)); tr.appendChild(src);
+      const role = p && p.test === r.id ? ['Under test', 'role test'] : p && p.reference === r.id ? ['Reference', 'role'] : !r.logged ? ['Background', 'role'] : ['', 'role'];
+      tr.appendChild(el('td')).appendChild(el('span', role[1], role[0] || '—'));
+      const q = r.details.hr;
+      const hr = el('td', 'val'); hr.textContent = q ? `${nf(q.samples)}, every ${nf(q.interval_s, q.interval_s % 1 ? 1 : 0)} s` : 'none'; if (q) hr.appendChild(el('small', null, `covers ${nf(q.coverage_pct)}% of the session`)); tr.appendChild(hr);
+      const rec = el('td', 'val');
+      if (r.logged) { rec.textContent = `${clock(epoch(r.started_at), !isSleep())} to ${clock(epoch(r.ended_at), !isSleep())}`; rec.appendChild(el('small', null, isSleep() ? 'logged the night' : `logged as ${activityLabel(r.activity).toLowerCase()}`)); }
+      else { rec.textContent = 'samples only'; rec.appendChild(el('small', null, 'did not log the session itself')); }
+      tr.appendChild(rec);
+      const act = el('td', 'num');
+      if (state.canManage && state.s.recordings.length > 1) { const b = el('button', 'btn small ghost', 'Remove'); b.type = 'button'; b.addEventListener('click', () => removeRecording(r)); act.appendChild(b); }
+      tr.appendChild(act);
+      t.appendChild(tr);
+    }
+    host.appendChild(t);
+  }
+
+  function renderCompare() {
+    const card = $('compareCard'), host = $('compare'); host.replaceChildren();
+    const all = pairs();
+    const p = currentPair();
+    if (!p) { card.hidden = true; return; }
+    card.hidden = false;
+    const test = recById(p.test), ref = recById(p.reference);
+    $('pairField').hidden = all.length < 2;
+    const sel = $('pairSel'); sel.replaceChildren();
+    all.forEach((x, i) => { const o = el('option', null, `${nameOf(recById(x.test))} against ${nameOf(recById(x.reference))}`); o.value = String(i); sel.appendChild(o); });
+    sel.value = String(state.pair);
+    $('compareSub').textContent = `${nameOf(test)} against ${nameOf(ref)}. Difference is ${nameOf(test)} minus ${nameOf(ref)}.`;
+    const t = el('table'); const head = el('tr');
+    const th = (rec) => { const h = el('th'); const sw = el('span', 'sw'); sw.style.background = colorOf(rec); h.appendChild(sw); h.appendChild(document.createTextNode(nameOf(rec))); return h; };
+    head.appendChild(el('th', null, 'Metric')); head.appendChild(th(ref)); head.appendChild(th(test)); head.appendChild(el('th', null, 'Difference')); head.appendChild(el('th', null, 'Verdict'));
+    t.appendChild(head);
+    const at = (rec, key) => { const m = rec.metrics.heart_rate; return key === 'heart_rate_max' && m && m.max_at ? ` at ${clock(m.max_at, true)}` : ''; };
+    if (p.hr) {
+      const lean = (bias) => Math.abs(bias) < 0.5 ? 'level' : `reads ${nf(Math.abs(bias))} bpm ${bias < 0 ? 'low' : 'high'}`;
+      const hrRow = (label, gap, bias, third, verdict) => {
+        const tr = el('tr'); tr.appendChild(el('td', 'rowlabel', label)); tr.appendChild(el('td', 'val', 'Reference'));
+        const v = el('td', 'val', `Typical gap ${nf(Math.round(gap))} bpm`); v.appendChild(el('small', null, lean(bias))); tr.appendChild(v);
+        tr.appendChild(el('td', 'val', third));
+        tr.appendChild(el('td')).appendChild(el('span', 'vd ' + verdict, VERDICT[verdict]));
+        t.appendChild(tr);
+      };
+      hrRow('Moment-to-moment heart rate', p.hr.typical_gap, p.hr.bias, `${nf(p.hr.within_5)}% within 5 bpm${p.hr.r !== null ? ', correlation ' + p.hr.r.toFixed(2) : ''}`, p.hr.verdict);
+      if (p.hr.warmup && p.hr.steady) {
+        hrRow('Heart rate in the first 3 min', p.hr.warmup.typical_gap, p.hr.warmup.bias, '—', p.hr.warmup.verdict);
+        hrRow(`Heart rate from ${clock(Math.max(epoch(test.started_at), epoch(ref.started_at)) + 180)} on`, p.hr.steady.typical_gap, p.hr.steady.bias, '—', p.hr.steady.verdict);
+      }
+    }
+    for (const r of p.rows) {
+      const tr = el('tr');
+      const lbl = el('td', 'rowlabel', r.label); if (r.note) lbl.appendChild(el('small', null, r.note)); tr.appendChild(lbl);
+      tr.appendChild(el('td', 'val', r.reference === null ? 'Not recorded' : value(r.reference, r.unit) + at(ref, r.key)));
+      tr.appendChild(el('td', 'val', r.test === null ? 'Not recorded' : value(r.test, r.unit) + at(test, r.key)));
+      tr.appendChild(el('td', 'val', difference(r)));
+      const label = r.verdict === 'only_test' ? `${nameOf(test)} only` : r.verdict === 'only_reference' ? `${nameOf(ref)} only` : VERDICT[r.verdict];
+      tr.appendChild(el('td')).appendChild(el('span', 'vd ' + r.verdict, label));
+      t.appendChild(tr);
+    }
+    host.appendChild(t);
+  }
+
+  /** Every device's own numbers in one table: all there is for a lone device, and the only place a third one shows. */
+  function renderAll() {
+    const recs = state.s.recordings, host = $('all'); host.replaceChildren();
+    const keys = [...new Set(recs.flatMap((r) => Object.keys(r.metrics)))].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+    const show = keys.length && (!currentPair() || recs.length > 2);
+    $('allCard').hidden = !show;
+    if (!show) return;
+    $('allTitle').textContent = recs.length > 1 ? 'Every device’s numbers' : 'What was recorded';
+    $('allSub').textContent = recs.some((r) => !r.logged)
+      ? 'Totals and averages per device. A device that did not log the session itself only has what it happened to write to Apple Health during it, such as the phone counting steps.'
+      : 'Totals and averages per device.';
+    const t = el('table'); const head = el('tr'); head.appendChild(el('th', null, 'Metric'));
+    for (const r of recs) { const h = el('th'); const sw = el('span', 'sw'); sw.style.background = colorOf(r); h.appendChild(sw); h.appendChild(document.createTextNode(nameOf(r) + (r.logged ? '' : ' (background)'))); head.appendChild(h); }
+    t.appendChild(head);
+    for (const key of keys) {
+      const info = recs.find((r) => r.metrics[key]).metrics[key];
+      const tr = el('tr'); tr.appendChild(el('td', 'rowlabel', key === 'heart_rate' ? 'Average heart rate' : info.label));
+      for (const r of recs) {
+        const m = r.metrics[key];
+        const td = el('td', 'val', m ? value(m.value, m.unit) : '—');
+        if (m && m.min !== undefined && m.max !== undefined) td.appendChild(el('small', null, `${value(m.min, m.unit)} to ${value(m.max, m.unit)}`));
+        else if (m && m.from === 'samples' && !r.logged) td.appendChild(el('small', null, 'during the session'));
+        tr.appendChild(td);
+      }
+      t.appendChild(tr);
+    }
+    host.appendChild(t);
+  }
+
+  function renderHeartRate() {
+    const recs = state.s.recordings.filter((r) => r.series.heart_rate);
+    const card = $('hrCard');
+    if (!recs.length) { card.hidden = true; $('hrRow').hidden = true; return; }
+    card.hidden = false;
+    // The whole of each device's session, plus up to two minutes of readings either side of it, so
+    // a trace that starts late or stops early shows as the blank it is.
+    const edges = recs.map((r) => { const h = r.series.heart_rate, [a, b] = windowOf(r); return [Math.min(a, Math.max(a - 120, h.t0)), Math.max(b, Math.min(b + 120, h.t0 + h.t[h.t.length - 1]))]; });
+    const from = Math.min(...edges.map((e) => e[0])), to = Math.max(...edges.map((e) => e[1]));
+    const step = stepFor(to - from);
+    // Buckets sit on round clock times (16:27:10, 16:27:20…), so two exports of one session draw the same line.
+    const g0 = Math.floor(from / step) * step;
+    // Devices that sample less often than the averaging step (a reading every few minutes through a night) are drawn as written.
+    const sparse = recs.every((r) => reachOf(r) / 3 >= step);
+    if (sparse) state.hrDetail = 'raw';
+    const p = currentPair();
+    const test = p && p.hr ? recById(p.test) : null, ref = p && p.hr ? recById(p.reference) : null;
+    $('hrView').hidden = !test;
+    if (!test) state.hrView = 'lines';
+    for (const b of $('hrView').querySelectorAll('button')) b.classList.toggle('on', b.dataset.view === state.hrView);
+    for (const b of $('hrDetail').querySelectorAll('button')) b.classList.toggle('on', b.dataset.detail === state.hrDetail);
+    $('hrDetail').hidden = state.hrView === 'diff' || sparse;
+
+    const held = test || (recs.length === 1 ? recs[0] : null);
+    const bands = held && held.details.hr ? held.details.hr.holds : [];
+    const legend = $('hrLegend'); legend.replaceChildren();
+    const pts = (r) => state.hrDetail === 'raw' ? rawPoints(r.series.heart_rate, from, to) : bucketed(r.series.heart_rate, g0, to, step);
+    const gapFor = (r) => Math.max(state.hrDetail === 'raw' ? 0 : step * 2.5, reachOf(r));
+
+    if (state.hrView === 'diff' && test && ref) {
+      // Test minus reference on the averaging grid. A short hole between two readings is bridged from
+      // the earlier one; nothing is carried past a device's last reading.
+      const grid = (r) => { const pts = bucketed(r.series.heart_rate, g0, to, step), m = new Map(pts), reach = reachOf(r), final = pts.length ? pts[pts.length - 1][0] : g0; const out = new Map(); let last = null, lastAt = 0; for (let t = g0; t <= final; t += step) { if (m.has(t)) { last = m.get(t); lastAt = t; out.set(t, last); } else if (last !== null && t - lastAt <= reach) out.set(t, last); } return out; };
+      const a = grid(test), b = grid(ref), diff = [];
+      for (const [t, v] of a) if (b.has(t)) diff.push([t, v - b.get(t)]);
+      const worst = Math.max(30, Math.ceil(Math.max(...diff.map((d) => Math.abs(d[1])), 0) / 10) * 10);
+      legend.appendChild(legendItem('#000', `${nameOf(test)} minus ${nameOf(ref)}`));
+      if (bands.length) legend.appendChild(legendItem(null, `${nameOf(held)} held one value 40 s+`, 'band'));
+      lineChart($('hrChart'), { from, to, series: [{ name: `${nameOf(test)} minus ${nameOf(ref)}`, color: '#000', pts: diff, breakGap: step * 2.5 }], bands, yMin: -worst, yMax: worst, zero: true, height: 340, label: `Heart rate difference, ${nameOf(test)} minus ${nameOf(ref)}`, fmt: (v) => `${signed(Math.round(v))} bpm` });
+      $('hrSub').textContent = `${nameOf(test)} minus ${nameOf(ref)}: above the line reads high, below reads low.`;
+    } else {
+      for (const r of recs) legend.appendChild(legendItem(colorOf(r), nameOf(r)));
+      if (bands.length) legend.appendChild(legendItem(null, `${nameOf(held)} held one value 40 s+`, 'band'));
+      lineChart($('hrChart'), { from, to, series: recs.map((r) => ({ name: nameOf(r), color: colorOf(r), pts: pts(r), breakGap: gapFor(r) })), bands, height: 340, label: `Heart rate, ${recs.map(nameOf).join(' and ')}`, fmt: (v) => `${nf(v)} bpm` });
+      $('hrSub').textContent = recs.length > 1 ? 'Beats per minute, all devices on the same clock.' : `Beats per minute from ${nameOf(recs[0])}.`;
+    }
+    const every = (r) => { const i = r.details.hr ? r.details.hr.interval_s : 0; return `${nameOf(r)} one every ${i >= 90 ? Math.round(i / 60) + ' min' : nf(i, i % 1 ? 1 : 0) + ' s'}`; };
+    const notes = [sparse ? `Every reading as written: ${recs.map(every).join(', ')}.` : state.hrDetail === 'raw' && state.hrView !== 'diff' ? 'Every reading as the device wrote it.' : `${step}-second averages.`];
+    if (bands.length) {
+      const q = held.details.hr, longest = bands.reduce((x, h) => (h.t1 - h.t0 > x.t1 - x.t0 ? h : x), bands[0]);
+      notes.push(`Shaded bands mark stretches where ${nameOf(held)} reported the exact same bpm for 40 seconds or more: ${bands.length} stretch${bands.length === 1 ? '' : 'es'} totalling ${span(q.held_s)}, about ${nf(q.held_pct)}% of the session. The longest held ${longest.value} bpm for ${span(longest.t1 - longest.t0)}, from ${clock(longest.t0, true)}.`);
+    }
+    if (test && ref) {
+      const ds = epoch(test.started_at) - epoch(ref.started_at), de = epoch(test.ended_at) - epoch(ref.ended_at);
+      if (Math.abs(ds) >= 5 || Math.abs(de) >= 5) notes.push(`${nameOf(test)} started ${span(ds)} ${ds < 0 ? 'before' : 'after'} ${nameOf(ref)} and stopped ${span(de)} ${de < 0 ? 'before' : 'after'} it, so each line has a short stretch on its own at the edges.`);
+    }
+    notes.push('Hover, or focus the chart and use the arrow keys, to read both at a moment.');
+    $('hrNote').textContent = notes.join(' ');
+
+    // Ranges and agreement.
+    $('hrRow').hidden = isSleep();
+    if (isSleep()) return;
+    const labels = state.s.summary.zone_labels || [];
+    const withZones = recs.filter((r) => r.details.hr && r.details.hr.zones);
+    let first = labels.length, last = -1;
+    labels.forEach((_, i) => { if (withZones.some((r) => r.details.hr.zones[i] > 0)) { first = Math.min(first, i); last = Math.max(last, i); } });
+    const zl = $('zoneLegend'); zl.replaceChildren(); if (withZones.length > 1) for (const r of withZones) zl.appendChild(legendItem(colorOf(r), nameOf(r), 'box'));
+    groupedBars($('zones'), last < 0 ? [] : labels.slice(first, last + 1).map((label, i) => ({ label, values: withZones.map((r) => ({ name: nameOf(r), color: colorOf(r), value: r.details.hr.zones[first + i] })) })), (v) => (v > 0 && v < 1 ? 'under 1%' : `${nf(v)}%`));
+
+    const ag = $('agree'); ag.replaceChildren();
+    const stat = (k, v) => { const d = el('div', 'stat'); d.appendChild(el('span', null, k)); d.appendChild(el('b', null, v)); ag.appendChild(d); };
+    if (p && p.hr) {
+      const a = p.hr;
+      $('agreeTitle').textContent = 'Heart rate agreement';
+      $('agreeSub').textContent = `${nameOf(test)} against ${nameOf(ref)} over the ${span(a.overlap_s)} both were recording, in ${a.blocks} half-minute blocks.`;
+      stat('Typical gap', `${nf(a.typical_gap, 1)} bpm`);
+      stat('Gap on the middle half-minute', `${nf(a.median_gap, 1)} bpm`);
+      stat('Lean', Math.abs(a.bias) < 0.5 ? 'none' : `${nf(Math.abs(a.bias), 1)} bpm ${a.bias < 0 ? 'low' : 'high'}`);
+      stat('Correlation', a.r === null ? '—' : a.r.toFixed(2));
+      stat('Within 5 bpm', `${nf(a.within_5)}% of the time`);
+      stat('Within 10 bpm', `${nf(a.within_10)}% of the time`);
+      stat('Widest gap', `${signed(Math.round(a.max_gap))} bpm at ${clock(a.max_gap_at)}`);
+      stat('95% of gaps between', `${signed(Math.round(a.loa_low))} and ${signed(Math.round(a.loa_high))} bpm`);
+      if (a.warmup && a.steady) { stat('First 3 minutes', Math.abs(a.warmup.bias) < 0.5 ? 'level' : `${nf(Math.abs(a.warmup.bias))} bpm ${a.warmup.bias < 0 ? 'low' : 'high'}`); stat('After that', Math.abs(a.steady.bias) < 0.5 ? 'level' : `${nf(Math.abs(a.steady.bias))} bpm ${a.steady.bias < 0 ? 'low' : 'high'}`); }
+      stat('Average heart rate', (() => { const r = p.rows.find((x) => x.key === 'heart_rate'); return r && r.diff !== null ? `${nf(r.test)} against ${nf(r.reference)} bpm` : '—'; })());
+      if (a.lag_s) stat('Trails the reference by', a.lag_s > 0 ? `${a.lag_s} s` : `leads by ${-a.lag_s} s`);
+    } else {
+      $('agreeTitle').textContent = 'Heart rate trace';
+      const r = recs[0], q = r.details.hr, m = r.metrics.heart_rate;
+      $('agreeSub').textContent = `How complete ${nameOf(r)}’s heart rate is. Agreement needs a second device with heart rate.`;
+      if (m) { stat('Average', `${nf(m.value)} bpm`); stat('Lowest to highest', `${nf(m.min)} to ${nf(m.max)} bpm`); }
+      if (q) { stat('Readings', nf(q.samples)); stat('One reading every', `${nf(q.interval_s, q.interval_s % 1 ? 1 : 0)} s`); stat('Session covered', `${nf(q.coverage_pct)}%`); stat('Gaps', q.gaps.length ? `${q.gaps.length}, ${span(q.gap_s)} in total` : 'none'); stat('Held one value 40 s+', q.holds.length ? `${q.holds.length}, ${span(q.held_s)} in total` : 'never'); stat('First reading', q.first_after_s <= 2 ? 'at the start' : `${span(q.first_after_s)} in`); }
+    }
+  }
+
+  function renderSleep() {
+    const recs = state.s.recordings.filter((r) => r.stages && r.stages.runs.length);
+    $('hypnoCard').hidden = !isSleep() || !recs.length;
+    $('sleepRow').hidden = !isSleep() || !recs.length;
+    if (!isSleep() || !recs.length) return;
+    const from = Math.min(...recs.map((r) => r.stages.t0)), to = Math.max(...recs.map((r) => Math.max(...r.stages.runs.map((x) => r.stages.t0 + x[0] + x[1]))));
+    const present = new Set(recs.flatMap((r) => r.stages.runs.map((x) => x[2])));
+    const lg = $('hypnoLegend'); lg.replaceChildren(); for (const s of STAGES) if (present.has(s.key)) lg.appendChild(legendItem(s.color, s.label, 'box'));
+    const host = $('hypno');
+    responsive(host, (width) => {
+      for (const c of [...host.children]) if (!c.classList.contains('tip')) c.remove();
+      const W = Math.max(320, width), padL = 58, padR = 14, row = 18, laneGap = 30, lane = row * 4, padT = 22;
+      const H = padT + recs.length * (lane + laneGap) - laneGap + 26;
+      const X = (t) => padL + ((t - from) / (to - from)) * (W - padL - padR);
+      const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, height: H, role: 'img', 'aria-label': `Sleep stages through the night for ${recs.map(nameOf).join(' and ')}` });
+      const tip = chartTip(host);
+      const ticks = timeTicks(from, to, Math.max(3, Math.floor((W - padL - padR) / 90)));
+      recs.forEach((r, li) => {
+        const top = padT + li * (lane + laneGap);
+        const name = svgEl('text', { x: padL, y: top - 8, class: 'cat' }); name.textContent = nameOf(r); svg.appendChild(name);
+        // One clock for every lane: faint guides through each, the times once at the bottom.
+        for (const t of ticks) svg.appendChild(svgEl('line', { x1: X(t), x2: X(t), y1: top, y2: top + lane, stroke: '#F0F0F0', 'stroke-width': 1 }));
+        ['Awake', 'REM', 'Light', 'Deep'].forEach((label, i) => {
+          svg.appendChild(svgEl('line', { x1: padL, x2: W - padR, y1: top + i * row + row / 2, y2: top + i * row + row / 2, stroke: '#F0F0F0', 'stroke-width': 1 }));
+          const t = svgEl('text', { x: padL - 8, y: top + i * row + row / 2 + 4, 'text-anchor': 'end' }); t.textContent = label; svg.appendChild(t);
+        });
+        for (const [off, len, stage] of r.stages.runs) {
+          const meta = STAGES.find((s) => s.key === stage); if (!meta) continue;
+          const x = X(r.stages.t0 + off), w = Math.max(1, X(r.stages.t0 + off + len) - x);
+          const rect = svgEl('rect', { x, y: top + meta.level * row + 2, width: w, height: row - 4, fill: meta.color, rx: Math.min(3, w / 2) });
+          rect.addEventListener('pointermove', () => { tip.replaceChildren(el('div', 't', `${clock(r.stages.t0 + off)} to ${clock(r.stages.t0 + off + len)}`)); const d = el('div', 'r'); const k = el('i'); k.style.background = meta.color; d.appendChild(k); d.appendChild(el('b', null, span(len))); d.appendChild(el('span', null, `${meta.label} · ${nameOf(r)}`)); tip.appendChild(d); placeTip(host, tip, x + w / 2, top - 6); });
+          rect.addEventListener('pointerleave', () => { tip.style.display = 'none'; });
+          svg.appendChild(rect);
+        }
+      });
+      for (const t of ticks) { const tx = svgEl('text', { x: X(t), y: H - 8, 'text-anchor': 'middle' }); tx.textContent = clock(t); svg.appendChild(tx); }
+      host.insertBefore(svg, host.firstChild);
+    });
+
+    // Only devices that tell sleep from wake have minutes per stage; "in bed" alone has none.
+    const staged = recs.filter((r) => r.metrics.total_sleep);
+    const sl = $('stageLegend'); sl.replaceChildren(); if (staged.length > 1) for (const r of staged) sl.appendChild(legendItem(colorOf(r), nameOf(r), 'box'));
+    const keys = [['deep_sleep', 'Deep'], ['core_sleep', 'Light'], ['rem_sleep', 'REM'], ['unstaged_sleep', 'Asleep, no stage'], ['waso', 'Awake in the night'], ['sleep_latency', 'Falling asleep']];
+    groupedBars($('stageBars'), keys.filter(([k]) => staged.some((r) => r.metrics[k])).map(([k, label]) => ({ label, values: staged.map((r) => ({ name: nameOf(r), color: colorOf(r), value: r.metrics[k] ? r.metrics[k].value / 60 : 0 })) })), (v) => `${nf(v)} min`);
+
+    const mh = $('matrix'); mh.replaceChildren();
+    const p = currentPair();
+    if (!p || !p.sleep || !p.sleep.confusion) { $('matrixSub').textContent = 'Needs two devices that both tell sleep from wake.'; mh.appendChild(el('div', 'empty', 'Nothing to cross-check yet.')); return; }
+    const test = recById(p.test), ref = recById(p.reference), a = p.sleep;
+    $('matrixSub').textContent = `Minutes of the night. Rows are what ${nameOf(ref)} says, columns what ${nameOf(test)} says; the diagonal is where they agree. Asleep or awake: ${nf(a.sleep_wake_pct, 1)}% the same${a.sensitivity !== null ? `; ${nameOf(test)} has ${nf(a.sensitivity)}% of ${nameOf(ref)}’s sleep as sleep` : ''}${a.specificity !== null ? ` and ${nf(a.specificity)}% of its awake time as awake` : ''}.`;
+    const t = el('table', 'matrix'); const head = el('tr'); head.appendChild(el('th', null, `${nameOf(ref)} ↓ / ${nameOf(test)} →`)); for (const l of a.labels) head.appendChild(el('th', null, l)); t.appendChild(head);
+    const max = Math.max(1, ...a.confusion.flat());
+    a.confusion.forEach((rowv, i) => { const tr = el('tr'); tr.appendChild(el('td', 'rowlabel', a.labels[i])); rowv.forEach((c, j) => { const td = el('td', 'cell', nf(c / 2)); td.style.background = `rgba(46,100,228,${(0.34 * c / max).toFixed(3)})`; if (i === j) td.style.fontWeight = '600'; tr.appendChild(td); }); t.appendChild(tr); });
+    mh.appendChild(t);
+  }
+
+  function renderOverTime() {
+    const host = $('over2'); host.replaceChildren();
+    const recs = state.s.recordings;
+    const keys = [...new Set(recs.flatMap((r) => Object.keys(r.series)))].filter((k) => k !== 'heart_rate');
+    const order = ['distance', 'active_energy', 'steps', 'running_speed', 'walking_speed', 'basal_energy'];
+    keys.sort((a, b) => (order.indexOf(a) === -1 ? 99 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 99 : order.indexOf(b)) || a.localeCompare(b));
+    const s0 = epoch(state.s.started_at), s1 = epoch(state.s.ended_at);
+    let shown = 0;
+    for (const key of keys) {
+      const have = recs.filter((r) => r.series[key]);
+      const info = have[0].series[key];
+      const series = [], markers = [];
+      for (const r of have) {
+        const s = r.series[key], [a, b] = windowOf(r);
+        if (info.agg === 'sum') {
+          // Running total inside the device's own window, so the line ends on the total the table shows.
+          // A device with one or two samples only knows its total: that is a mark, not a line.
+          const n = s.t.length;
+          if (n >= 3) {
+            const pts = [[a, 0]]; let sum = 0;
+            for (let i = 0; i < n; i++) {
+              const t0 = s.t0 + s.t[i], len = s.d ? s.d[i] : 0, t1 = t0 + len;
+              if (t1 < a || t0 > b) continue;
+              const part = len > 0 ? (Math.min(b, t1) - Math.max(a, t0)) / len : 1;
+              if (len > 0 && t0 > pts[pts.length - 1][0]) pts.push([Math.max(a, t0), sum]);
+              sum += s.v[i] * part;
+              pts.push([Math.min(b, t1), sum]);
+            }
+            if (pts.length >= 3) series.push({ name: nameOf(r), color: colorOf(r), pts, breakGap: Infinity, logged: r.logged });
+          } else if (r.metrics[key]) markers.push({ name: `${nameOf(r)}, total`, color: colorOf(r), t: b, v: r.metrics[key].value });
+        } else {
+          // A reading, not a total. A handful of stray readings from a background source is not a line.
+          let pts = rawPoints(s, a - 120, b + 120);
+          if (pts.length > 600) pts = bucketed(s, a - 120, b + 120, Math.ceil((b - a + 240) / 300));
+          if (pts.length >= 8) series.push({ name: nameOf(r), color: colorOf(r), pts, breakGap: Math.max(300, (b - a) / 8), logged: r.logged });
+        }
+      }
+      // A total another device reported without samples still belongs on the chart.
+      if (info.agg === 'sum') for (const r of recs) if (!r.series[key] && r.metrics[key] && r.logged) markers.push({ name: `${nameOf(r)}, total`, color: colorOf(r), t: windowOf(r)[1], v: r.metrics[key].value });
+      // Worth a chart when a device that logged the session is on it, as a line or as its total;
+      // not for the phone's step count alone.
+      if (!series.length || !(series.some((x) => x.logged) || markers.length)) continue;
+      shown++;
+      const box = el('div');
+      box.appendChild(el('h3', null, `${info.label}${info.unit ? ', ' + info.unit : ''}`));
+      const lg = el('div', 'legend');
+      for (const s of series) lg.appendChild(legendItem(s.color, s.name));
+      for (const m of markers) lg.appendChild(legendItem(m.color, m.name, 'mark'));
+      box.appendChild(lg);
+      const chart = el('div', 'chart'); box.appendChild(chart); host.appendChild(box);
+      const digits = info.unit === 'km' ? 2 : info.unit === '' || info.unit === 'kcal' ? 0 : 1;
+      lineChart(chart, { from: s0 - 120, to: s1 + 120, series, markers, yMin: info.agg === 'sum' ? 0 : undefined, height: 210, label: `${info.label} over time`, fmt: (v) => `${nf(v, digits)}${info.unit ? ' ' + info.unit : ''}` });
+    }
+    $('overCard').hidden = !shown;
+  }
+
+  function renderRoute() {
+    const recs = state.s.recordings.filter((r) => r.route && r.route.lat.length > 1);
+    $('routeCard').hidden = !recs.length;
+    if (!recs.length) return;
+    const lg = $('routeLegend'); lg.replaceChildren(); for (const r of recs) lg.appendChild(legendItem(colorOf(r), `${nameOf(r)}, ${nf(r.route.distance_km, 2)} km`));
+    $('routeSub').textContent = `GPS track${recs.length > 1 ? 's' : ''} as recorded, drawn to scale with north up. The circle is the start, the square the finish.`;
+    const lats = recs.flatMap((r) => r.route.lat), lons = recs.flatMap((r) => r.route.lon);
+    const la0 = Math.min(...lats), la1 = Math.max(...lats), lo0 = Math.min(...lons), lo1 = Math.max(...lons);
+    const k = Math.cos(((la0 + la1) / 2) * Math.PI / 180);
+    const wKm = Math.max(0.05, (lo1 - lo0) * k * 111.32), hKm = Math.max(0.05, (la1 - la0) * 110.57);
+    const host = $('route');
+    responsive(host, (width) => {
+      for (const c of [...host.children]) c.remove();
+      const W = Math.max(320, width), pad = 24, H = Math.min(520, Math.max(260, (W - 2 * pad) * (hKm / wKm) + 2 * pad));
+      const scale = Math.min((W - 2 * pad) / wKm, (H - 2 * pad) / hKm);
+      const ox = (W - wKm * scale) / 2, oy = (H - hKm * scale) / 2;
+      const X = (lon) => ox + (lon - lo0) * k * 111.32 * scale, Y = (lat) => oy + (la1 - lat) * 110.57 * scale;
+      const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, height: H, role: 'img', 'aria-label': 'GPS route' });
+      for (const r of recs) {
+        const d = r.route.lat.map((la, i) => (i ? 'L' : 'M') + X(r.route.lon[i]).toFixed(1) + ' ' + Y(la).toFixed(1)).join('');
+        svg.appendChild(svgEl('path', { d, fill: 'none', stroke: colorOf(r), 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', opacity: 0.9 }));
+        const n = r.route.lat.length - 1;
+        svg.appendChild(svgEl('circle', { cx: X(r.route.lon[0]), cy: Y(r.route.lat[0]), r: 5, fill: colorOf(r), stroke: '#fff', 'stroke-width': 2 }));
+        svg.appendChild(svgEl('rect', { x: X(r.route.lon[n]) - 5, y: Y(r.route.lat[n]) - 5, width: 10, height: 10, fill: colorOf(r), stroke: '#fff', 'stroke-width': 2 }));
+      }
+      // Scale bar: a round length close to a fifth of the width.
+      const target = (W / 5) / scale, p10 = Math.pow(10, Math.floor(Math.log10(target))), len = [1, 2, 5, 10].map((m) => m * p10).reduce((a, b) => (Math.abs(b - target) < Math.abs(a - target) ? b : a));
+      svg.appendChild(svgEl('line', { x1: pad, x2: pad + len * scale, y1: H - 10, y2: H - 10, stroke: '#000', 'stroke-width': 2 }));
+      const t = svgEl('text', { x: pad + len * scale + 8, y: H - 6 }); t.textContent = len >= 1 ? `${len} km` : `${Math.round(len * 1000)} m`; svg.appendChild(t);
+      host.appendChild(svg);
+    });
+  }
+
+  function renderFindings() {
+    const list = (state.s.summary && state.s.summary.findings) || [];
+    $('findingsCard').hidden = !list.length;
+    const host = $('findings'); host.replaceChildren();
+    for (const f of list) {
+      const d = el('div', 'finding'); const h = el('h3');
+      h.appendChild(el('span', 'lv ' + f.level, f.level === 'good' ? 'Good' : f.level === 'warn' ? 'Check' : 'Note')); h.appendChild(document.createTextNode(f.title));
+      d.appendChild(h); d.appendChild(el('p', null, f.detail)); host.appendChild(d);
+    }
+  }
+
+  function renderMethod() {
+    const host = $('method'); host.replaceChildren();
+    const li = (bold, text) => { const x = el('li'); x.appendChild(el('b', null, bold)); x.appendChild(document.createTextNode(' ' + text)); host.appendChild(x); };
+    for (const r of state.s.recordings) {
+      const parts = [];
+      const counts = Object.values(r.series).map((s) => `${nf(s.t.length)} ${s.label.toLowerCase()} sample${s.t.length === 1 ? '' : 's'}`);
+      parts.push(r.logged ? (isSleep() ? 'Logged the night itself.' : 'Logged the workout itself.') : 'Did not log the session; these are samples it wrote to Apple Health during it.');
+      if (counts.length) parts.push(`Wrote ${counts.join(', ')}.`);
+      const pr = r.details.profile; if (pr && (pr.weight_kg || pr.height_cm)) parts.push(`Body profile it wrote to Health: ${[pr.weight_kg && pr.weight_kg + ' kg', pr.height_cm && pr.height_cm + ' cm'].filter(Boolean).join(', ')}.`);
+      if (r.route) parts.push(`GPS route of ${nf(r.route.points)} points.`);
+      li(`${nameOf(r)} (${r.source_name}${r.source_version ? ' ' + r.source_version : ''}).`, parts.join(' '));
+    }
+    li('Source.', 'An Apple Health export, read in the browser. Samples an app synced more than once are counted once. The export file is not kept.');
+    if (!isSleep()) li('Heart rate.', 'Agreement compares half-minute averages over the time both devices were recording. Averages weigh every 10 seconds equally, so a burst of readings does not count for more.');
+    else li('Sleep.', 'Stages are laid on 30-second steps. Time to fall asleep needs the device to record being in bed or awake before the first sleep. Outside its own recording a device counts as awake.');
+    li('Verdicts.', isSleep() ? 'Match means within about 10 minutes (3 points of efficiency, 3 bpm). Close means within about 30 minutes (7 points, 7 bpm). Differs is a larger gap.' : 'Match means within about 2%, 3 bpm, or a minute on start and end. Close means within about 5%, 7 bpm, or three minutes. Differs is a larger gap. Not comparable means the inputs differ, such as body weight for calories.');
+    li('Times.', `Shown in the wearer's time zone (UTC${offset() >= 0 ? '+' : '−'}${pad(Math.floor(Math.abs(offset()) / 60))}:${pad(Math.abs(offset()) % 60)}).`);
+  }
+
+  function renderEdit() {
+    const s = state.s;
+    $('editCard').hidden = !state.canManage;
+    $('notesRead').hidden = state.canManage || !s.notes;
+    $('notesText').textContent = s.notes || '';
+    if (!state.canManage) return;
+    $('notes').value = s.notes || ''; $('fTitle').value = s.title || ''; $('fTester').value = s.tester; $('fTest').checked = s.is_test;
+  }
+
+  function render() {
+    assignColors();
+    if (state.pair >= pairs().length) state.pair = state.s.summary.primary ?? 0;
+    renderHeader(); renderTiles(); renderDevices(); renderCompare(); renderAll(); renderSleep(); renderHeartRate(); renderOverTime(); renderRoute(); renderFindings(); renderEdit(); renderMethod();
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Changes
+  // ---------------------------------------------------------------------------------------------
+  async function change(fn, done) {
+    $('content').classList.add('loading');
+    try { const s = await fn(); if (s) { state.s = s; state.pair = s.summary.primary ?? 0; render(); } if (done) toast(done); }
+    catch (err) { toast(err.status === 403 ? 'Your role cannot change benchmarks.' : 'Could not save: ' + err.message); render(); }
+    finally { $('content').classList.remove('loading'); }
+  }
+  const patchRecording = (rid, body) => change(() => api(`/v1/admin/benchmarks/${state.s.id}/recordings/${rid}`, { method: 'PATCH', body }), 'Saved');
+  async function removeRecording(r) {
+    if (!confirm(`Remove ${nameOf(r)} from this session? Its samples are deleted; importing the export again brings them back.`)) return;
+    await change(async () => { const res = await api(`/v1/admin/benchmarks/${state.s.id}/recordings/${r.id}`, { method: 'DELETE' }); if (!res.session) { location.href = '/dashboard/benchmarks'; return null; } return res.session; }, 'Removed');
+  }
+  $('btnSave').addEventListener('click', () => change(() => api(`/v1/admin/benchmarks/${state.s.id}`, { method: 'PATCH', body: { notes: $('notes').value, title: $('fTitle').value, tester: $('fTester').value.trim() || state.s.tester, is_test: $('fTest').checked } }), 'Saved'));
+  $('btnDelete').addEventListener('click', async () => {
+    if (!confirm(`Delete ${state.s.ref} and everything the devices recorded in it? This cannot be undone here; importing the export again recreates it.`)) return;
+    try { await api(`/v1/admin/benchmarks/${state.s.id}`, { method: 'DELETE' }); location.href = '/dashboard/benchmarks'; } catch (err) { toast('Could not delete: ' + err.message); }
+  });
+  $('pairSel').addEventListener('change', () => { state.pair = Number($('pairSel').value) || 0; renderCompare(); renderAll(); renderHeartRate(); renderSleep(); });
+  $('hrView').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; state.hrView = b.dataset.view; renderHeartRate(); });
+  $('hrDetail').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; state.hrDetail = b.dataset.detail; renderHeartRate(); });
+
+  async function boot() {
+    const s = await api('/dashboard/session').catch(() => ({ authenticated: false }));
+    if (!s.authenticated) { location.replace('/dashboard?next=' + encodeURIComponent(HERE)); return; }
+    const [me, tags, session] = await Promise.all([
+      api('/v1/me').catch(() => null),
+      api('/v1/admin/benchmarks/device-tags').catch(() => ({ items: [] })),
+      api('/v1/admin/benchmarks/' + encodeURIComponent(REF)),
+    ]);
+    state.canManage = Boolean(me && me.permissions && me.permissions.manage_benchmarks);
+    state.tags = tags.items; state.s = session; state.pair = session.summary.primary ?? 0;
+    render();
+  }
+  boot().catch((err) => {
+    if (err.status === 401) { location.replace('/dashboard?next=' + encodeURIComponent(HERE)); return; }
+    $('title').textContent = err.status === 404 ? 'No such session' : 'Could not load this session';
+    $('content').replaceChildren(el('div', 'empty', err.status === 404 ? `${REF} does not exist. It may have been deleted.` : err.message));
+  });
+})();
+</script>
+</body>
+</html>

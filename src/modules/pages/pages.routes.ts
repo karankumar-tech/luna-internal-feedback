@@ -1,7 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { PAGES } from '../../pages/generated.js';
+import { PAGES, SCRIPTS } from '../../pages/generated.js';
 import { AppError } from '../../lib/errors.js';
 import { DASHBOARD_HEADER } from '../../plugins/auth.js';
 import {
@@ -80,9 +80,23 @@ export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
   app.get('/dashboard/users', html(PAGES.users));
   app.get('/dashboard/attention', html(PAGES.attention));
   app.get('/dashboard/settings', html(PAGES.settings));
+  app.get('/dashboard/benchmarks', html(PAGES.benchmarks));
+  app.get('/dashboard/benchmarks/:ref', html(PAGES.benchmark));
+
+  // Scripts the pages load. Code only, no data, so they are as public as the pages themselves.
+  app.get<{ Params: { name: string } }>('/dashboard/assets/:name', async (req, reply) => {
+    const body = Object.hasOwn(SCRIPTS, req.params.name) ? SCRIPTS[req.params.name] : undefined;
+    if (body === undefined) return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'No such asset' } });
+    return reply.header('content-type', 'text/javascript; charset=utf-8')
+      .header('cache-control', 'public, max-age=0, must-revalidate')
+      .header('cdn-cache-control', 'public, s-maxage=86400, stale-while-revalidate=604800')
+      .send(body);
+  });
   app.get('/', async (_req, reply) => reply.redirect('/docs', 302));
 
-  // Short links for sharing: /i/LN-00042 and /k/LNK-0007. The page behind them still needs a sign-in.
+  // Short links for sharing: /i/LN-00042, /k/LNK-0007 and /b/BM-0007. The page behind them still needs a sign-in.
+  app.get<{ Params: { ref: string } }>('/b/:ref', async (req, reply) =>
+    reply.redirect(`/dashboard/benchmarks/${encodeURIComponent(req.params.ref)}`, 302));
   app.get<{ Params: { ref: string } }>('/i/:ref', async (req, reply) =>
     reply.redirect(`/dashboard/submissions/${encodeURIComponent(req.params.ref)}`, 302));
   app.get<{ Params: { ref: string } }>('/k/:ref', async (req, reply) =>

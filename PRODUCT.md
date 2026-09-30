@@ -35,7 +35,10 @@ that the team can see what is breaking, where, and how often.
 - Every report has a reference `LN-00042`; recurring problems are `LNK-0007`. People share these
   references inside the team only.
 - Pages: Dashboard (home), report detail, Issue kinds (problems), Needs attention, Analytics,
-  Diagnosis, People. Deployed on Vercel from `main`; data in Supabase Postgres (`luna_feedback`).
+  Diagnosis, Benchmarks, People. Deployed on Vercel from `main`; data in Supabase Postgres (`luna_feedback`).
+- Benchmarks are a second job of the same dashboard: a tester wears Luna and a reference device
+  (Polar, Garmin, Fitbit, Apple Watch) for the same workout or night, exports Apple Health, and the
+  dashboard shows the two side by side (`BM-0007`). The export is read in the browser and never stored.
 
 ## Capabilities and Constraints
 

@@ -18,12 +18,12 @@ function header(req: { headers: Record<string, unknown> }, name: string): string
 /** Routes that serve HTML pages or handle the dashboard sign-in. Data behind them still needs auth. */
 export const PUBLIC_PATHS = new Set([
   '/', '/healthz', '/docs',
-  '/dashboard', '/dashboard/diagnosis', '/dashboard/analytics', '/dashboard/kinds', '/dashboard/users', '/dashboard/attention', '/dashboard/settings',
+  '/dashboard', '/dashboard/diagnosis', '/dashboard/analytics', '/dashboard/kinds', '/dashboard/users', '/dashboard/attention', '/dashboard/settings', '/dashboard/benchmarks',
   '/dashboard/login', '/dashboard/logout', '/dashboard/session', '/dashboard/bootstrap',
 ]);
 
-/** Detail pages and the short share links (/i/LN-00042, /k/LNK-0007) that redirect to them. */
-const PUBLIC_PAGE = /^\/(?:dashboard\/(?:submissions|kinds)|i|k)\/[^/]+$/;
+/** Detail pages, the short share links (/i/LN-00042, /k/LNK-0007, /b/BM-0007) that redirect to them, and the pages' scripts. */
+const PUBLIC_PAGE = /^\/(?:dashboard\/(?:submissions|kinds|benchmarks|assets)|i|k|b)\/[^/]+$/;
 
 /** What the CX tool's key may call: its own routes, plus the form schema and screenshot upload credentials. */
 function cxKeyMayCall(url: string): boolean {

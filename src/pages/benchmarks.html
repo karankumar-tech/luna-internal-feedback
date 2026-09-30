@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Luna Benchmarks</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&display=swap">
+<style>
+  :root {
+    --black: #000; --white: #fff; --gray-dark: #737373; --gray-mid: #9E9E9E; --gray-light: #D9D9D9;
+    --bg: #F0EFEA; --brief: #E8E6E0; --border-warm: #E2E0D9; --border-ghost: #F0F0F0; --hero: #1A1A18; --hero-muted: #8A887F;
+    --yellow: #F5F85D; --yellow-50: #FEFFD6; --blue: #2E64E4; --blue-50: #EAF0FD; --orange: #EF7432; --orange-50: #FFF3EC; --ok: #00C37A; --ok-bg: #E6F8F0; --crit: #FF3B3B; --crit-bg: #FFECEC;
+    --sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --r-xs: 2px; --r-s: 4px; --r-m: 6px; --r-l: 8px; --r-xl: 12px;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { color-scheme: light; }
+  body { margin: 0; background: var(--bg); color: var(--black); font-family: var(--sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; } button, input, select { font: inherit; color: inherit; }
+  .overline { font-family: var(--mono); font-size: 11px; line-height: 16px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); }
+  h1 { font-size: 24px; line-height: 28px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 16px; line-height: 20px; font-weight: 600; margin: 0; }
+  p { margin: 0; }
+  .tertiary { color: var(--gray-mid); } .muted { color: var(--gray-dark); }
+  .mono { font-family: var(--mono); font-size: 12px; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px 64px; }
+  .top { background: var(--white); border-bottom: 1px solid var(--gray-light); }
+  .top-inner { max-width: 1240px; margin: 0 auto; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .crumb { font-size: 13px; color: var(--gray-dark); text-decoration: none; } .crumb:hover { color: var(--black); }
+  .btn { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-l); padding: 7px 12px; line-height: 18px; cursor: pointer; font-weight: 500; text-decoration: none; display: inline-block; }
+  .btn:hover { border-color: var(--gray-mid); }
+  .btn.primary { background: var(--black); border-color: var(--black); color: var(--white); } .btn.primary:hover { background: #222; }
+  .btn.small { padding: 4px 10px; font-size: 12px; line-height: 16px; border-radius: var(--r-s); }
+  .btn.ghost { border-color: transparent; background: transparent; } .btn.ghost:hover { background: var(--brief); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn:focus-visible, select:focus-visible, input:focus-visible { outline: none; border-color: var(--black); box-shadow: 0 0 0 1px var(--black); }
+  select, input[type=text] { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-m); padding: 7px 10px; line-height: 18px; min-width: 0; }
+  label.field { display: flex; flex-direction: column; gap: 4px; }
+  label.field > span { font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); }
+  .filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; margin: 20px 0 16px; }
+  .seg { display: inline-flex; border: 1px solid var(--gray-light); border-radius: var(--r-l); overflow: hidden; background: var(--white); }
+  .seg button { border: 0; background: transparent; padding: 7px 12px; line-height: 18px; cursor: pointer; font-weight: 500; color: var(--gray-dark); }
+  .seg button + button { border-left: 1px solid var(--border-ghost); }
+  .seg button.on { background: var(--black); color: var(--white); }
+  .seg button:focus-visible { outline: 2px solid var(--black); outline-offset: -2px; }
+  .card { background: var(--white); border: 1px solid var(--gray-light); border-radius: var(--r-xl); padding: 16px 20px; min-width: 0; margin-bottom: 12px; }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .card-head .sub { font-size: 12px; line-height: 18px; color: var(--gray-dark); max-width: 78ch; }
+  .card-head > div:first-child { flex: 1 1 0; min-width: 0; }
+  .count { font-family: var(--mono); font-size: 12px; color: var(--gray-dark); }
+  .empty { padding: 28px 0; text-align: center; color: var(--gray-dark); font-size: 13px; }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 18px; }
+  th { text-align: left; font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); font-weight: 400; padding: 8px 10px; border-bottom: 1px solid var(--gray-light); white-space: nowrap; }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--border-ghost); vertical-align: top; }
+  td.num, th.num { text-align: right; } td.num { font-family: var(--mono); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  td.nowrap { white-space: nowrap; }
+  tr.link { cursor: pointer; } tr.link:hover td { background: #FAFAF7; }
+  tr.link:focus-visible { outline: 2px solid var(--black); outline-offset: -2px; }
+  tr.dim td { color: var(--gray-dark); }
+  .what b { font-weight: 600; } .what small { display: block; color: var(--gray-dark); font-size: 12px; }
+  /* A device: a swatch that carries the colour, and its name in ordinary ink. */
+  .dev { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; padding: 2px 8px 2px 6px; border: 1px solid var(--border-warm); border-radius: 10px; background: var(--white); margin: 0 4px 4px 0; white-space: nowrap; }
+  .dev i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+  .dev.bg { color: var(--gray-dark); border-style: dashed; }
+  .chip { font-family: var(--mono); font-size: 11px; line-height: 16px; padding: 1px 6px; border-radius: var(--r-xs); background: var(--brief); white-space: nowrap; display: inline-block; margin: 0 4px 4px 0; }
+  .chip.match { background: var(--black); color: var(--white); }
+  .chip.close { background: var(--white); box-shadow: inset 0 0 0 1px var(--black); }
+  .chip.differs { background: var(--orange-50); color: #A03600; box-shadow: inset 0 0 0 1px var(--orange); }
+  .pill { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 6px; border-radius: var(--r-s); display: inline-block; line-height: 14px; white-space: nowrap; }
+  .pill.new { background: var(--yellow); color: #000; }
+  .pill.adds { background: var(--blue-50); color: #0C3AAA; }
+  .pill.have { background: var(--brief); color: var(--gray-dark); }
+  .pill.test { background: var(--brief); color: var(--gray-dark); margin-left: 6px; }
+  .pill.kind { background: transparent; box-shadow: inset 0 0 0 1px var(--gray-light); color: var(--gray-dark); }
+
+  /* import */
+  .drop { border: 1.5px dashed var(--gray-mid); border-radius: var(--r-xl); padding: 28px 20px; text-align: center; background: #FBFBF9; transition: background .12s, border-color .12s; }
+  .drop.over { background: var(--yellow-50); border-color: var(--black); }
+  .drop h3 { margin: 0 0 4px; font-size: 15px; line-height: 20px; font-weight: 600; }
+  .drop p { color: var(--gray-dark); font-size: 13px; max-width: 64ch; margin: 0 auto 12px; }
+  .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 14px; text-align: left; }
+  .steps div { font-size: 12px; line-height: 18px; color: var(--gray-dark); }
+  .steps b { display: block; font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--black); font-weight: 500; margin-bottom: 2px; }
+  .progress { height: 6px; border-radius: 3px; background: var(--brief); overflow: hidden; margin: 10px 0 6px; }
+  .progress i { display: block; height: 100%; width: 100%; background: var(--black); transform: scaleX(0); transform-origin: left center; transition: transform .1s linear; }
+  .import-bar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; margin: 4px 0 14px; }
+  .import-bar .grow { flex: 1 1 auto; }
+  .check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--gray-dark); cursor: pointer; }
+  .found { font-size: 13px; color: var(--gray-dark); margin-bottom: 10px; } .found b { color: var(--black); font-weight: 600; }
+  .result { font-size: 13px; padding: 10px 12px; border-radius: var(--r-l); background: var(--ok-bg); margin-top: 12px; }
+  .result.err { background: var(--crit-bg); }
+  .result a { font-family: var(--mono); font-size: 12px; margin-right: 8px; }
+  .pager { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 12px; font-size: 12px; color: var(--gray-dark); }
+  .loading { opacity: .45; pointer-events: none; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--black); color: var(--white); padding: 8px 14px; border-radius: var(--r-l); font-size: 13px; z-index: 40; display: none; }
+  @media (max-width: 720px) { .steps { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <div>
+      <a class="crumb" href="/dashboard">← Dashboard</a>
+      <div class="overline" style="margin-top:2px">Luna · Feedback</div>
+      <h1>Benchmarks</h1>
+    </div>
+    <span style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span class="tertiary" id="totals" style="font-size:12px"></span>
+      <button class="btn primary" id="btnImport" type="button" hidden>Import a health export</button>
+    </span>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="card" id="importCard" style="margin-top:20px" hidden>
+    <div class="card-head">
+      <div>
+        <h2>Import from an Apple Health export</h2>
+        <div class="sub">Wear Luna and another device for the same workout or night, let both sync to Apple Health, then export. The file is read here in your browser and is not uploaded or kept: only the sessions you pick are saved.</div>
+      </div>
+      <button class="btn small ghost" id="btnCloseImport" type="button">Close</button>
+    </div>
+
+    <div id="stepPick">
+      <div class="drop" id="drop">
+        <h3>Drop export.zip here</h3>
+        <p>or the export.xml inside it. A few hundred megabytes is fine.</p>
+        <button class="btn" id="btnChoose" type="button">Choose a file</button>
+        <input type="file" id="file" accept=".zip,.xml,application/zip,text/xml" hidden>
+      </div>
+      <div class="steps">
+        <div><b>1 · On the iPhone</b>Health app, your profile picture (top right), Export All Health Data. It makes export.zip.</div>
+        <div><b>2 · Get it here</b>AirDrop or save it to Files, then drop it on this page. Zipped or unzipped both work.</div>
+        <div><b>3 · Pick the sessions</b>You will see every workout and night in the file, with the ones already imported marked.</div>
+      </div>
+    </div>
+
+    <div id="stepRead" hidden>
+      <p id="readLabel">Reading the export…</p>
+      <div class="progress" role="progressbar" aria-label="Reading the export" aria-valuemin="0" aria-valuemax="100"><i id="readBar"></i></div>
+      <p class="tertiary" id="readSub" style="font-size:12px"></p>
+    </div>
+
+    <div id="stepChoose" hidden>
+      <div class="found" id="found"></div>
+      <div class="import-bar">
+        <label class="field"><span>Who wore the devices</span><input type="text" id="tester" maxlength="80" placeholder="Name" list="testerList" autocomplete="off" style="width:200px"><datalist id="testerList"></datalist></label>
+        <label class="field"><span>Select</span>
+          <div class="seg" id="pickSeg" role="group" aria-label="Which sessions to select">
+            <button type="button" data-pick="recent">New, last 14 days</button>
+            <button type="button" data-pick="new">All new</button>
+            <button type="button" data-pick="none">None</button>
+          </div>
+        </label>
+        <label class="check"><input type="checkbox" id="asTest"> Mark as test data</label>
+        <span class="grow"></span>
+        <button class="btn ghost" id="btnAnother" type="button">Choose another file</button>
+        <button class="btn primary" id="btnDoImport" type="button" disabled>Import</button>
+      </div>
+      <div class="table-scroll" id="foundTable"></div>
+    </div>
+    <div id="importResult"></div>
+  </section>
+
+  <section class="filters" aria-label="Filters">
+    <label class="field"><span>Kind</span>
+      <div class="seg" id="kindSeg" role="group" aria-label="Kind of session">
+        <button type="button" data-kind="" class="on">All</button>
+        <button type="button" data-kind="workout">Workouts</button>
+        <button type="button" data-kind="sleep">Sleep</button>
+      </div>
+    </label>
+    <label class="field"><span>Device</span><select id="fDevice"><option value="">Any device</option></select></label>
+    <label class="field"><span>Tester</span><select id="fTester"><option value="">Anyone</option></select></label>
+    <label class="field"><span>Data</span>
+      <select id="fTest"><option value="false">Real only</option><option value="">Real + test</option><option value="true">Test only</option></select>
+    </label>
+  </section>
+
+  <section class="card" id="listCard">
+    <div class="card-head">
+      <div><h2>Sessions</h2><div class="sub">A workout or a night recorded by more than one device at once. Open one for the heart rate lines, the side by side numbers and what stands out.</div></div>
+      <span class="count" id="listCount"></span>
+    </div>
+    <div class="table-scroll" id="list"></div>
+    <div class="pager" id="pager" hidden>
+      <span id="pageLabel"></span>
+      <button class="btn small" id="btnPrev" type="button">← Newer</button>
+      <button class="btn small" id="btnNext" type="button">Older →</button>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; };
+  const HERE = '/dashboard/benchmarks';
+  const PAGE = 30;
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // Luna is always orange; the brands we test against keep their own colour on every page.
+  const TAG_COLORS = { luna: '#E8642A', polar: '#2E64E4', garmin: '#1BAF7A', apple_watch: '#4A3AA7', fitbit: '#E87BA4', phone: '#9E9E9E' };
+  const SPARE = ['#2E64E4', '#1BAF7A', '#4A3AA7', '#E87BA4', '#EDA100'];
+  const TAG_LABELS = { luna: 'Luna', polar: 'Polar', garmin: 'Garmin', fitbit: 'Fitbit', apple_watch: 'Apple Watch', whoop: 'Whoop', oura: 'Oura', ultrahuman: 'Ultrahuman', samsung: 'Samsung', coros: 'Coros', suunto: 'Suunto', wahoo: 'Wahoo', amazfit: 'Amazfit', phone: 'Phone', other: 'Other' };
+  const ACTIVITY = { traditional_strength_training: 'Strength training', functional_strength_training: 'Functional strength', high_intensity_interval_training: 'HIIT', other: 'Other workout' };
+
+  const tagLabel = (t) => TAG_LABELS[t] || (t.charAt(0).toUpperCase() + t.slice(1).replace(/_/g, ' '));
+  const tagColor = (t, i) => TAG_COLORS[t] || SPARE[i % SPARE.length];
+  const activityLabel = (key) => { if (!key) return 'Workout'; if (ACTIVITY[key]) return ACTIVITY[key]; const s = key.replace(/_/g, ' '); return s.charAt(0).toUpperCase() + s.slice(1); };
+  const hkActivity = (id) => activityLabel(String(id || '').replace('HKWorkoutActivityType', '').replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2').toLowerCase());
+  /** A moment in the wearer's own time zone, from epoch seconds and the offset the export wrote. */
+  const local = (seconds, offsetMin) => new Date((seconds + offsetMin * 60) * 1000);
+  const pad = (n) => String(n).padStart(2, '0');
+  const fmtDay = (d) => `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  const fmtClock = (d) => `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  const fmtDur = (s) => { const m = Math.round(s / 60); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${pad(m % 60)} min`; };
+  const signed = (n, digits = 0) => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n).toFixed(digits);
+  let toastT; const toast = (m) => { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', 3200); };
+
+  async function api(path, opts = {}) {
+    const r = await fetch(path, { method: opts.method || 'GET', credentials: 'same-origin', headers: { 'x-requested-with': 'dashboard', ...(opts.body ? { 'content-type': 'application/json' } : {}) }, body: opts.body ? JSON.stringify(opts.body) : undefined });
+    const b = await r.json().catch(() => null);
+    if (!r.ok) { const e = new Error((b && b.error && b.error.message) || `HTTP ${r.status}`); e.status = r.status; e.issues = b && b.error && b.error.issues; throw e; }
+    return b;
+  }
+
+  const devChip = (tag, text, i, background) => { const c = el('span', 'dev' + (background ? ' bg' : '')); const sw = el('i'); sw.style.background = tagColor(tag, i); c.appendChild(sw); c.appendChild(document.createTextNode(text)); return c; };
+
+  // ---------------------------------------------------------------------------------------------
+  // The list
+  // ---------------------------------------------------------------------------------------------
+  const state = { kind: '', offset: 0, total: 0, canManage: false };
+
+  /** What the comparison found, in a few chips: the heart rate gap first, then the biggest numbers. */
+  function agreement(s) {
+    const box = el('span');
+    const h = s.summary && s.summary.headline;
+    if (!h || (!h.hr && !h.sleep && !(h.rows || []).length)) {
+      const logged = ((s.summary && s.summary.recordings) || []).filter((r) => r.logged).length;
+      box.appendChild(el('span', 'tertiary', logged > 1 ? 'Nothing comparable' : 'One device logged it, nothing to compare'));
+      return box;
+    }
+    if (h.hr) {
+      const c = el('span', 'chip ' + h.hr.verdict, `HR ±${h.hr.typical_gap} bpm`);
+      c.title = `Typical gap between the two heart rate lines. ${tagLabel(h.test)} reads ${Math.abs(h.hr.bias)} bpm ${h.hr.bias < 0 ? 'low' : 'high'} on average${h.hr.r !== null ? `, correlation ${h.hr.r}` : ''}.`;
+      box.appendChild(c);
+    }
+    if (h.sleep) {
+      box.appendChild(el('span', 'chip', `Asleep/awake ${h.sleep.sleep_wake_pct}%`));
+      if (h.sleep.stage_pct !== null) box.appendChild(el('span', 'chip', `Stages ${h.sleep.stage_pct}%`));
+    }
+    for (const r of (h.rows || []).slice(0, 3)) {
+      const secs = Math.abs(r.diff) < 90 ? `${signed(Math.round(r.diff))} s` : `${signed(Math.round(r.diff / 60))} min`;
+      const text = r.unit === 's' ? `${r.label} ${secs}` : r.pct !== null ? `${r.label} ${signed(r.pct, 1)}%` : `${r.label} ${signed(r.diff)}`;
+      const c = el('span', 'chip ' + (r.verdict === 'match' || r.verdict === 'close' || r.verdict === 'differs' ? r.verdict : ''), text);
+      if (r.verdict === 'not_comparable') c.title = 'Not comparable: the two apps were given different body weights';
+      box.appendChild(c);
+    }
+    return box;
+  }
+
+  function renderList(data) {
+    const host = $('list'); host.replaceChildren();
+    state.total = data.total;
+    $('listCount').textContent = data.total ? `${data.total} session${data.total === 1 ? '' : 's'}` : '';
+    $('totals').textContent = '';
+    if (!data.items.length) {
+      host.appendChild(el('div', 'empty', state.offset ? 'No more sessions.' : state.canManage ? 'No sessions yet. Import a health export to add the first one.' : 'No sessions yet.'));
+      $('pager').hidden = true;
+      return;
+    }
+    const t = el('table'); const head = el('tr');
+    for (const h of ['Session', 'When', 'What', 'Length', 'Devices', 'Tester', 'How they agree']) head.appendChild(el('th', h === 'Length' ? 'num' : null, h));
+    t.appendChild(head);
+    for (const s of data.items) {
+      const tr = el('tr', 'link'); tr.tabIndex = 0;
+      const go = () => { location.href = HERE + '/' + encodeURIComponent(s.ref); };
+      tr.addEventListener('click', go); tr.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+      const start = local(Date.parse(s.started_at) / 1000, s.utc_offset_min);
+      const ref = el('td', 'nowrap'); ref.appendChild(el('span', 'mono', s.ref)); if (s.is_test) ref.appendChild(el('span', 'pill test', 'test')); tr.appendChild(ref);
+      const when = el('td', 'nowrap'); when.appendChild(document.createTextNode(fmtDay(start))); when.appendChild(el('span', 'tertiary', ' ' + fmtClock(start))); tr.appendChild(when);
+      const what = el('td', 'what'); what.appendChild(el('b', null, s.title || (s.kind === 'sleep' ? 'Sleep' : activityLabel(s.activity)))); if (s.title) what.appendChild(el('small', null, s.kind === 'sleep' ? 'Sleep' : activityLabel(s.activity))); tr.appendChild(what);
+      tr.appendChild(el('td', 'num', fmtDur(s.duration_s)));
+      const dev = el('td');
+      const recs = (s.summary && s.summary.recordings) || [];
+      if (recs.length) recs.forEach((r, i) => dev.appendChild(devChip(r.tag, r.label === r.source ? tagLabel(r.tag) : r.label, i, !r.logged)));
+      else s.devices.forEach((d, i) => dev.appendChild(devChip(d, tagLabel(d), i)));
+      tr.appendChild(dev);
+      tr.appendChild(el('td', null, s.tester));
+      const ag = el('td'); ag.appendChild(agreement(s)); tr.appendChild(ag);
+      t.appendChild(tr);
+    }
+    host.appendChild(t);
+    const more = data.total > PAGE;
+    $('pager').hidden = !more;
+    if (more) {
+      $('pageLabel').textContent = `${state.offset + 1}–${Math.min(state.offset + PAGE, data.total)} of ${data.total}`;
+      $('btnPrev').disabled = state.offset === 0;
+      $('btnNext').disabled = state.offset + PAGE >= data.total;
+    }
+    fillSelect($('fDevice'), data.facets.devices, tagLabel, 'Any device');
+    fillSelect($('fTester'), data.facets.testers, (x) => x, 'Anyone');
+    const dl = $('testerList'); dl.replaceChildren(); for (const name of data.facets.testers) { const o = el('option'); o.value = name; dl.appendChild(o); }
+  }
+  function fillSelect(sel, values, label, anyText) {
+    const cur = sel.value;
+    sel.replaceChildren();
+    const any = el('option', null, anyText); any.value = ''; sel.appendChild(any);
+    for (const v of values) { const o = el('option', null, label(v)); o.value = v; sel.appendChild(o); }
+    sel.value = values.includes(cur) ? cur : '';
+  }
+
+  let inflight = 0;
+  async function load() {
+    const my = ++inflight; $('listCard').classList.add('loading');
+    const q = new URLSearchParams({ limit: String(PAGE), offset: String(state.offset) });
+    if (state.kind) q.set('kind', state.kind);
+    if ($('fDevice').value) q.set('device', $('fDevice').value);
+    if ($('fTester').value) q.set('tester', $('fTester').value);
+    if ($('fTest').value) q.set('is_test', $('fTest').value);
+    try {
+      const data = await api('/v1/admin/benchmarks?' + q);
+      if (my !== inflight) return;
+      renderList(data);
+    } catch (err) {
+      if (err.status === 401) { location.replace('/dashboard?next=' + encodeURIComponent(HERE)); return; }
+      toast('Could not load sessions: ' + err.message);
+    } finally { if (my === inflight) $('listCard').classList.remove('loading'); }
+  }
+  $('kindSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; state.kind = b.dataset.kind; state.offset = 0; for (const x of $('kindSeg').querySelectorAll('button')) x.classList.toggle('on', x === b); load(); });
+  for (const id of ['fDevice', 'fTester', 'fTest']) $(id).addEventListener('change', () => { state.offset = 0; load(); });
+  $('btnPrev').addEventListener('click', () => { state.offset = Math.max(0, state.offset - PAGE); load(); });
+  $('btnNext').addEventListener('click', () => { state.offset += PAGE; load(); });
+
+  // ---------------------------------------------------------------------------------------------
+  // Import
+  // ---------------------------------------------------------------------------------------------
+  const imp = { mod: null, src: null, scan: null, groups: [], byKey: new Map(), busy: false };
+  const show = (step) => { for (const id of ['stepPick', 'stepRead', 'stepChoose']) $(id).hidden = id !== step; };
+  const progress = (f, label, sub) => { $('readBar').style.transform = `scaleX(${Math.max(0, Math.min(1, f)).toFixed(3)})`; $('readBar').parentElement.setAttribute('aria-valuenow', String(Math.round(f * 100))); if (label) $('readLabel').textContent = label; $('readSub').textContent = sub || ''; };
+  const mb = (bytes) => bytes >= 1e9 ? (bytes / 1e9).toFixed(1) + ' GB' : Math.max(1, Math.round(bytes / 1e6)) + ' MB';
+
+  function openImport() { $('importCard').hidden = false; $('importResult').replaceChildren(); show('stepPick'); $('importCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  $('btnImport').addEventListener('click', openImport);
+  $('btnCloseImport').addEventListener('click', () => { if (!imp.busy) $('importCard').hidden = true; });
+  $('btnChoose').addEventListener('click', () => $('file').click());
+  $('btnAnother').addEventListener('click', () => { if (!imp.busy) { $('file').value = ''; $('importResult').replaceChildren(); show('stepPick'); } });
+  $('file').addEventListener('change', () => { if ($('file').files[0]) readFile($('file').files[0]); });
+  const drop = $('drop');
+  for (const ev of ['dragenter', 'dragover']) drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); });
+  for (const ev of ['dragleave', 'drop']) drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); });
+  drop.addEventListener('drop', (e) => { const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) readFile(f); });
+
+  function fail(message) {
+    const r = el('div', 'result err', message); $('importResult').replaceChildren(r);
+    imp.busy = false;
+  }
+
+  async function readFile(file) {
+    if (imp.busy) return;
+    imp.busy = true;
+    $('importResult').replaceChildren();
+    show('stepRead'); progress(0, `Reading ${file.name}…`, `${mb(file.size)}, read on this computer`);
+    try {
+      imp.mod = imp.mod || await import('/dashboard/assets/health-export.js');
+      imp.src = await imp.mod.openExport(file);
+      imp.scan = await imp.mod.scanExport(imp.src, { onProgress: (f) => progress(f, null, `${mb(file.size)}, read on this computer`) });
+    } catch (err) { show('stepPick'); fail(err.message || 'Could not read that file.'); return; }
+    imp.busy = false;
+    const scan = imp.scan;
+    if (!scan.workouts.length && !scan.nights.length) { show('stepPick'); fail('No workouts or sleep in this export. Check that the devices are allowed to write to Apple Health, then export again.'); return; }
+    if (!$('tester').value.trim()) $('tester').value = scan.tester || '';
+    await checkFound();
+  }
+
+  /** Asks the server which sessions in the file are one and the same, and which are already stored. */
+  async function checkFound() {
+    const scan = imp.scan;
+    imp.byKey = new Map([...scan.workouts, ...scan.nights].map((x) => [x.key, x]));
+    // The newest 500: an export holds years, a benchmark is about the last few days.
+    const all = [...imp.byKey.values()].sort((a, b) => b.start - a.start);
+    const candidates = all.slice(0, 500).map((x) => ({ key: x.key, kind: x.kind, source: x.source, activity: x.activity || null, start: x.start, end: x.end }));
+    try {
+      const res = await api('/v1/admin/benchmarks/check', { method: 'POST', body: { tester: $('tester').value.trim(), candidates } });
+      imp.groups = res.groups.sort((a, b) => b.start - a.start).map((g, i) => ({ ...g, index: i, picked: false }));
+    } catch (err) { show('stepPick'); fail(err.status === 403 ? 'Your role cannot import benchmarks.' : 'Could not check the export: ' + err.message); return; }
+    const sources = scan.sources.filter((s) => s.workouts || s.sleep || s.heartRate).map((s) => s.name);
+    const found = $('found'); found.replaceChildren();
+    const fresh = imp.groups.filter((g) => g.status !== 'imported').length;
+    found.appendChild(el('b', null, `${scan.workouts.length} workout${scan.workouts.length === 1 ? '' : 's'} and ${scan.nights.length} night${scan.nights.length === 1 ? '' : 's'}`));
+    found.appendChild(document.createTextNode(` in this export, written by ${sources.join(', ') || 'no known source'}. `));
+    found.appendChild(el('b', null, `${fresh} not imported yet.`));
+    if (all.length > 500) found.appendChild(document.createTextNode(' Showing the newest 500.'));
+    if (imp.src.kind === 'xml') found.appendChild(document.createTextNode(' GPS routes are only in the zip; choose export.zip to include them.'));
+    pick('recent');
+    show('stepChoose');
+  }
+  $('tester').addEventListener('change', () => { if (imp.scan && !imp.busy) checkFound(); });
+
+  function pick(mode) {
+    const cutoff = (imp.scan.exportDate || Math.max(...imp.groups.map((g) => g.end), 0)) - 14 * 86400;
+    for (const g of imp.groups) g.picked = g.status !== 'imported' && (mode === 'new' || (mode === 'recent' && g.end >= cutoff));
+    for (const b of $('pickSeg').querySelectorAll('button')) b.classList.toggle('on', b.dataset.pick === mode);
+    renderFound();
+  }
+  $('pickSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) pick(b.dataset.pick); });
+
+  function renderFound() {
+    const host = $('foundTable'); host.replaceChildren();
+    const offset = imp.scan.offsetMin || 0;
+    const t = el('table'); const head = el('tr');
+    for (const h of ['', 'When', 'What', 'Length', 'Recorded by', 'Status']) head.appendChild(el('th', h === 'Length' ? 'num' : null, h));
+    t.appendChild(head);
+    for (const g of imp.groups) {
+      const tr = el('tr', g.status === 'imported' ? 'dim' : null);
+      const c = el('td'); const box = el('input'); box.type = 'checkbox'; box.checked = g.picked; box.disabled = g.status === 'imported';
+      box.setAttribute('aria-label', 'Import this session');
+      box.addEventListener('change', () => { g.picked = box.checked; for (const b of $('pickSeg').querySelectorAll('button')) b.classList.remove('on'); updateImportButton(); });
+      c.appendChild(box); tr.appendChild(c);
+      const d = local(g.start, offset);
+      const when = el('td', 'nowrap'); when.appendChild(document.createTextNode(fmtDay(d))); when.appendChild(el('span', 'tertiary', ` ${fmtClock(d)}–${fmtClock(local(g.end, offset))}`)); tr.appendChild(when);
+      const what = el('td', 'what');
+      const acts = [...new Set(g.members.map((m) => m.activity).filter(Boolean))];
+      what.appendChild(el('b', null, g.kind === 'sleep' ? 'Sleep' : acts.length ? acts.map(hkActivity).join(' / ') : 'Workout'));
+      tr.appendChild(what);
+      tr.appendChild(el('td', 'num', fmtDur(g.end - g.start)));
+      const by = el('td'); g.members.forEach((m, i) => { const chip = devChip(m.tag, m.source, i); if (m.status === 'imported') chip.title = 'Already imported'; by.appendChild(chip); }); tr.appendChild(by);
+      const st = el('td', 'nowrap');
+      if (g.status === 'imported') { st.appendChild(el('span', 'pill have', 'Already imported')); }
+      else if (g.status === 'adds_device') { st.appendChild(el('span', 'pill adds', 'Adds a device')); }
+      else st.appendChild(el('span', 'pill new', 'New'));
+      if (g.session) { st.appendChild(document.createTextNode(' ')); const a = el('a', 'mono', g.session.ref); a.href = HERE + '/' + encodeURIComponent(g.session.ref); a.target = '_blank'; a.rel = 'noopener'; st.appendChild(a); }
+      tr.appendChild(st);
+      t.appendChild(tr);
+    }
+    host.appendChild(t);
+    updateImportButton();
+  }
+  function updateImportButton() {
+    const n = imp.groups.filter((g) => g.picked).length;
+    $('btnDoImport').disabled = !n || imp.busy;
+    $('btnDoImport').textContent = n ? `Import ${n} session${n === 1 ? '' : 's'}` : 'Import';
+  }
+
+  /** Over the request limit: halve the detail of the longest series until it fits. Rare (many hours at 1 Hz on several devices). */
+  function fit(payload) {
+    const LIMIT = 3_500_000;
+    for (let round = 0; round < 6 && JSON.stringify(payload).length > LIMIT; round++) {
+      for (const r of payload.recordings) for (const s of Object.values(r.samples)) {
+        if (s.s.length < 2000) continue;
+        const keep = (arr) => arr.filter((_, i) => i % 2 === 0);
+        if (s.e === null) { const v = []; for (let i = 0; i < s.v.length; i += 2) v.push(i + 1 < s.v.length ? Math.round(((s.v[i] + s.v[i + 1]) / 2) * 100) / 100 : s.v[i]); s.s = keep(s.s); s.v = v; }
+        else { const v = [], e = []; for (let i = 0; i < s.v.length; i += 2) { v.push(s.v[i] + (s.v[i + 1] || 0)); e.push(s.e[Math.min(i + 1, s.e.length - 1)]); } s.s = keep(s.s); s.e = e; s.v = v; }
+      }
+    }
+    return payload;
+  }
+
+  $('btnDoImport').addEventListener('click', async () => {
+    const tester = $('tester').value.trim();
+    if (!tester) { $('tester').focus(); toast('Say who wore the devices first.'); return; }
+    const chosen = imp.groups.filter((g) => g.picked);
+    if (!chosen.length || imp.busy) return;
+    imp.busy = true; updateImportButton();
+    show('stepRead'); progress(0, 'Collecting what the devices recorded…', 'Second pass over the file: only the chosen sessions');
+    const results = [], failed = [];
+    try {
+      // Only what is not stored yet is read out; a stored device's samples are skipped by the server anyway.
+      const sessions = chosen.map((g) => ({ id: g.index, kind: g.kind, start: g.start, end: g.end, members: g.members.filter((m) => m.status !== 'imported').map((m) => imp.byKey.get(m.key)).filter(Boolean) }));
+      const payloads = await imp.mod.extractSessions(imp.src, sessions, imp.scan, { onProgress: (f) => progress(f * 0.85) });
+      for (let i = 0; i < payloads.length; i++) {
+        progress(0.85 + 0.15 * (i / payloads.length), `Saving session ${i + 1} of ${payloads.length}…`, '');
+        const p = payloads[i];
+        try {
+          results.push(await api('/v1/admin/benchmarks/import', { method: 'POST', body: fit({ tester, kind: p.kind, start: p.start, end: p.end, utc_offset_min: p.utc_offset_min, is_test: $('asTest').checked, recordings: p.recordings }) }));
+        } catch (err) {
+          const d = local(p.start, p.utc_offset_min);
+          failed.push(`${fmtDay(d)} ${fmtClock(d)}: ${err.message}${err.issues && err.issues[0] ? ` (${err.issues[0].path}: ${err.issues[0].message})` : ''}`);
+        }
+      }
+    } catch (err) { failed.push(err.message || 'Could not read the file again.'); }
+    imp.busy = false;
+    progress(1);
+    const box = $('importResult'); box.replaceChildren();
+    if (results.length) {
+      const created = results.filter((r) => r.status === 'created').length, updated = results.filter((r) => r.status === 'updated').length, same = results.filter((r) => r.status === 'unchanged').length;
+      const r = el('div', 'result');
+      r.appendChild(document.createTextNode([created && `${created} session${created === 1 ? '' : 's'} added`, updated && `${updated} gained a device`, same && `${same} already stored`].filter(Boolean).join(', ') + '. '));
+      for (const x of results) { const a = el('a', null, x.session.ref); a.href = HERE + '/' + encodeURIComponent(x.session.ref); r.appendChild(a); }
+      box.appendChild(r);
+    }
+    if (failed.length) { const r = el('div', 'result err'); r.appendChild(el('b', null, `${failed.length} could not be saved. `)); r.appendChild(document.createTextNode(failed.join(' · '))); box.appendChild(r); }
+    state.offset = 0;
+    await load();
+    await checkFound();
+  });
+
+  // Dropping a file anywhere on the page should not navigate away from it.
+  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('drop', (e) => e.preventDefault());
+
+  async function boot() {
+    const s = await api('/dashboard/session').catch(() => ({ authenticated: false }));
+    if (!s.authenticated) { location.replace('/dashboard?next=' + encodeURIComponent(HERE)); return; }
+    const me = await api('/v1/me').catch(() => null);
+    state.canManage = Boolean(me && me.permissions && me.permissions.manage_benchmarks);
+    $('btnImport').hidden = !state.canManage;
+    await load();
+    if (state.canManage && !state.total && !$('fDevice').value && !$('fTester').value && !state.kind) openImport();
+  }
+  boot().catch((err) => toast('Could not start: ' + err.message));
+})();
+</script>
+</body>
+</html>
