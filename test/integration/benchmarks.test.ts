@@ -338,6 +338,13 @@ describe('what is refused', () => {
     expect((await post(body(T0 + 700_000, [polarRec(T0 + 700_000)], { extra: true }))).statusCode).toBe(422);
   });
 
+  it('drops an implausible body profile instead of refusing the session', async () => {
+    const t = T0 + 800_000;
+    const r = await post(body(t, [{ ...polarRec(t), profile: { weight_kg: 66, height_cm: 7407 } }]));
+    expect(r.statusCode).toBe(201);
+    expect((await get(r.json().session.ref)).recordings[0].details.profile).toEqual({ weight_kg: 66 });
+  });
+
   it('answers 404 for a session that is not there', async () => {
     expect((await app.inject({ method: 'GET', url: '/v1/admin/benchmarks/BM-99999999', headers: admin })).statusCode).toBe(404);
     expect((await app.inject({ method: 'DELETE', url: '/v1/admin/benchmarks/BM-99999999', headers: admin })).statusCode).toBe(404);

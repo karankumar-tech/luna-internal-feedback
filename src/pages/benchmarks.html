@@ -154,7 +154,7 @@
           <div class="seg" id="pickSeg" role="group" aria-label="Which sessions to select">
             <button type="button" data-pick="recent">New, last 14 days</button>
             <button type="button" data-pick="new">All new</button>
-            <button type="button" data-pick="none">None</button>
+            <button type="button" data-pick="none">Unselect all</button>
           </div>
         </label>
         <label class="check"><input type="checkbox" id="asTest"> Mark as test data</label>
@@ -445,7 +445,16 @@
     const host = $('foundTable'); host.replaceChildren();
     const offset = imp.scan.offsetMin || 0;
     const t = el('table'); const head = el('tr');
-    for (const h of ['', 'When', 'What', 'Length', 'Recorded by', 'Status']) head.appendChild(el('th', h === 'Length' ? 'num' : null, h));
+    // The header box ticks or unticks every session that can still be imported.
+    const allTh = el('th'); const all = el('input'); all.type = 'checkbox'; all.id = 'pickAll';
+    all.setAttribute('aria-label', 'Select or unselect every session');
+    all.addEventListener('change', () => {
+      for (const g of imp.groups) g.picked = all.checked && g.status !== 'imported';
+      for (const b of $('pickSeg').querySelectorAll('button')) b.classList.remove('on');
+      renderFound();
+    });
+    allTh.appendChild(all); head.appendChild(allTh);
+    for (const h of ['When', 'What', 'Length', 'Recorded by', 'Status']) head.appendChild(el('th', h === 'Length' ? 'num' : null, h));
     t.appendChild(head);
     for (const g of imp.groups) {
       const tr = el('tr', g.status === 'imported' ? 'dim' : null);
@@ -474,6 +483,9 @@
   }
   function updateImportButton() {
     const n = imp.groups.filter((g) => g.picked).length;
+    const open = imp.groups.filter((g) => g.status !== 'imported').length;
+    const all = $('pickAll');
+    if (all) { all.checked = open > 0 && n === open; all.indeterminate = n > 0 && n < open; all.disabled = !open; }
     $('btnDoImport').disabled = !n || imp.busy;
     $('btnDoImport').textContent = n ? `Import ${n} session${n === 1 ? '' : 's'}` : 'Import';
   }

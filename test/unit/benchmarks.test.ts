@@ -146,6 +146,19 @@ describe('reading an Apple Health export', () => {
     expect(by['Navay’s iPhone'].device).toMatchObject({ name: 'iPhone', hardware: 'iPhone16,2' });
   });
 
+  it('leaves out a body profile nobody has, rather than passing nonsense on', async () => {
+    const xml = sampleExport()
+      .replace('</HealthData>', ` <Record type="HKQuantityTypeIdentifierHeight" sourceName="Luna" unit="cm" creationDate="${at(RUN)}" startDate="${at(RUN)}" endDate="${at(RUN)}" value="7407"/>\n <Record type="HKQuantityTypeIdentifierBodyMass" sourceName="Polar Flow" unit="kg" creationDate="${at(RUN)}" startDate="${at(RUN)}" endDate="${at(RUN)}" value="6"/>\n</HealthData>`);
+    const src = await openExport(drip(xml, 1 << 20));
+    const scan = await scanExport(src);
+    const [polar, luna] = scan.workouts;
+    const [payload] = await extractSessions(src, [{ id: 0, kind: 'workout', start: polar.start, end: polar.end, members: [polar, luna] }], scan);
+    const by = Object.fromEntries(payload.recordings.map((r: IncomingRecording) => [r.source, r]));
+    // Luna's weight is fine and kept; its 74-metre height is not. Polar's 6 kg replaces its 80 and is dropped.
+    expect(by.Luna.profile).toEqual({ weight_kg: 46 });
+    expect(by['Polar Flow'].profile).toBeUndefined();
+  });
+
   it('keeps only vitals for a night', async () => {
     const src = await openExport(drip(sampleExport(), 4096));
     const scan = await scanExport(src);

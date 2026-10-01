@@ -88,7 +88,11 @@ const Recording = z.object({
     ele: z.array(Num.nullable()).max(2000).nullable(),
     speed: z.array(Num.nullable()).max(2000).nullable(),
   }).strict().refine((r) => r.lat.length === r.t.length && r.lon.length === r.t.length, 'columns must be the same length').nullish(),
-  profile: z.object({ weight_kg: Num.positive().max(500).optional(), height_cm: Num.positive().max(300).optional() }).strict().nullish(),
+  // An implausible body profile is dropped, not refused: it is a footnote, and apps do write nonsense here.
+  profile: z.object({
+    weight_kg: Num.min(20).max(400).optional().catch(undefined),
+    height_cm: Num.min(50).max(260).optional().catch(undefined),
+  }).strict().nullish(),
 }).strict();
 
 const ImportBody = z.object({

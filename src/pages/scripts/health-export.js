@@ -572,8 +572,9 @@ function profileOf(scan, source) {
   if (!p) return null;
   const weight = toKg(p.weight), height = toCm(p.height);
   const out = {};
-  if (weight) out.weight_kg = Math.round(weight * 10) / 10;
-  if (height) out.height_cm = Math.round(height * 10) / 10;
+  // Apps do write nonsense here (a height of 7,407 cm has been seen); a body nobody has is left out.
+  if (weight >= 20 && weight <= 400) out.weight_kg = Math.round(weight * 10) / 10;
+  if (height >= 50 && height <= 260) out.height_cm = Math.round(height * 10) / 10;
   return Object.keys(out).length ? out : null;
 }
 
