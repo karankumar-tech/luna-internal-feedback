@@ -145,6 +145,12 @@ export function registerBenchmarkRoutes(app: FastifyInstance, deps: { service: B
   app.patch<{ Params: { id: string; rid: string } }>('/v1/admin/benchmarks/:id/recordings/:rid', manage, async (req) =>
     service.updateRecording(req.params.id, req.params.rid, parse(RecordingPatch, req.body)));
 
+  /** Joins another session into this one: one workout that two devices recorded with different clocks. */
+  app.post<{ Params: { id: string } }>('/v1/admin/benchmarks/:id/merge', manage, async (req) => {
+    const body = parse(z.object({ other: z.string().trim().min(1).max(60) }).strict(), req.body);
+    return service.merge(req.params.id, body.other);
+  });
+
   app.delete<{ Params: { id: string } }>('/v1/admin/benchmarks/:id', manage, async (req) => service.remove(req.params.id));
 
   app.delete<{ Params: { id: string; rid: string } }>('/v1/admin/benchmarks/:id/recordings/:rid', manage, async (req) =>

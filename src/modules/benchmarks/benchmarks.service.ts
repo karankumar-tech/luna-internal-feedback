@@ -1,11 +1,14 @@
 import type pg from 'pg';
 import { AppError } from '../../lib/errors.js';
 import {
-  ANALYSIS_VERSION, analyzeSession, displayOrder, fingerprintOf, groupCandidates, normalizeRecording, overlapShare,
+  ANALYSIS_VERSION, analyzeSession, displayOrder, fingerprintOf, groupCandidates, looksLikeSameSession, mergeSeries, normalizeRecording, overlapShare,
   type Candidate, type IncomingRecording, type Kind,
 } from './analyze.js';
 import { guessTag, tagLabel } from './metrics.js';
-import { toRec, type BenchmarksRepo, type ListFilters, type RecordingRow, type SessionRow } from './benchmarks.repo.js';
+import { toRec, type BenchmarksRepo, type ListFilters, type RecordingHead, type RecordingRow, type SessionRow } from './benchmarks.repo.js';
+
+/** How far apart two sessions may sit and still be offered as "possibly the same one". */
+const NEARBY_S = 30 * 60;
 
 export interface ImportInput {
   tester: string;
@@ -45,7 +48,89 @@ export class BenchmarksService {
     if (await this.refresh([session])) session = (await this.repo.session(session.id))!;
     const recordings = await this.repo.recordings(session.id);
     const ordered = displayOrder(recordings.map((r) => ({ tag: r.device_tag, logged: r.logged, row: r }))).map((x) => x.row);
-    return { ...sessionDto(session), recordings: ordered.map(recordingDto) };
+    return { ...sessionDto(session), recordings: ordered.map(recordingDto), nearby: await this.nearby(session, recordings) };
+  }
+
+  /**
+   * This tester's other sessions of the same kind recorded close to this one, that could be joined
+   * with it: a device whose clock is off records the same workout as a separate session. One where
+   * a device logged something in both is left out: that device recorded two things.
+   */
+  private async nearby(session: SessionRow, mine: RecordingHead[]) {
+    const others = (await this.repo.overlapping(session.tester, session.kind, session.started_at - NEARBY_S, session.ended_at + NEARBY_S))
+      .filter((o) => o.id !== session.id);
+    const heads = await this.repo.heads(others.map((o) => o.id));
+    const loggedHere = new Set(mine.filter((r) => r.logged).map((r) => r.source_name));
+    const out = [];
+    for (const o of others) {
+      const recs = heads.filter((h) => h.session_id === o.id);
+      if (recs.some((r) => r.logged && loggedHere.has(r.source_name))) continue;
+      out.push({
+        id: o.id, ref: o.ref, activity: o.activity, title: o.title, started_at: iso(o.started_at), ended_at: iso(o.ended_at),
+        devices: displayOrder(recs.map((r) => ({ tag: r.device_tag, logged: r.logged, label: r.device_label || r.source_name }))),
+        /** Seconds from this session's start to the other's: positive when the other starts later. */
+        starts_after_s: Math.round(o.started_at - session.started_at),
+        likely_same: looksLikeSameSession({ start: session.started_at, end: session.ended_at }, { start: o.started_at, end: o.ended_at }),
+      });
+    }
+    return out.sort((a, b) => Number(b.likely_same) - Number(a.likely_same) || Math.abs(a.starts_after_s) - Math.abs(b.starts_after_s)).slice(0, 5);
+  }
+
+  /**
+   * Joins another session into this one: its recordings move here, it is removed, and the
+   * comparison is redone. Where both hold the same source, the one that logged the session is kept
+   * and takes the other's samples; two logged recordings from one source cannot be one session.
+   */
+  async merge(idOrRef: string, otherIdOrRef: string) {
+    const [target, other] = await Promise.all([this.repo.session(idOrRef), this.repo.session(otherIdOrRef)]);
+    if (!target || !other) throw AppError.notFound('No benchmark session with that id or reference');
+    if (target.id === other.id) throw AppError.validation([{ path: 'other', message: 'a session cannot be merged with itself' }]);
+    if (target.kind !== other.kind) throw AppError.validation([{ path: 'other', message: `${other.ref} is a ${other.kind} session and ${target.ref} a ${target.kind} session` }]);
+    await this.repo.transaction(async (c) => {
+      const [here, there] = await Promise.all([this.repo.recordings(target.id, c), this.repo.recordings(other.id, c)]);
+      const clash = there.find((b) => b.logged && here.some((a) => a.logged && a.source_name === b.source_name));
+      if (clash) throw AppError.conflict(`${clash.source_name} logged a ${target.kind === 'sleep' ? 'night' : 'workout'} in both ${target.ref} and ${other.ref}, so they are two sessions.`);
+      for (const b of there) {
+        const a = here.find((x) => x.source_name === b.source_name);
+        if (!a) { await this.repo.moveRecording(c, b.id, target.id); continue; }
+        const series = mergeSeries(a.logged || !b.logged ? a.series : b.series, a.logged || !b.logged ? b.series : a.series);
+        if (b.logged) {
+          // The other session holds this device's own recording; the samples it left here join it.
+          await this.repo.deleteRecording(c, a.id);
+          await this.repo.moveRecording(c, b.id, target.id, series);
+        } else {
+          await this.repo.setSeries(c, a.id, series);
+        }
+      }
+      const notes = [target.notes, other.notes].filter(Boolean).join('\n\n').slice(0, 4000);
+      if (notes !== (target.notes ?? '')) await this.repo.setNotes(c, target.id, notes || null);
+      await this.repo.deleteSession(other.id, c);
+      await this.recompute(c, target.id, target.kind);
+    });
+    return { merged: other.ref, session: await this.get(target.id) };
+  }
+
+  /**
+   * One-time clean-up: every pair of stored sessions that look like one session recorded with
+   * different clocks (different devices, starting within 20 minutes of each other, similar length).
+   * With `apply` false nothing is changed; the pairs are only listed.
+   */
+  async mergeLikelySame(apply: boolean): Promise<{ into: string; from: string; starts_after_s: number; devices: string[] }[]> {
+    const gone = new Set<string>();
+    const out = [];
+    for (const { id, ref } of await this.repo.allSpans()) {
+      if (gone.has(id)) continue;
+      for (;;) {
+        const session = await this.repo.session(id);
+        if (!session) break;
+        const near = (await this.nearby(session, await this.repo.heads([id]))).find((n) => n.likely_same && !gone.has(n.id));
+        if (!near) break;
+        out.push({ into: ref, from: near.ref, starts_after_s: near.starts_after_s, devices: near.devices.filter((d) => d.logged).map((d) => d.label) });
+        gone.add(near.id);
+        if (apply) await this.merge(id, near.id);
+      }
+    }
+    return out;
   }
 
   /**

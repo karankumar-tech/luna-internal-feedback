@@ -269,6 +269,32 @@ export function normalizeSeries(samples: Record<string, IncomingSamples>): Recor
   return out;
 }
 
+/**
+ * One device's samples from two sessions that turn out to be one: every reading from both, once
+ * each, in time order.
+ */
+export function mergeSeries(a: Record<string, Series>, b: Record<string, Series>): Record<string, Series> {
+  const out: Record<string, Series> = { ...a };
+  for (const [key, other] of Object.entries(b)) {
+    const mine = out[key];
+    if (!mine) { out[key] = other; continue; }
+    const seen = new Set<string>();
+    const rows: [number, number, number][] = [];
+    for (const s of [mine, other]) {
+      for (let i = 0; i < s.t.length; i++) {
+        const row: [number, number, number] = [s.t0 + s.t[i]!, s.d ? s.d[i]! : 0, s.v[i]!];
+        const id = row.join('|');
+        if (seen.has(id)) continue;
+        seen.add(id); rows.push(row);
+      }
+    }
+    rows.sort((x, y) => x[0] - y[0]);
+    const t0 = rows[0]![0];
+    out[key] = { ...mine, t0, t: rows.map((r) => r[0] - t0), d: rows.some((r) => r[1] > 0) ? rows.map((r) => r[1]) : null, v: rows.map((r) => r[2]) };
+  }
+  return out;
+}
+
 const STAGE_OF: Record<string, Stage> = {
   InBed: 'in_bed', Awake: 'awake', Asleep: 'asleep', AsleepUnspecified: 'asleep',
   AsleepCore: 'core', AsleepDeep: 'deep', AsleepREM: 'rem',
@@ -820,6 +846,7 @@ export function compareRows(test: Rec, reference: Rec, kind: Kind, m: Map<string
 // The whole session
 // ---------------------------------------------------------------------------------------------
 
+const minutes = (s: number) => (s < 90 ? `${Math.round(s)} s` : `${Math.round(s / 60)} min`);
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 const lowHigh = (bias: number) => `${Math.round(Math.abs(bias))} bpm ${bias < 0 ? 'low' : 'high'}`;
 
@@ -889,6 +916,12 @@ export function gapsFor(recs: Rec[], kind: Kind, pairs: Pair[], hr: Map<string, 
     if (!r.logged) out.push(kind === 'sleep'
       ? `${r.label} did not record this night itself; it only has readings it wrote to Apple Health during it.`
       : `${r.label} did not log this workout itself, so it has no duration, distance or calories for it; only what it wrote to Apple Health during it.`);
+  }
+  // Two devices put in one session by hand, whose recordings do not line up in time.
+  if (test.logged && reference.logged && overlapShare(test, reference) < 0.5) {
+    const lead = test.start - reference.start;
+    const apart = Math.min(test.end, reference.end) <= Math.max(test.start, reference.start);
+    out.push(`${test.label}'s recording starts ${minutes(Math.abs(lead))} ${lead < 0 ? 'before' : 'after'} ${reference.label}'s${apart ? ' and the two do not overlap' : ''}. Either one clock is off or these are two separate ${what}s; readings are compared at the times each device wrote, so they do not line up.`);
   }
   if (kind === 'workout') {
     const has = (r: Rec) => Boolean(hr.get(r.id));
@@ -993,6 +1026,16 @@ export function overlapShare(a: { start: number; end: number }, b: { start: numb
   const common = Math.min(a.end, b.end) - Math.max(a.start, b.start);
   const shorter = Math.max(1, Math.min(a.end - a.start, b.end - b.start));
   return common <= 0 ? 0 : common / shorter;
+}
+
+/**
+ * Two sessions that do not overlap enough to have been grouped, but probably are one: they start
+ * within 20 minutes of each other and are of similar length. This is what a device with a clock
+ * that is off looks like. Only ever a suggestion to a person, or a one-time clean-up they asked for.
+ */
+export function looksLikeSameSession(a: { start: number; end: number }, b: { start: number; end: number }): boolean {
+  const la = Math.max(1, a.end - a.start), lb = Math.max(1, b.end - b.start);
+  return Math.abs(a.start - b.start) <= 20 * 60 && Math.min(la, lb) / Math.max(la, lb) >= 0.6;
 }
 
 /**

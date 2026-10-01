@@ -346,6 +346,15 @@ start and end, so uploading a later export adds only what is new. When a later e
 device's recording of a stored session (same tester, overlapping time), it joins that session
 instead of making a second one.
 
+**One workout, two sessions.** A device whose clock is off writes the same workout to Health at a
+different time, and recordings that do not overlap are not grouped. The session page lists this
+tester's sessions recorded within half an hour by other devices ("Recorded close to this one") and
+can merge one in: its recordings move over, the two are compared at the times each device wrote
+(the start difference shows as such), and the merged-in reference stops existing. A device that
+logged a workout in both is never offered: that is two workouts. `npm run benchmarks:merge-nearby`
+lists every stored pair that looks like this (different devices, starting within 20 minutes of each
+other, similar length) and merges them with `-- --apply`; it was written for a one-time clean-up.
+
 **What is stored** (migration `20261002000000_benchmarks.sql`): `benchmark_sessions` (`BM-0007`, a
 workout or a night for one tester, with the comparison in `summary`) and `benchmark_recordings`
 (one per Apple Health source: its totals in `metrics`, samples over time in `series`, sleep
@@ -393,11 +402,12 @@ to half an hour, 10 s beyond), on round clock times; "Every reading" shows the r
 | endpoint | does |
 |---|---|
 | `GET /v1/admin/benchmarks?kind=&device=&tester=&is_test=&limit=&offset=` | sessions, newest first, with each one's comparison summary and the filter values in use |
-| `GET /v1/admin/benchmarks/{id or BM-ref}` | one session with every recording's metrics, series, stages and route |
+| `GET /v1/admin/benchmarks/{id or BM-ref}` | one session with every recording's metrics, series, stages and route, and `nearby` sessions it could be merged with |
 | `POST /v1/admin/benchmarks/check` | which workouts and nights from an export are one session, and which are stored |
 | `POST /v1/admin/benchmarks/import` | one session's recordings (201 created, 200 updated or unchanged) |
 | `PATCH /v1/admin/benchmarks/{id}` | title, notes, tester, test flag |
 | `PATCH /v1/admin/benchmarks/{id}/recordings/{rid}` | brand tag and device name; redoes the comparison |
+| `POST /v1/admin/benchmarks/{id}/merge` | `{ "other": id or BM-ref }` joins another session into this one |
 | `DELETE /v1/admin/benchmarks/{id}` and `…/recordings/{rid}` | remove a session, or one device from it |
 
 All under `/v1/admin`, so a dashboard session or the admin key is needed: this is testers' health

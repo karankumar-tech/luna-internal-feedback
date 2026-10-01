@@ -4,7 +4,7 @@ import { zipSync, strToU8 } from 'fflate';
 // @ts-expect-error no type declarations for the page script
 import { buildNights, extractSessions, guessTester, openExport, parseDate, parseDevice, parseGpx, scanExport } from '../../src/pages/scripts/health-export.js';
 import {
-  analyzeSession, buildStages, compareHeartRate, compareSleep, groupCandidates, heartRateQuality, normalizeRecording, normalizeSeries,
+  analyzeSession, buildStages, compareHeartRate, compareSleep, groupCandidates, heartRateQuality, looksLikeSameSession, mergeSeries, normalizeRecording, normalizeSeries,
   sleepMetrics, type IncomingRecording, type Rec, type Series,
 } from '../../src/modules/benchmarks/analyze.js';
 import { activityKey, activityLabel, guessTag, metricOf } from '../../src/modules/benchmarks/metrics.js';
@@ -502,6 +502,36 @@ describe('a whole workout session', () => {
     expect(s.pairs).toEqual([]);
     expect(s.primary).toBeNull();
     expect(s.findings).toEqual([]);
+  });
+});
+
+describe('two sessions that are really one', () => {
+  it('spots a workout recorded twice with clocks minutes apart, and nothing looser', () => {
+    // Fitbit 10:02:32–10:13:13, Luna 10:14:41–10:25:41: same length, 12 minutes apart.
+    expect(looksLikeSameSession({ start: 152, end: 793 }, { start: 881, end: 1541 })).toBe(true);
+    // A 43-second stub next to an 11-minute walk is not the same thing.
+    expect(looksLikeSameSession({ start: 0, end: 43 }, { start: 600, end: 1260 })).toBe(false);
+    // Half an hour apart is two workouts.
+    expect(looksLikeSameSession({ start: 0, end: 600 }, { start: 1800, end: 2400 })).toBe(false);
+  });
+
+  it('joins one device’s samples from both, each reading once, in time order', () => {
+    const a = { heart_rate: hrSeries(T0, [[0, 100], [30, 101]]) };
+    const b = { heart_rate: hrSeries(T0 - 60, [[0, 90], [60, 100], [120, 105]]), steps: { label: 'Steps', unit: '', agg: 'sum' as const, t0: T0, t: [0], d: [60], v: [80] } };
+    const m = mergeSeries(a, b);
+    expect(m.heart_rate).toMatchObject({ t0: T0 - 60, t: [0, 60, 90, 120], v: [90, 100, 101, 105], d: null });
+    expect(m.steps).toEqual(b.steps);
+  });
+
+  it('says so when two recordings put in one session do not line up in time', () => {
+    const window = { start: T0, end: T0 + 1400 };
+    const w = (start: number, end: number) => ({ activity: 'HKWorkoutActivityTypeWalking', start, end, duration: (end - start) / 60, duration_unit: 'min', stats: [], metadata: {}, events: [] });
+    const fitbit: Rec = { ...normalizeRecording({ source: 'Google Health', logged: true, samples: {}, workout: w(T0, T0 + 641) }, 'workout', window), id: 'f', tag: 'fitbit', label: 'Google Health' };
+    const band: Rec = { ...normalizeRecording({ source: 'Luna', logged: true, samples: {}, workout: w(T0 + 729, T0 + 1389) }, 'workout', window), id: 'l', tag: 'luna', label: 'Luna' };
+    const s = analyzeSession([fitbit, band], 'workout').summary;
+    expect(s.pairs[0]!.rows.find((r) => r.key === 'start')).toMatchObject({ diff: 729, verdict: 'differs' });
+    expect(s.pairs[0]!.rows.find((r) => r.key === 'duration')).toMatchObject({ diff: 19, verdict: 'close' });
+    expect(s.gaps[0]).toBe('Luna\'s recording starts 12 min after Google Health\'s and the two do not overlap. Either one clock is off or these are two separate workouts; readings are compared at the times each device wrote, so they do not line up.');
   });
 });
 

@@ -2,6 +2,9 @@ import type pg from 'pg';
 import type { Db } from '../../db/pool.js';
 import type { Details, Kind, MetricValue, NormalizedRecording, Rec, Route, Series, Stages, Summary } from './analyze.js';
 
+/** A recording without its samples: what is needed to say which device it is. */
+export interface RecordingHead { id: string; session_id: string; source_name: string; device_tag: string; device_label: string | null; logged: boolean }
+
 type Queryable = Pick<pg.PoolClient, 'query'> | Db;
 
 export interface SessionRow {
@@ -147,15 +150,26 @@ export class BenchmarksRepo {
   }
 
   /** This tester's sessions that touch a span of time (of one kind, or of either), with the sources each already has. */
-  async overlapping(tester: string, kind: Kind | null, start: number, end: number, q: Queryable = this.db): Promise<{ id: string; ref: string; kind: Kind; started_at: number; ended_at: number; sources: string[] }[]> {
-    const r = await q.query<{ id: string; ref: string; kind: Kind; started_at: number; ended_at: number; sources: string[] }>(
-      `select s.id, s.ref, s.kind, extract(epoch from s.started_at)::float8 as started_at, extract(epoch from s.ended_at)::float8 as ended_at,
+  async overlapping(tester: string, kind: Kind | null, start: number, end: number, q: Queryable = this.db): Promise<{ id: string; ref: string; kind: Kind; activity: string | null; title: string | null; started_at: number; ended_at: number; sources: string[] }[]> {
+    const r = await q.query<{ id: string; ref: string; kind: Kind; activity: string | null; title: string | null; started_at: number; ended_at: number; sources: string[] }>(
+      `select s.id, s.ref, s.kind, s.activity, s.title, extract(epoch from s.started_at)::float8 as started_at, extract(epoch from s.ended_at)::float8 as ended_at,
               coalesce((select array_agg(r.source_name) from luna_feedback.benchmark_recordings r where r.session_id = s.id), '{}') as sources
          from luna_feedback.benchmark_sessions s
         where s.tester_key = lower(btrim($1)) and ($2::text is null or s.kind = $2)
           and s.started_at < to_timestamp($4) and s.ended_at > to_timestamp($3)
         order by s.started_at`,
       [tester, kind, start, end],
+    );
+    return r.rows;
+  }
+
+  /** Which devices a set of sessions hold, without loading their samples. */
+  async heads(sessionIds: string[], q: Queryable = this.db): Promise<RecordingHead[]> {
+    if (!sessionIds.length) return [];
+    const r = await q.query<RecordingHead>(
+      `select id, session_id, source_name, device_tag, device_label, logged
+         from luna_feedback.benchmark_recordings where session_id = any($1::uuid[]) order by created_at, source_name`,
+      [sessionIds],
     );
     return r.rows;
   }
@@ -232,6 +246,28 @@ export class BenchmarksRepo {
         where id = $1`,
       [id, p.device_tag ?? null, p.device_label !== undefined, p.device_label ?? null],
     );
+  }
+
+  /** Every session, oldest first: just enough to find ones that sit close together. */
+  async allSpans(): Promise<{ id: string; ref: string }[]> {
+    const r = await this.db.query<{ id: string; ref: string }>(`select id, ref from luna_feedback.benchmark_sessions order by started_at, ref_no`);
+    return r.rows;
+  }
+
+  /** Moves a recording into another session, optionally with its samples replaced (two halves of one device joined). */
+  async moveRecording(c: Queryable, id: string, sessionId: string, series?: Record<string, Series>): Promise<void> {
+    await c.query(
+      `update luna_feedback.benchmark_recordings set session_id = $2, series = coalesce($3::jsonb, series) where id = $1`,
+      [id, sessionId, series ? JSON.stringify(series) : null],
+    );
+  }
+
+  async setSeries(c: Queryable, id: string, series: Record<string, Series>): Promise<void> {
+    await c.query(`update luna_feedback.benchmark_recordings set series = $2 where id = $1`, [id, JSON.stringify(series)]);
+  }
+
+  async setNotes(c: Queryable, sessionId: string, notes: string | null): Promise<void> {
+    await c.query(`update luna_feedback.benchmark_sessions set notes = $2, updated_at = now() where id = $1`, [sessionId, notes]);
   }
 
   async deleteRecording(c: Queryable, id: string): Promise<void> {

@@ -149,6 +149,11 @@
     <div class="table-scroll" id="devices"></div>
   </section>
 
+  <section class="card" id="nearbyCard" hidden>
+    <div class="card-head"><div><h2>Recorded close to this one</h2><div class="sub">A device whose clock is off records the same session as a separate one. If one of these is this session on another device, merge it in: its recordings move here and are compared with the ones above, and its own reference stops existing.</div></div></div>
+    <div class="table-scroll" id="nearby"></div>
+  </section>
+
   <section class="card" id="compareCard" hidden>
     <div class="card-head">
       <div><h2>Side by side</h2><div class="sub" id="compareSub"></div></div>
@@ -642,6 +647,35 @@
     host.appendChild(t);
   }
 
+  /** Sessions recorded within half an hour of this one by other devices: possibly the same one, logged with a different clock. */
+  function renderNearby() {
+    const list = state.s.nearby || [], host = $('nearby'); host.replaceChildren();
+    $('nearbyCard').hidden = !list.length;
+    if (!list.length) return;
+    const s0 = epoch(state.s.started_at), s1 = epoch(state.s.ended_at);
+    const t = el('table'); const head = el('tr');
+    for (const h of ['Session', 'What', 'When', 'Recorded by', 'Against this one', '']) head.appendChild(el('th', null, h));
+    t.appendChild(head);
+    for (const n of list) {
+      const a = epoch(n.started_at), b = epoch(n.ended_at);
+      const tr = el('tr');
+      const ref = el('td'); const link = el('a', 'mono', n.ref); link.href = '/dashboard/benchmarks/' + encodeURIComponent(n.ref); ref.appendChild(link); tr.appendChild(ref);
+      tr.appendChild(el('td', 'rowlabel', n.title || (isSleep() ? 'Sleep' : activityLabel(n.activity))));
+      tr.appendChild(el('td', 'val', `${clock(a)} to ${clock(b)}, ${duration(b - a)}`));
+      tr.appendChild(el('td', null, n.devices.filter((d) => d.logged).map((d) => d.label).join(', ') || '—'));
+      const how = el('td');
+      how.appendChild(document.createTextNode(a >= s1 ? `starts ${span(a - s1)} after this one ends` : b <= s0 ? `ends ${span(s0 - b)} before this one starts` : `overlaps it, starting ${span(a - s0)} ${a < s0 ? 'earlier' : 'later'}`));
+      if (n.likely_same) how.appendChild(el('small', null, 'about the same length, minutes apart: looks like the same session'));
+      how.className = 'val'; how.style.fontFamily = 'inherit'; how.style.fontSize = '13px';
+      tr.appendChild(how);
+      const act = el('td', 'num');
+      if (state.canManage) { const btn = el('button', 'btn small', 'Merge into this one'); btn.type = 'button'; btn.addEventListener('click', () => mergeWith(n)); act.appendChild(btn); }
+      tr.appendChild(act);
+      t.appendChild(tr);
+    }
+    host.appendChild(t);
+  }
+
   function renderCompare() {
     const card = $('compareCard'), host = $('compare'); host.replaceChildren();
     const all = pairs();
@@ -1001,7 +1035,7 @@
   function render() {
     assignColors();
     if (state.pair >= pairs().length) state.pair = state.s.summary.primary ?? 0;
-    renderHeader(); renderTiles(); renderDevices(); renderCompare(); renderAll(); renderSleep(); renderHeartRate(); renderOverTime(); renderRoute(); renderFindings(); renderEdit(); renderMethod();
+    renderHeader(); renderTiles(); renderDevices(); renderNearby(); renderCompare(); renderAll(); renderSleep(); renderHeartRate(); renderOverTime(); renderRoute(); renderFindings(); renderEdit(); renderMethod();
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -1017,6 +1051,10 @@
   async function removeRecording(r) {
     if (!confirm(`Remove ${nameOf(r)} from this session? Its samples are deleted; importing the export again brings them back.`)) return;
     await change(async () => { const res = await api(`/v1/admin/benchmarks/${state.s.id}/recordings/${r.id}`, { method: 'DELETE' }); if (!res.session) { location.href = '/dashboard/benchmarks'; return null; } return res.session; }, 'Removed');
+  }
+  async function mergeWith(n) {
+    if (!confirm(`Merge ${n.ref} into ${state.s.ref}? Its recordings move here and ${n.ref} is removed. To undo, remove the device from this session and import the export again.`)) return;
+    await change(async () => (await api(`/v1/admin/benchmarks/${state.s.id}/merge`, { method: 'POST', body: { other: n.id } })).session, `Merged ${n.ref} into ${state.s.ref}`);
   }
   $('btnSave').addEventListener('click', () => change(() => api(`/v1/admin/benchmarks/${state.s.id}`, { method: 'PATCH', body: { notes: $('notes').value, title: $('fTitle').value, tester: $('fTester').value.trim() || state.s.tester, is_test: $('fTest').checked } }), 'Saved'));
   $('btnDelete').addEventListener('click', async () => {

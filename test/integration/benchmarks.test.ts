@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp, type App } from '../../src/build-app.js';
 import { loadConfig } from '../../src/config.js';
+import { BenchmarksRepo } from '../../src/modules/benchmarks/benchmarks.repo.js';
+import { BenchmarksService } from '../../src/modules/benchmarks/benchmarks.service.js';
 
 /**
  * Device benchmarks: importing what an export's devices recorded, recognising a second upload,
@@ -210,6 +212,81 @@ describe('a night', () => {
     expect(s.summary.pairs[0].rows.find((x: { key: string }) => x.key === 'sleep_latency')).toMatchObject({ reference: 1200, test: 1200, verdict: 'match' });
     expect(s.summary.pairs[0].rows.find((x: { key: string }) => x.key === 'total_sleep')).toMatchObject({ diff: -600, verdict: 'match' });
     expect(s.summary.pairs[0].sleep.sleep_wake_pct).toBeGreaterThan(95);
+  });
+});
+
+describe('one workout recorded as two sessions', () => {
+  // Fitbit logs a walk; the band logs the same walk with a clock 12 minutes out, so the two do not overlap.
+  const FIT = `Fitbit ${run}`, BAND = `LifeOS band ${run}`;
+  const W = T0 + 900_000;
+  const walk = (start: number, end: number) => ({ activity: 'HKWorkoutActivityTypeWalking', start, end, duration: (end - start) / 60, duration_unit: 'min', stats: [], metadata: {}, events: [] });
+  const hr30 = (start: number, n: number) => ({ unit: 'count/min', t0: start, s: Array.from({ length: n }, (_, i) => i * 30), e: Array.from({ length: n }, (_, i) => i * 30 + 30), v: Array.from({ length: n }, (_, i) => 100 + (i % 7)) });
+  let fitRef = '', bandRef = '';
+
+  it('imports them as two sessions and offers each to the other', async () => {
+    const a = await post({ ...body(W, [
+      { source: FIT, logged: true, samples: {}, workout: walk(W, W + 641) },
+      { source: BAND, logged: false, samples: { HKQuantityTypeIdentifierHeartRate: hr30(W, 21) } },
+      phoneRec(W),
+    ]), end: W + 641 });
+    const b = await post({ ...body(W + 729, [
+      { source: BAND, logged: true, samples: { HKQuantityTypeIdentifierHeartRate: hr30(W + 729, 22) }, workout: walk(W + 729, W + 1389) },
+      phoneRec(W + 729),
+    ]), end: W + 1389 });
+    expect([a.statusCode, b.statusCode]).toEqual([201, 201]);
+    fitRef = a.json().session.ref; bandRef = b.json().session.ref;
+    expect(bandRef).not.toBe(fitRef);
+
+    const fit = await get(fitRef);
+    expect(fit.summary).toMatchObject({ pairs: [] });
+    expect(fit.nearby).toHaveLength(1);
+    expect(fit.nearby[0]).toMatchObject({ ref: bandRef, starts_after_s: 729, likely_same: true, devices: [{ label: BAND, tag: 'luna', logged: true }, { tag: 'phone', logged: false }] });
+    expect((await get(bandRef)).nearby[0]).toMatchObject({ ref: fitRef, starts_after_s: -729, likely_same: true });
+  });
+
+  it('does not offer a session where the same device logged another workout', async () => {
+    // The band logs a second walk straight after: next to the first band session, but not the same one.
+    const later = await post({ ...body(W + 1500, [{ source: BAND, logged: true, samples: {}, workout: walk(W + 1500, W + 2100) }]), end: W + 2100 });
+    const laterRef = later.json().session.ref;
+    expect((await get(bandRef)).nearby.map((n: { ref: string }) => n.ref)).toEqual([fitRef]);
+    const refused = await app.inject({ method: 'POST', url: `/v1/admin/benchmarks/${bandRef}/merge`, headers: as('qc'), payload: { other: laterRef } });
+    expect(refused.statusCode).toBe(409);
+    await app.inject({ method: 'DELETE', url: `/v1/admin/benchmarks/${laterRef}`, headers: admin });
+  });
+
+  it('lists the pair in the one-time pass without changing anything', async () => {
+    const service = new BenchmarksService(new BenchmarksRepo(app.db));
+    const pairs = (await service.mergeLikelySame(false)).filter((p) => p.into === fitRef || p.from === fitRef);
+    expect(pairs).toEqual([{ into: fitRef, from: bandRef, starts_after_s: 729, devices: [BAND] }]);
+    expect((await get(bandRef)).ref).toBe(bandRef);
+  });
+
+  it('merges them: the band’s own recording replaces its background samples, and the two are compared', async () => {
+    expect((await app.inject({ method: 'POST', url: `/v1/admin/benchmarks/${fitRef}/merge`, headers: as('biz'), payload: { other: bandRef } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: `/v1/admin/benchmarks/${fitRef}/merge`, headers: as('qc'), payload: { other: fitRef } })).statusCode).toBe(422);
+    const r = await app.inject({ method: 'POST', url: `/v1/admin/benchmarks/${fitRef}/merge`, headers: as('qc'), payload: { other: bandRef } });
+    expect(r.statusCode).toBe(200);
+    const s = r.json().session;
+    expect(r.json().merged).toBe(bandRef);
+    expect(s).toMatchObject({ ref: fitRef, devices: ['fitbit', 'luna', 'phone'], duration_s: 1389, nearby: [] });
+    expect(s.recordings.map((x: { source_name: string; logged: boolean }) => [x.source_name, x.logged])).toEqual([[BAND, true], [FIT, true], [PHONE, false]]);
+    // The band's heart rate from both sessions, each reading once.
+    expect(s.recordings[0].series.heart_rate.v).toHaveLength(43);
+    expect(s.recordings[2].series.steps.v).toHaveLength(4);
+    const pair = s.summary.pairs[0];
+    expect(pair).toMatchObject({ test: s.recordings[0].id, reference: s.recordings[1].id, hr: null });
+    expect(pair.rows.find((x: { key: string }) => x.key === 'start')).toMatchObject({ diff: 729, verdict: 'differs' });
+    expect(s.summary.gaps[0]).toContain('starts 12 min after');
+    expect((await app.inject({ method: 'GET', url: `/v1/admin/benchmarks/${bandRef}`, headers: admin })).statusCode).toBe(404);
+  });
+
+  it('still recognises both recordings when the export is uploaded again', async () => {
+    const candidates = [
+      { key: 'f', kind: 'workout', source: FIT, start: W, end: W + 641 },
+      { key: 'b', kind: 'workout', source: BAND, start: W + 729, end: W + 1389 },
+    ];
+    const check = (await app.inject({ method: 'POST', url: '/v1/admin/benchmarks/check', headers: admin, payload: { tester: TESTER, candidates } })).json();
+    expect(check.groups.map((g: { status: string; session: { ref: string } }) => [g.status, g.session.ref])).toEqual([['imported', fitRef], ['imported', fitRef]]);
   });
 });
 
