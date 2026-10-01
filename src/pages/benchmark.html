@@ -128,7 +128,7 @@
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
-<body data-palette="#E8642A,#2E64E4,#1BAF7A,#4A3AA7,#E87BA4">
+<body data-palette="#E8642A,#2E64E4,#1BAF7A">
 <header class="top">
   <div class="top-inner">
     <div>
@@ -254,9 +254,11 @@
   const REF = decodeURIComponent(location.pathname.split('/').filter(Boolean).pop() || '');
   const HERE = '/dashboard/benchmarks/' + encodeURIComponent(REF);
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  // Luna is always orange; the brands we test against keep their own colour on every page.
-  const TAG_COLORS = { luna: '#E8642A', polar: '#2E64E4', garmin: '#1BAF7A', apple_watch: '#4A3AA7', fitbit: '#E87BA4', phone: '#9E9E9E' };
-  const SPARE = ['#2E64E4', '#1BAF7A', '#4A3AA7', '#E87BA4', '#EDA100'];
+  // Luna is always orange and the phone grey. Whatever Luna is compared with takes blue, then green,
+  // then ink: the only hues that stay clearly apart from orange and from each other as thin lines
+  // (pink, red and yellow do not). Colour is given by role, so the first reference is always blue.
+  const LUNA_COLOR = '#E8642A', PHONE_COLOR = '#9E9E9E';
+  const REFERENCE_COLORS = ['#2E64E4', '#1BAF7A', '#1A1A18', '#7A4FD6'];
   const ACTIVITY = { traditional_strength_training: 'Strength training', functional_strength_training: 'Functional strength', high_intensity_interval_training: 'HIIT', other: 'Other workout' };
   const STAGES = [
     { key: 'awake', label: 'Awake', level: 0, color: '#E8A33D' },
@@ -332,12 +334,11 @@
 
   function assignColors() {
     state.colors = new Map();
-    const used = new Set();
-    for (const r of state.s.recordings) if (TAG_COLORS[r.device_tag] && !used.has(TAG_COLORS[r.device_tag])) { state.colors.set(r.id, TAG_COLORS[r.device_tag]); used.add(TAG_COLORS[r.device_tag]); }
+    let next = 0, lunaUsed = false;
     for (const r of state.s.recordings) {
-      if (state.colors.has(r.id)) continue;
-      const c = SPARE.find((x) => !used.has(x)) || '#737373';
-      state.colors.set(r.id, c); used.add(c);
+      if (r.device_tag === 'luna' && !lunaUsed) { state.colors.set(r.id, LUNA_COLOR); lunaUsed = true; }
+      else if (r.device_tag === 'phone') state.colors.set(r.id, PHONE_COLOR);
+      else state.colors.set(r.id, REFERENCE_COLORS[next++ % REFERENCE_COLORS.length]);
     }
   }
   const legendItem = (color, text, cls) => { const s = el('span'); const i = el('i', cls || null); if (color) i.style.background = color; s.appendChild(i); s.appendChild(document.createTextNode(text)); return s; };
@@ -526,13 +527,19 @@
     meta.appendChild(el('div', null, `Worn by ${s.tester}${s.is_test ? ' · test data' : ''}`));
     meta.appendChild(el('div', null, `Imported ${day(epoch(s.created_at))}${s.uploaded_by ? ' by ' + s.uploaded_by.split('@')[0] : ''}`));
     const hasLuna = s.recordings.some((r) => r.device_tag === 'luna');
+    const gaps = (s.summary && s.summary.gaps) || [];
     const b = $('banner');
+    b.hidden = hasLuna && !gaps.length;
+    b.replaceChildren();
     if (!hasLuna) {
-      b.hidden = false; b.replaceChildren(el('b', null, 'No Luna recording in this session. '));
+      b.appendChild(el('b', null, 'No Luna recording in this session. '));
       b.appendChild(document.createTextNode(s.recordings.filter((r) => r.logged).length > 1
-        ? 'None of the devices is tagged Luna, so they are compared with each other. If one of them is the Luna band, set its brand below.'
-        : 'Only one device logged it, so there is nothing to compare against yet. When a later export has Luna’s recording of the same session, importing it adds Luna here.'));
-    } else b.hidden = true;
+        ? 'None of the devices is tagged Luna, so they are compared with each other. If one of them is the Luna band, set its brand below. '
+        : 'Only one device logged it, so there is nothing to compare against yet. When a later export has Luna’s recording of the same session, importing it adds Luna here. '));
+    } else if (gaps.length) {
+      b.appendChild(el('b', null, pairs().length ? 'Not everything could be compared. ' : 'Nothing to compare here. '));
+    }
+    b.appendChild(document.createTextNode(gaps.join(' ')));
   }
 
   function tile(label, big, small, hero) {
@@ -701,6 +708,7 @@
         const m = r.metrics[key];
         const td = el('td', 'val', m ? value(m.value, m.unit) : '—');
         if (m && m.min !== undefined && m.max !== undefined) td.appendChild(el('small', null, `${value(m.min, m.unit)} to ${value(m.max, m.unit)}`));
+        else if (m && m.approx) td.appendChild(el('small', null, 'estimate: its totals straddle the session'));
         else if (m && m.from === 'samples' && !r.logged) td.appendChild(el('small', null, 'during the session'));
         tr.appendChild(td);
       }
@@ -883,6 +891,8 @@
             for (let i = 0; i < n; i++) {
               const t0 = s.t0 + s.t[i], len = s.d ? s.d[i] : 0, t1 = t0 + len;
               if (t1 < a || t0 > b) continue;
+              // An hourly or daily total says nothing about where in the session it fell.
+              if (len > b - a && (t0 < a || t1 > b)) continue;
               const part = len > 0 ? (Math.min(b, t1) - Math.max(a, t0)) / len : 1;
               if (len > 0 && t0 > pts[pts.length - 1][0]) pts.push([Math.max(a, t0), sum]);
               sum += s.v[i] * part;

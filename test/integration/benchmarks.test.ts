@@ -127,6 +127,14 @@ describe('importing a session', () => {
     expect(s.summary.findings.map((f: { title: string }) => f.title)).toContain('Calories are not comparable');
   });
 
+  it('redoes a stored session whose numbers came from an older version of the analysis', async () => {
+    await app.db.query(`update luna_feedback.benchmark_sessions set summary = jsonb_set(summary - 'gaps', '{version}', '1') where ref = $1`, [ref]);
+    const listed = (await app.inject({ method: 'GET', url: `/v1/admin/benchmarks?tester=${encodeURIComponent(TESTER)}&is_test=true`, headers: admin })).json();
+    expect(listed.items[0].summary).toMatchObject({ version: 2, gaps: [] });
+    await app.db.query(`update luna_feedback.benchmark_sessions set summary = jsonb_set(summary - 'gaps', '{version}', '1') where ref = $1`, [ref]);
+    expect((await get(ref)).summary).toMatchObject({ version: 2, gaps: [] });
+  });
+
   it('lists sessions, filtered by device, tester and kind', async () => {
     const list = async (q: string) => (await app.inject({ method: 'GET', url: `/v1/admin/benchmarks?tester=${encodeURIComponent(TESTER)}&${q}`, headers: as('biz') })).json();
     const all = await list('is_test=true');

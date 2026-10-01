@@ -375,6 +375,18 @@ measured against it.
   after that, awakenings, efficiency and each stage; and epoch by epoch agreement with the
   reference (asleep or awake, stage by stage, kappa, the confusion table).
 
+- A total a device only reports by the hour or by the day (Luna's steps and calories outside a
+  workout) is left out of a session shorter than that; a total pieced together from samples that
+  straddle the session's edges is marked as an estimate.
+- When something cannot be compared, the session says why (`summary.gaps`): a device that did not
+  log the workout itself, or one that wrote no heart rate to Apple Health for that time.
+
+Stored sessions carry the version of the analysis that produced them (`ANALYSIS_VERSION`); when it
+changes they are redone the next time they are listed or opened.
+
+On the charts Luna is orange, the phone grey, and whatever Luna is compared with takes blue, then
+green, then ink: the hues that stay apart from orange as thin lines.
+
 The page's heart rate line uses the same averaging as the sample report it was modelled on (5 s up
 to half an hour, 10 s beyond), on round clock times; "Every reading" shows the raw samples.
 

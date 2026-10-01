@@ -238,6 +238,8 @@ describe('metric names, units and device tags', () => {
     expect(guessTag('LifeOS')).toBe('luna');
     expect(guessTag('Navay’s Apple Watch')).toBe('apple_watch');
     expect(guessTag('Health Sync', { manufacturer: 'Fitbit', name: 'Charge 6' })).toBe('fitbit');
+    // Fitbit's app now writes to Apple Health under this name.
+    expect(guessTag('Google Health')).toBe('fitbit');
     expect(guessTag('Navay’s iPhone', { name: 'iPhone', hardware: 'iPhone16,2' })).toBe('phone');
     expect(guessTag('Some new app')).toBe('other');
   });
@@ -440,7 +442,43 @@ describe('a whole workout session', () => {
     expect(a.summary.findings.map((f) => f.title)).toEqual(['Heart rate tracks the reference', 'Calories are not comparable']);
     expect(a.summary.headline).toMatchObject({ test: 'luna', reference: 'polar', hr: { verdict: 'match' } });
     // The phone's steps: the half of its 20-minute record that falls inside the session.
-    expect(a.metrics.get('i')!.steps).toMatchObject({ value: 500, from: 'samples' });
+    expect(a.metrics.get('i')!.steps).toMatchObject({ value: 500, from: 'samples', approx: true });
+    expect(a.summary.gaps).toEqual([]);
+  });
+
+  it('leaves out totals coarser than the session: an hourly step count, a whole day of calories', () => {
+    // Luna as it writes to Health when it logged no workout: heart rate every 30 s, steps by the hour, calories by the day.
+    const hr30 = { unit: 'count/min', t0: T0, s: Array.from({ length: 40 }, (_, i) => i * 30), e: Array.from({ length: 40 }, (_, i) => i * 30 + 30), v: Array.from({ length: 40 }, (_, i) => 100 + (i % 5)) };
+    const band = make('b', 'luna', { source: 'Luna', logged: false, samples: {
+      HKQuantityTypeIdentifierHeartRate: hr30,
+      HKQuantityTypeIdentifierStepCount: { unit: 'count', t0: T0 - 1800, s: [0], e: [3600], v: [1270] },
+      HKQuantityTypeIdentifierActiveEnergyBurned: { unit: 'kcal', t0: T0 - 40_000, s: [0], e: [86_400], v: [443] },
+    } });
+    const fitbit = make('f', 'fitbit', { source: 'Google Health', logged: true, samples: {}, workout: { ...workout(T0, T0 + 1200, 1.2, 60), stats: [...workout(T0, T0 + 1200, 1.2, 60).stats, { type: 'HKQuantityTypeIdentifierStepCount', unit: 'count', sum: 1500 }] } });
+    const a = analyzeSession([band, fitbit, phone], 'workout');
+    const m = a.metrics.get('b')!;
+    expect(Object.keys(m)).toEqual(['heart_rate']);
+    expect(m.heart_rate).toMatchObject({ n: 40 });
+    // Nothing both of them have, so no side by side, and the page is told why.
+    expect(a.summary.pairs).toEqual([]);
+    expect(a.summary.gaps).toEqual([
+      'Luna did not log this workout itself, so it has no duration, distance or calories for it; only what it wrote to Apple Health during it.',
+      'Google Health wrote no heart rate to Apple Health for this time, so heart rate cannot be compared.',
+    ]);
+  });
+
+  it('compares Luna’s heart rate with a reference even when Luna logged no workout', () => {
+    const hr30 = { unit: 'count/min', t0: T0, s: Array.from({ length: 40 }, (_, i) => i * 30), e: Array.from({ length: 40 }, (_, i) => i * 30 + 30), v: Array.from({ length: 40 }, (_, i) => Math.round(150 + 20 * Math.sin((i * 30 + 15) / 120))) };
+    const band = make('b', 'luna', { source: 'Luna', logged: false, samples: { HKQuantityTypeIdentifierHeartRate: hr30 } });
+    const s = analyzeSession([band, polar], 'workout').summary;
+    expect(s.pairs).toHaveLength(1);
+    expect(s.pairs[0]).toMatchObject({ test: 'b', reference: 'p', hr: { verdict: 'match' } });
+    expect(s.gaps).toEqual(['Luna did not log this workout itself, so it has no duration, distance or calories for it; only what it wrote to Apple Health during it.']);
+  });
+
+  it('says so when only Luna recorded the session', () => {
+    expect(analyzeSession([luna, phone], 'workout').summary.gaps).toEqual(['No other device recorded this workout, so there is nothing to compare Luna with.']);
+    expect(analyzeSession([polar, phone], 'workout').summary.gaps).toEqual([]);
   });
 
   it('takes totals from the device’s own summary and heart rate from its samples', () => {

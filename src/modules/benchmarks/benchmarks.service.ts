@@ -1,7 +1,7 @@
 import type pg from 'pg';
 import { AppError } from '../../lib/errors.js';
 import {
-  analyzeSession, displayOrder, fingerprintOf, groupCandidates, normalizeRecording, overlapShare,
+  ANALYSIS_VERSION, analyzeSession, displayOrder, fingerprintOf, groupCandidates, normalizeRecording, overlapShare,
   type Candidate, type IncomingRecording, type Kind,
 } from './analyze.js';
 import { guessTag, tagLabel } from './metrics.js';
@@ -26,14 +26,23 @@ const iso = (seconds: number) => new Date(seconds * 1000).toISOString();
 export class BenchmarksService {
   constructor(private readonly repo: BenchmarksRepo) {}
 
+  /** Sessions whose numbers were worked out by an older version of the analysis are redone before they are shown. */
+  private async refresh(sessions: SessionRow[]): Promise<boolean> {
+    const stale = sessions.filter((s) => (s.summary as { version?: number }).version !== ANALYSIS_VERSION);
+    for (const s of stale) await this.repo.transaction((c) => this.recompute(c, s.id, s.kind));
+    return stale.length > 0;
+  }
+
   async list(filters: ListFilters) {
-    const [page, facets] = await Promise.all([this.repo.list(filters), this.repo.facets()]);
+    let [page, facets] = await Promise.all([this.repo.list(filters), this.repo.facets()]);
+    if (await this.refresh(page.items)) page = await this.repo.list(filters);
     return { total: page.total, limit: filters.limit, offset: filters.offset, facets, items: page.items.map(sessionDto) };
   }
 
   async get(idOrRef: string) {
-    const session = await this.repo.session(idOrRef);
+    let session = await this.repo.session(idOrRef);
     if (!session) throw AppError.notFound('No benchmark session with that id or reference');
+    if (await this.refresh([session])) session = (await this.repo.session(session.id))!;
     const recordings = await this.repo.recordings(session.id);
     const ordered = displayOrder(recordings.map((r) => ({ tag: r.device_tag, logged: r.logged, row: r }))).map((x) => x.row);
     return { ...sessionDto(session), recordings: ordered.map(recordingDto) };

@@ -205,14 +205,16 @@
   const HERE = '/dashboard/benchmarks';
   const PAGE = 30;
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  // Luna is always orange; the brands we test against keep their own colour on every page.
-  const TAG_COLORS = { luna: '#E8642A', polar: '#2E64E4', garmin: '#1BAF7A', apple_watch: '#4A3AA7', fitbit: '#E87BA4', phone: '#9E9E9E' };
-  const SPARE = ['#2E64E4', '#1BAF7A', '#4A3AA7', '#E87BA4', '#EDA100'];
+  // Luna is always orange and the phone grey; whatever Luna is compared with takes blue, then
+  // green, then ink, the same as on the session page.
+  const LUNA_COLOR = '#E8642A', PHONE_COLOR = '#9E9E9E';
+  const REFERENCE_COLORS = ['#2E64E4', '#1BAF7A', '#1A1A18', '#7A4FD6'];
   const TAG_LABELS = { luna: 'Luna', polar: 'Polar', garmin: 'Garmin', fitbit: 'Fitbit', apple_watch: 'Apple Watch', whoop: 'Whoop', oura: 'Oura', ultrahuman: 'Ultrahuman', samsung: 'Samsung', coros: 'Coros', suunto: 'Suunto', wahoo: 'Wahoo', amazfit: 'Amazfit', phone: 'Phone', other: 'Other' };
   const ACTIVITY = { traditional_strength_training: 'Strength training', functional_strength_training: 'Functional strength', high_intensity_interval_training: 'HIIT', other: 'Other workout' };
 
   const tagLabel = (t) => TAG_LABELS[t] || (t.charAt(0).toUpperCase() + t.slice(1).replace(/_/g, ' '));
-  const tagColor = (t, i) => TAG_COLORS[t] || SPARE[i % SPARE.length];
+  /** One colour per device, in the order given. */
+  const colorsFor = (tags) => { let next = 0, luna = false; return tags.map((t) => { if (t === 'luna' && !luna) { luna = true; return LUNA_COLOR; } if (t === 'phone') return PHONE_COLOR; return REFERENCE_COLORS[next++ % REFERENCE_COLORS.length]; }); };
   const activityLabel = (key) => { if (!key) return 'Workout'; if (ACTIVITY[key]) return ACTIVITY[key]; const s = key.replace(/_/g, ' '); return s.charAt(0).toUpperCase() + s.slice(1); };
   const hkActivity = (id) => activityLabel(String(id || '').replace('HKWorkoutActivityType', '').replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2').toLowerCase());
   /** A moment in the wearer's own time zone, from epoch seconds and the offset the export wrote. */
@@ -231,7 +233,7 @@
     return b;
   }
 
-  const devChip = (tag, text, i, background) => { const c = el('span', 'dev' + (background ? ' bg' : '')); const sw = el('i'); sw.style.background = tagColor(tag, i); c.appendChild(sw); c.appendChild(document.createTextNode(text)); return c; };
+  const devChip = (color, text, background) => { const c = el('span', 'dev' + (background ? ' bg' : '')); const sw = el('i'); sw.style.background = color; c.appendChild(sw); c.appendChild(document.createTextNode(text)); return c; };
 
   // ---------------------------------------------------------------------------------------------
   // The list
@@ -244,7 +246,10 @@
     const h = s.summary && s.summary.headline;
     if (!h || (!h.hr && !h.sleep && !(h.rows || []).length)) {
       const logged = ((s.summary && s.summary.recordings) || []).filter((r) => r.logged).length;
-      box.appendChild(el('span', 'tertiary', logged > 1 ? 'Nothing comparable' : 'One device logged it, nothing to compare'));
+      const why = el('span', 'tertiary', logged > 1 ? 'Nothing comparable' : 'One device logged it, nothing to compare');
+      const gaps = (s.summary && s.summary.gaps) || [];
+      if (gaps.length) why.title = gaps.join(' ');
+      box.appendChild(why);
       return box;
     }
     if (h.hr) {
@@ -290,8 +295,8 @@
       tr.appendChild(el('td', 'num', fmtDur(s.duration_s)));
       const dev = el('td');
       const recs = (s.summary && s.summary.recordings) || [];
-      if (recs.length) recs.forEach((r, i) => dev.appendChild(devChip(r.tag, r.label === r.source ? tagLabel(r.tag) : r.label, i, !r.logged)));
-      else s.devices.forEach((d, i) => dev.appendChild(devChip(d, tagLabel(d), i)));
+      if (recs.length) { const cols = colorsFor(recs.map((r) => r.tag)); recs.forEach((r, i) => dev.appendChild(devChip(cols[i], r.label === r.source ? tagLabel(r.tag) : r.label, !r.logged))); }
+      else { const cols = colorsFor(s.devices); s.devices.forEach((d, i) => dev.appendChild(devChip(cols[i], tagLabel(d)))); }
       tr.appendChild(dev);
       tr.appendChild(el('td', null, s.tester));
       const ag = el('td'); ag.appendChild(agreement(s)); tr.appendChild(ag);
@@ -431,7 +436,7 @@
       what.appendChild(el('b', null, g.kind === 'sleep' ? 'Sleep' : acts.length ? acts.map(hkActivity).join(' / ') : 'Workout'));
       tr.appendChild(what);
       tr.appendChild(el('td', 'num', fmtDur(g.end - g.start)));
-      const by = el('td'); g.members.forEach((m, i) => { const chip = devChip(m.tag, m.source, i); if (m.status === 'imported') chip.title = 'Already imported'; by.appendChild(chip); }); tr.appendChild(by);
+      const by = el('td'); const cols = colorsFor(g.members.map((m) => m.tag)); g.members.forEach((m, i) => { const chip = devChip(cols[i], m.source); if (m.status === 'imported') chip.title = 'Already imported'; by.appendChild(chip); }); tr.appendChild(by);
       const st = el('td', 'nowrap');
       if (g.status === 'imported') { st.appendChild(el('span', 'pill have', 'Already imported')); }
       else if (g.status === 'adds_device') { st.appendChild(el('span', 'pill adds', 'Adds a device')); }

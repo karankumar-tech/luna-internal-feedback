@@ -53,6 +53,8 @@ export interface MetricValue {
   /** When the maximum was read. */
   max_at?: number;
   n?: number;
+  /** A total pieced together from samples that only partly fall inside the session: an estimate. */
+  approx?: boolean;
   /** summary: the device's own total. samples: added up from its samples. derived: worked out here. */
   from: 'summary' | 'samples' | 'derived';
 }
@@ -179,14 +181,19 @@ export interface Finding {
   detail: string;
 }
 
+/** Bumped when the numbers are worked out differently, so stored sessions are redone when next read. */
+export const ANALYSIS_VERSION = 2;
+
 export interface Summary {
-  version: 1;
+  version: number;
   kind: Kind;
   recordings: { id: string; source: string; tag: string; label: string; logged: boolean }[];
   pairs: Pair[];
   /** Index into pairs of the comparison the page leads with. */
   primary: number | null;
   findings: Finding[];
+  /** Why something a reader would expect to see compared is not: in plain sentences. */
+  gaps: string[];
   zone_labels: string[];
   headline: {
     test: string | null;
@@ -402,17 +409,27 @@ export function bucketMeans(s: Series, from: number, to: number, step: number): 
   return out;
 }
 
-/** A total over [from, to]: an interval sample half inside the window counts half. */
-function sumIn(s: Series, from: number, to: number): { value: number; n: number } {
-  let value = 0, n = 0;
+/**
+ * A total over [from, to]. A sample that straddles an edge counts for the part inside, and marks the
+ * total as an estimate. A sample longer than the session itself (an hourly step count against a
+ * ten-minute walk, a whole day's calories) says nothing about the session and is left out.
+ */
+function sumIn(s: Series, from: number, to: number): { value: number; n: number; approx: boolean } {
+  let value = 0, n = 0, approx = false;
+  const span = to - from;
   for (let i = 0; i < s.t.length; i++) {
     const a = s.t0 + s.t[i]!;
     const length = s.d ? s.d[i]! : 0;
     if (length <= 0) { if (a >= from && a <= to) { value += s.v[i]!; n++; } continue; }
     const overlap = Math.min(to, a + length) - Math.max(from, a);
-    if (overlap > 0) { value += s.v[i]! * (overlap / length); n++; }
+    if (overlap <= 0) continue;
+    if (overlap < length) {
+      if (length > span) continue;
+      approx = true;
+    }
+    value += s.v[i]! * (overlap / length); n++;
   }
-  return { value, n };
+  return { value, n, approx };
 }
 
 function averageIn(s: Series, from: number, to: number): { value: number; min: number; max: number; maxAt: number; n: number } | null {
@@ -421,6 +438,8 @@ function averageIn(s: Series, from: number, to: number): { value: number; min: n
     const a = s.t0 + s.t[i]!;
     const length = s.d ? s.d[i]! : 0;
     if (a + length < from || a > to) continue;
+    // A reading that stands for longer than the session (a daily average) is not a reading of it.
+    if (length > to - from) continue;
     const w = length > 0 ? length : 1;
     const v = s.v[i]!;
     sum += v * w; weight += w; n++;
@@ -549,7 +568,7 @@ export function recordingMetrics(rec: Rec, kind: Kind, window: { start: number; 
     if (s.agg === 'sum') {
       if (metrics[key]) continue;
       const total = sumIn(s, from, to);
-      if (total.n) metrics[key] = { label: s.label, unit: s.unit, agg: 'sum', value: r3(total.value), n: total.n, from: 'samples' };
+      if (total.n) metrics[key] = { label: s.label, unit: s.unit, agg: 'sum', value: r3(total.value), n: total.n, from: 'samples', ...(total.approx ? { approx: true } : {}) };
       continue;
     }
     const a = averageIn(s, from, to);
@@ -849,6 +868,41 @@ function findingsFor(pair: Pair, test: Rec, reference: Rec, hr: Map<string, HrQu
   return out;
 }
 
+/**
+ * What could not be compared, and why. A session with Luna and a reference in it but no heart rate
+ * line for one of them, or no side by side at all, should say so rather than leave a blank.
+ */
+export function gapsFor(recs: Rec[], kind: Kind, pairs: Pair[], hr: Map<string, HrQuality | null>): string[] {
+  const out: string[] = [];
+  const what = kind === 'sleep' ? 'night' : 'workout';
+  const devices = recs.filter((r) => r.tag !== 'phone');
+  const byRank = [...devices].sort((a, b) => Number(b.logged) - Number(a.logged) || referenceRank(a.tag) - referenceRank(b.tag));
+  const test = devices.find((r) => r.tag === TEST_TAG) ?? (devices.length > 1 ? byRank[1] : undefined);
+  const reference = byRank.find((r) => r.id !== test?.id && r.tag !== TEST_TAG);
+  if (!test) return out;
+  if (!reference) {
+    if (test.tag === TEST_TAG) out.push(`No other device recorded this ${what}, so there is nothing to compare ${test.label} with.`);
+    return out;
+  }
+  const pair = pairs.find((p) => p.test === test.id && p.reference === reference.id);
+  for (const r of [test, reference]) {
+    if (!r.logged) out.push(kind === 'sleep'
+      ? `${r.label} did not record this night itself; it only has readings it wrote to Apple Health during it.`
+      : `${r.label} did not log this workout itself, so it has no duration, distance or calories for it; only what it wrote to Apple Health during it.`);
+  }
+  if (kind === 'workout') {
+    const has = (r: Rec) => Boolean(hr.get(r.id));
+    if (!has(test) && !has(reference)) out.push('Neither device wrote heart rate to Apple Health for this time, so there is no heart rate to compare.');
+    else if (!has(reference)) out.push(`${reference.label} wrote no heart rate to Apple Health for this time, so heart rate cannot be compared.`);
+    else if (!has(test)) out.push(`${test.label} wrote no heart rate to Apple Health for this time, so heart rate cannot be compared.`);
+    else if (!pair?.hr) out.push('The two heart rate traces overlap too briefly to compare.');
+  } else if (!pair?.sleep) {
+    const blind = [test, reference].filter((r) => r.logged && r.stages && !r.stages.runs.some((x) => x[2] !== 'in_bed' && x[2] !== 'awake'));
+    for (const r of blind) out.push(`${r.label} only recorded time in bed, so time asleep and stages cannot be compared.`);
+  }
+  return out;
+}
+
 /** The order devices are shown in: the one under test, then the ones that logged the session (best reference first), then background sources. */
 export function displayOrder<T extends { tag: string; logged: boolean }>(recs: T[]): T[] {
   const rank = (r: T) => (r.tag === TEST_TAG ? 0 : r.logged ? 1 : 2);
@@ -897,7 +951,7 @@ export function analyzeSession(recs: Rec[], kind: Kind): {
       };
       // A source that only has background samples is compared when there is a trace to compare;
       // its pocket step count against a watch's workout is not a benchmark.
-      if (pair.hr || pair.sleep || (test.logged && reference.logged && pair.rows.length)) pairs.push(pair);
+      if (pair.hr || pair.sleep || ((test.logged || test.tag === TEST_TAG) && reference.logged && pair.rows.length)) pairs.push(pair);
     }
   }
   const primaryIndex = pairs.findIndex((p) => p.hr || p.sleep);
@@ -911,9 +965,10 @@ export function analyzeSession(recs: Rec[], kind: Kind): {
   return {
     window, metrics, hr, activity,
     summary: {
-      version: 1, kind,
+      version: ANALYSIS_VERSION, kind,
       recordings: displayOrder(recs).map((r) => ({ id: r.id, source: r.source, tag: r.tag, label: r.label, logged: r.logged })),
       pairs, primary, findings,
+      gaps: gapsFor(recs, kind, pairs, hr),
       zone_labels: ZONE_LABELS,
       headline: {
         test: lead ? byId.get(lead.test)!.tag : null,

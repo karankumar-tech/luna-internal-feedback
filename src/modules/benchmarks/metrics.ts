@@ -140,7 +140,7 @@ export const DEVICE_TAGS: { tag: string; label: string; match?: RegExp }[] = [
   { tag: 'luna', label: 'Luna', match: /luna|lifeos|gonoise|noisefit|\bnoise\b/ },
   { tag: 'polar', label: 'Polar', match: /polar/ },
   { tag: 'garmin', label: 'Garmin', match: /garmin|^connect$/ },
-  { tag: 'fitbit', label: 'Fitbit', match: /fitbit/ },
+  { tag: 'fitbit', label: 'Fitbit', match: /fitbit|google health/ },
   { tag: 'apple_watch', label: 'Apple Watch', match: /apple watch|\bwatch\d/ },
   { tag: 'whoop', label: 'Whoop', match: /whoop/ },
   { tag: 'oura', label: 'Oura', match: /oura/ },
