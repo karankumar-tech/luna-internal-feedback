@@ -177,6 +177,9 @@
     </label>
     <label class="field"><span>Device</span><select id="fDevice"><option value="">Any device</option></select></label>
     <label class="field"><span>Tester</span><select id="fTester"><option value="">Anyone</option></select></label>
+    <label class="field"><span>Comparison</span>
+      <select id="fComparable"><option value="">All sessions</option><option value="true">Two or more devices compared</option><option value="false">Nothing to compare</option></select>
+    </label>
     <label class="field"><span>Data</span>
       <select id="fTest"><option value="false">Real only</option><option value="">Real + test</option><option value="true">Test only</option></select>
     </label>
@@ -244,9 +247,13 @@
   function agreement(s) {
     const box = el('span');
     const h = s.summary && s.summary.headline;
-    if (!h || (!h.hr && !h.sleep && !(h.rows || []).length)) {
+    // The headline numbers when there are any; otherwise whatever the two devices do have in
+    // common (a pair with only its average heart rate or its start time still is a comparison).
+    const lead = s.summary && s.summary.pairs && s.summary.pairs[s.summary.primary ?? 0];
+    const rows = h && (h.rows || []).length ? h.rows : ((lead && lead.rows) || []).filter((r) => r.diff !== null && !(h && h.hr && r.key.startsWith('heart_rate')));
+    if (!h || (!h.hr && !h.sleep && !rows.length)) {
       const logged = ((s.summary && s.summary.recordings) || []).filter((r) => r.logged).length;
-      const why = el('span', 'tertiary', logged > 1 ? 'Nothing comparable' : 'One device logged it, nothing to compare');
+      const why = el('span', 'tertiary', (s.summary && s.summary.why) || (logged > 1 ? 'Nothing in common to compare' : 'One device logged it, nothing to compare'));
       const gaps = (s.summary && s.summary.gaps) || [];
       if (gaps.length) why.title = gaps.join(' ');
       box.appendChild(why);
@@ -261,9 +268,9 @@
       box.appendChild(el('span', 'chip', `Asleep/awake ${h.sleep.sleep_wake_pct}%`));
       if (h.sleep.stage_pct !== null) box.appendChild(el('span', 'chip', `Stages ${h.sleep.stage_pct}%`));
     }
-    for (const r of (h.rows || []).slice(0, 3)) {
+    for (const r of rows.slice(0, 3)) {
       const secs = Math.abs(r.diff) < 90 ? `${signed(Math.round(r.diff))} s` : `${signed(Math.round(r.diff / 60))} min`;
-      const text = r.unit === 's' ? `${r.label} ${secs}` : r.pct !== null ? `${r.label} ${signed(r.pct, 1)}%` : `${r.label} ${signed(r.diff)}`;
+      const text = r.unit === 's' || r.unit === 'clock' ? `${r.label} ${secs}` : r.unit === 'bpm' ? `${r.label} ${signed(Math.round(r.diff))} bpm` : r.pct !== null ? `${r.label} ${signed(r.pct, 1)}%` : `${r.label} ${signed(r.diff)}`;
       const c = el('span', 'chip ' + (r.verdict === 'match' || r.verdict === 'close' || r.verdict === 'differs' ? r.verdict : ''), text);
       if (r.verdict === 'not_comparable') c.title = 'Not comparable: the two apps were given different body weights';
       box.appendChild(c);
@@ -277,7 +284,11 @@
     $('listCount').textContent = data.total ? `${data.total} session${data.total === 1 ? '' : 's'}` : '';
     $('totals').textContent = '';
     if (!data.items.length) {
-      host.appendChild(el('div', 'empty', state.offset ? 'No more sessions.' : state.canManage ? 'No sessions yet. Import a health export to add the first one.' : 'No sessions yet.'));
+      const filtered = state.kind || $('fDevice').value || $('fTester').value || $('fComparable').value;
+      host.appendChild(el('div', 'empty', state.offset ? 'No more sessions.'
+        : $('fComparable').value === 'true' ? 'No session here has two devices with something to compare yet.'
+        : filtered ? 'No sessions match these filters.'
+        : state.canManage ? 'No sessions yet. Import a health export to add the first one.' : 'No sessions yet.'));
       $('pager').hidden = true;
       return;
     }
@@ -295,7 +306,19 @@
       tr.appendChild(el('td', 'num', fmtDur(s.duration_s)));
       const dev = el('td');
       const recs = (s.summary && s.summary.recordings) || [];
-      if (recs.length) { const cols = colorsFor(recs.map((r) => r.tag)); recs.forEach((r, i) => dev.appendChild(devChip(cols[i], r.label === r.source ? tagLabel(r.tag) : r.label, !r.logged))); }
+      if (recs.length) {
+        // Who logged the session, as solid chips. A device that only has readings from that time
+        // (Luna's all-day heart rate under someone else's workout) is shown as such, and the phone,
+        // which is under every session, is left to the session page.
+        const cols = colorsFor(recs.map((r) => r.tag));
+        recs.forEach((r, i) => {
+          if (!r.logged && r.tag === 'phone') return;
+          const name = r.label === r.source ? tagLabel(r.tag) : r.label;
+          const chip = devChip(cols[i], r.logged ? name : `${name} · ${r.hr ? 'heart rate only' : 'readings only'}`, !r.logged);
+          if (!r.logged) chip.title = `${name} did not log this ${s.kind === 'sleep' ? 'night' : 'workout'} itself. It only has ${r.hr ? 'the heart rate' : 'the readings'} it wrote to Apple Health during it.`;
+          dev.appendChild(chip);
+        });
+      }
       else { const cols = colorsFor(s.devices); s.devices.forEach((d, i) => dev.appendChild(devChip(cols[i], tagLabel(d)))); }
       tr.appendChild(dev);
       tr.appendChild(el('td', null, s.tester));
@@ -330,6 +353,7 @@
     if ($('fDevice').value) q.set('device', $('fDevice').value);
     if ($('fTester').value) q.set('tester', $('fTester').value);
     if ($('fTest').value) q.set('is_test', $('fTest').value);
+    if ($('fComparable').value) q.set('comparable', $('fComparable').value);
     try {
       const data = await api('/v1/admin/benchmarks?' + q);
       if (my !== inflight) return;
@@ -340,7 +364,7 @@
     } finally { if (my === inflight) $('listCard').classList.remove('loading'); }
   }
   $('kindSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; state.kind = b.dataset.kind; state.offset = 0; for (const x of $('kindSeg').querySelectorAll('button')) x.classList.toggle('on', x === b); load(); });
-  for (const id of ['fDevice', 'fTester', 'fTest']) $(id).addEventListener('change', () => { state.offset = 0; load(); });
+  for (const id of ['fDevice', 'fTester', 'fTest', 'fComparable']) $(id).addEventListener('change', () => { state.offset = 0; load(); });
   $('btnPrev').addEventListener('click', () => { state.offset = Math.max(0, state.offset - PAGE); load(); });
   $('btnNext').addEventListener('click', () => { state.offset += PAGE; load(); });
 
@@ -518,7 +542,7 @@
     state.canManage = Boolean(me && me.permissions && me.permissions.manage_benchmarks);
     $('btnImport').hidden = !state.canManage;
     await load();
-    if (state.canManage && !state.total && !$('fDevice').value && !$('fTester').value && !state.kind) openImport();
+    if (state.canManage && !state.total && !$('fDevice').value && !$('fTester').value && !$('fComparable').value && !state.kind) openImport();
   }
   boot().catch((err) => toast('Could not start: ' + err.message));
 })();

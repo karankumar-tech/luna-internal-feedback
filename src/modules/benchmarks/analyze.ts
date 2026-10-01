@@ -5,7 +5,7 @@
  * Times are seconds since the epoch. "Test" is the device being judged (Luna when it is present),
  * "reference" the one it is measured against.
  */
-import { activityKey, convert, isOnFoot, metricOf, referenceRank, TEST_TAG, type Agg } from './metrics.js';
+import { activityKey, convert, isOnFoot, metricOf, referenceRank, tagLabel, TEST_TAG, type Agg } from './metrics.js';
 
 // ---------------------------------------------------------------------------------------------
 // Shapes
@@ -182,18 +182,21 @@ export interface Finding {
 }
 
 /** Bumped when the numbers are worked out differently, so stored sessions are redone when next read. */
-export const ANALYSIS_VERSION = 2;
+export const ANALYSIS_VERSION = 3;
 
 export interface Summary {
   version: number;
   kind: Kind;
-  recordings: { id: string; source: string; tag: string; label: string; logged: boolean }[];
+  /** hr: the device has a heart rate trace in this session. */
+  recordings: { id: string; source: string; tag: string; label: string; logged: boolean; hr: boolean }[];
   pairs: Pair[];
   /** Index into pairs of the comparison the page leads with. */
   primary: number | null;
   findings: Finding[];
   /** Why something a reader would expect to see compared is not: in plain sentences. */
   gaps: string[];
+  /** When nothing at all is compared: the reason in a few words, for the list. Null when there is a comparison. */
+  why: string | null;
   zone_labels: string[];
   headline: {
     test: string | null;
@@ -936,6 +939,30 @@ export function gapsFor(recs: Rec[], kind: Kind, pairs: Pair[], hr: Map<string, 
   return out;
 }
 
+/**
+ * The same, in a few words, for a session with nothing compared at all. Devices go by brand here
+ * ("Fitbit"), as the list shows them, unless someone gave the device a name of its own.
+ */
+export function whyNothing(recs: Rec[], kind: Kind, hr: Map<string, HrQuality | null>): string {
+  const name = (r: Rec) => (r.label === r.source ? tagLabel(r.tag) : r.label);
+  const what = kind === 'sleep' ? 'night' : 'workout';
+  const devices = recs.filter((r) => r.tag !== 'phone');
+  const logged = devices.filter((r) => r.logged);
+  const luna = devices.find((r) => r.tag === TEST_TAG);
+  const other = [...devices].sort((a, b) => Number(b.logged) - Number(a.logged) || referenceRank(a.tag) - referenceRank(b.tag)).find((r) => r.id !== luna?.id);
+  if (!luna) return logged.length > 1 ? 'Nothing in common to compare' : `Only ${name(logged[0] ?? devices[0] ?? recs[0]!)} recorded it: no Luna`;
+  if (!other) return 'Only Luna recorded it';
+  const parts: string[] = [];
+  for (const r of [luna, other]) if (!r.logged) parts.push(`${name(r)} did not log this ${what}`);
+  if (kind === 'workout') {
+    const has = (r: Rec) => Boolean(hr.get(r.id));
+    if (!has(luna) && !has(other)) parts.push('neither has heart rate');
+    else if (!has(other)) parts.push(`${name(other)} has no heart rate for it`);
+    else if (!has(luna)) parts.push(`${name(luna)} has no heart rate for it`);
+  }
+  return parts.length ? parts.join('; ') : 'Nothing in common to compare';
+}
+
 /** The order devices are shown in: the one under test, then the ones that logged the session (best reference first), then background sources. */
 export function displayOrder<T extends { tag: string; logged: boolean }>(recs: T[]): T[] {
   const rank = (r: T) => (r.tag === TEST_TAG ? 0 : r.logged ? 1 : 2);
@@ -999,9 +1026,10 @@ export function analyzeSession(recs: Rec[], kind: Kind): {
     window, metrics, hr, activity,
     summary: {
       version: ANALYSIS_VERSION, kind,
-      recordings: displayOrder(recs).map((r) => ({ id: r.id, source: r.source, tag: r.tag, label: r.label, logged: r.logged })),
+      recordings: displayOrder(recs).map((r) => ({ id: r.id, source: r.source, tag: r.tag, label: r.label, logged: r.logged, hr: Boolean(hr.get(r.id)) })),
       pairs, primary, findings,
       gaps: gapsFor(recs, kind, pairs, hr),
+      why: pairs.length ? null : whyNothing(recs, kind, hr),
       zone_labels: ZONE_LABELS,
       headline: {
         test: lead ? byId.get(lead.test)!.tag : null,

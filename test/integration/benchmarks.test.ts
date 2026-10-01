@@ -76,7 +76,8 @@ describe('importing a session', () => {
 
     const s = await get(ref);
     expect(s).toMatchObject({ kind: 'workout', activity: 'running', tester: TESTER, is_test: true, duration_s: 1200, uploaded_by: email('qc'), devices: ['phone', 'polar'] });
-    expect(s.summary).toMatchObject({ pairs: [], primary: null });
+    expect(s.summary).toMatchObject({ pairs: [], primary: null, why: 'Only Polar recorded it: no Luna' });
+    expect(s.summary.recordings.map((x: { tag: string; logged: boolean; hr: boolean }) => [x.tag, x.logged, x.hr])).toEqual([['polar', true, true], ['phone', false, false]]);
     const polar = s.recordings[0];
     expect(polar).toMatchObject({ source_name: POLAR, device_tag: 'polar', tag_label: 'Polar', logged: true });
     expect(polar.metrics).toMatchObject({ duration: { value: 1200 }, distance: { value: 3, from: 'summary' }, active_energy: { value: 300 }, pace: { value: 400 } });
@@ -132,9 +133,9 @@ describe('importing a session', () => {
   it('redoes a stored session whose numbers came from an older version of the analysis', async () => {
     await app.db.query(`update luna_feedback.benchmark_sessions set summary = jsonb_set(summary - 'gaps', '{version}', '1') where ref = $1`, [ref]);
     const listed = (await app.inject({ method: 'GET', url: `/v1/admin/benchmarks?tester=${encodeURIComponent(TESTER)}&is_test=true`, headers: admin })).json();
-    expect(listed.items[0].summary).toMatchObject({ version: 2, gaps: [] });
+    expect(listed.items[0].summary).toMatchObject({ version: 3, gaps: [], why: null });
     await app.db.query(`update luna_feedback.benchmark_sessions set summary = jsonb_set(summary - 'gaps', '{version}', '1') where ref = $1`, [ref]);
-    expect((await get(ref)).summary).toMatchObject({ version: 2, gaps: [] });
+    expect((await get(ref)).summary).toMatchObject({ version: 3, gaps: [], why: null });
   });
 
   it('lists sessions, filtered by device, tester and kind', async () => {
@@ -147,6 +148,10 @@ describe('importing a session', () => {
     expect((await list('is_test=true&device=luna')).total).toBe(1);
     expect((await list('is_test=true&device=garmin')).total).toBe(0);
     expect((await list('is_test=true&kind=sleep')).total).toBe(0);
+    // Luna and Polar are compared in it, so it shows under "comparable" and not under its opposite.
+    expect((await list('is_test=true&comparable=true')).total).toBe(1);
+    expect((await list('is_test=true&comparable=false')).total).toBe(0);
+    expect((await app.inject({ method: 'GET', url: '/v1/admin/benchmarks?comparable=maybe', headers: admin })).statusCode).toBe(422);
     expect((await list('is_test=false')).total).toBe(0);
   });
 
@@ -238,7 +243,10 @@ describe('one workout recorded as two sessions', () => {
     expect(bandRef).not.toBe(fitRef);
 
     const fit = await get(fitRef);
-    expect(fit.summary).toMatchObject({ pairs: [] });
+    expect(fit.summary).toMatchObject({ pairs: [], why: 'Luna did not log this workout; Fitbit has no heart rate for it' });
+    // One device logged each, so neither is comparable until they are merged.
+    const lone = (await app.inject({ method: 'GET', url: `/v1/admin/benchmarks?tester=${encodeURIComponent(TESTER)}&is_test=true&comparable=false`, headers: admin })).json();
+    expect(lone.items.map((x: { ref: string }) => x.ref)).toEqual(expect.arrayContaining([fitRef, bandRef]));
     expect(fit.nearby).toHaveLength(1);
     expect(fit.nearby[0]).toMatchObject({ ref: bandRef, starts_after_s: 729, likely_same: true, devices: [{ label: BAND, tag: 'luna', logged: true }, { tag: 'phone', logged: false }] });
     expect((await get(bandRef)).nearby[0]).toMatchObject({ ref: fitRef, starts_after_s: -729, likely_same: true });

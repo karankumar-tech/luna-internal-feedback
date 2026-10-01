@@ -387,6 +387,9 @@ measured against it.
 - A total a device only reports by the hour or by the day (Luna's steps and calories outside a
   workout) is left out of a session shorter than that; a total pieced together from samples that
   straddle the session's edges is marked as an estimate.
+- The list shows who logged each session as solid chips; a device that only has readings from that
+  time (Luna's all-day heart rate under another device's workout) is marked "heart rate only", and
+  a session with nothing compared says why in a few words (`summary.why`).
 - When something cannot be compared, the session says why (`summary.gaps`): a device that did not
   log the workout itself, or one that wrote no heart rate to Apple Health for that time.
 
@@ -401,7 +404,7 @@ to half an hour, 10 s beyond), on round clock times; "Every reading" shows the r
 
 | endpoint | does |
 |---|---|
-| `GET /v1/admin/benchmarks?kind=&device=&tester=&is_test=&limit=&offset=` | sessions, newest first, with each one's comparison summary and the filter values in use |
+| `GET /v1/admin/benchmarks?kind=&device=&tester=&is_test=&comparable=&limit=&offset=` | sessions, newest first, with each one's comparison summary and the filter values in use. `comparable=true` keeps only sessions where two devices have something to compare |
 | `GET /v1/admin/benchmarks/{id or BM-ref}` | one session with every recording's metrics, series, stages and route, and `nearby` sessions it could be merged with |
 | `POST /v1/admin/benchmarks/check` | which workouts and nights from an export are one session, and which are stored |
 | `POST /v1/admin/benchmarks/import` | one session's recordings (201 created, 200 updated or unchanged) |

@@ -461,6 +461,8 @@ describe('a whole workout session', () => {
     expect(m.heart_rate).toMatchObject({ n: 40 });
     // Nothing both of them have, so no side by side, and the page is told why.
     expect(a.summary.pairs).toEqual([]);
+    expect(a.summary.why).toBe('Luna did not log this workout; Fitbit has no heart rate for it');
+    expect(a.summary.recordings.map((r) => [r.tag, r.logged, r.hr])).toEqual([['luna', false, true], ['fitbit', true, false], ['phone', false, false]]);
     expect(a.summary.gaps).toEqual([
       'Luna did not log this workout itself, so it has no duration, distance or calories for it; only what it wrote to Apple Health during it.',
       'Google Health wrote no heart rate to Apple Health for this time, so heart rate cannot be compared.',
@@ -477,8 +479,9 @@ describe('a whole workout session', () => {
   });
 
   it('says so when only Luna recorded the session', () => {
-    expect(analyzeSession([luna, phone], 'workout').summary.gaps).toEqual(['No other device recorded this workout, so there is nothing to compare Luna with.']);
-    expect(analyzeSession([polar, phone], 'workout').summary.gaps).toEqual([]);
+    expect(analyzeSession([luna, phone], 'workout').summary).toMatchObject({ gaps: ['No other device recorded this workout, so there is nothing to compare Luna with.'], why: 'Only Luna recorded it' });
+    expect(analyzeSession([polar, phone], 'workout').summary).toMatchObject({ gaps: [], why: 'Only Polar recorded it: no Luna' });
+    expect(analyzeSession([polar, luna], 'workout').summary.why).toBeNull();
   });
 
   it('takes totals from the device’s own summary and heart rate from its samples', () => {

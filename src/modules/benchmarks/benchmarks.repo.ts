@@ -52,6 +52,8 @@ export interface ListFilters {
   tester?: string;
   /** true = test data only, false = real only, undefined = both. */
   is_test?: boolean;
+  /** true = only sessions where two devices have something to compare; false = only those with nothing. */
+  comparable?: boolean;
   limit: number;
   offset: number;
 }
@@ -98,6 +100,8 @@ export class BenchmarksRepo {
     if (f.device) add('? = any(devices)', f.device);
     if (f.tester) add('tester_key = ?', f.tester.trim().toLowerCase());
     if (f.is_test !== undefined) add('is_test = ?', f.is_test);
+    // A session is comparable when its summary holds at least one test-against-reference pair.
+    if (f.comparable !== undefined) where.push(`(jsonb_typeof(summary->'pairs') = 'array' and summary->'pairs' <> '[]'::jsonb) = ${f.comparable ? 'true' : 'false'}`);
     const cond = where.length ? `where ${where.join(' and ')}` : '';
     const r = await this.db.query<SessionRow & { total: string }>(
       `select ${SESSION_COLS}, count(*) over() as total
