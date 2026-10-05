@@ -616,6 +616,25 @@
     host.hidden = !tiles.length; host.append(...tiles);
   }
 
+  /** Luna writes no distance to Apple Health, so whoever may edit can type in what its app showed. */
+  const canEnterDistance = (r) => state.canManage && !isSleep() && r.logged && r.device_tag === 'luna' && (r.details.manual || !r.metrics.distance);
+  function editDistance(host, r) {
+    const inp = el('input'); inp.type = 'number'; inp.min = '0.01'; inp.max = '1000'; inp.step = '0.01'; inp.placeholder = 'km'; inp.style.width = '90px';
+    inp.setAttribute('aria-label', `Distance for ${nameOf(r)} in km`);
+    if (r.details.manual) inp.value = String(r.details.manual.distance_km);
+    let done = false;
+    const save = () => {
+      if (done) return; done = true;
+      const km = inp.value.trim() === '' ? null : Number(inp.value);
+      if (km === (r.details.manual ? r.details.manual.distance_km : null)) { render(); return; }
+      if (km !== null && !(km >= 0.01 && km <= 1000)) { toast('Enter a distance in km, or leave it empty to clear.'); render(); return; }
+      patchRecording(r.id, { distance_km: km });
+    };
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { done = true; render(); } });
+    inp.addEventListener('blur', save);
+    host.replaceChildren(inp); inp.focus();
+  }
+
   function renderDevices() {
     const host = $('devices'); host.replaceChildren();
     const p = pairs()[state.s.summary.primary ?? 0];
@@ -660,6 +679,11 @@
       const rec = el('td', 'val');
       if (r.logged) { rec.textContent = `${clock(epoch(r.started_at), !isSleep())} to ${clock(epoch(r.ended_at), !isSleep())}`; rec.appendChild(el('small', null, isSleep() ? 'logged the night' : `logged as ${activityLabel(r.activity).toLowerCase()}`)); }
       else { rec.textContent = 'samples only'; rec.appendChild(el('small', null, 'did not log the session itself')); }
+      if (canEnterDistance(r)) {
+        const d = r.details.manual, line = el('small', null, d ? `Distance ${value(d.distance_km, 'km')}, entered by hand ` : 'Wrote no distance to Health ');
+        const b = el('button', 'btn small ghost', d ? 'Edit' : 'Enter distance'); b.type = 'button'; b.addEventListener('click', () => editDistance(line, r)); line.appendChild(b);
+        rec.appendChild(line);
+      }
       tr.appendChild(rec);
       const act = el('td', 'num');
       if (state.canManage && state.s.recordings.length > 1) { const b = el('button', 'btn small ghost', 'Remove'); b.type = 'button'; b.addEventListener('click', () => removeRecording(r)); act.appendChild(b); }
@@ -733,8 +757,13 @@
     for (const r of p.rows) {
       const tr = el('tr');
       const lbl = el('td', 'rowlabel', r.label); if (r.note) lbl.appendChild(el('small', null, r.note)); tr.appendChild(lbl);
-      tr.appendChild(el('td', 'val', r.reference === null ? 'Not recorded' : value(r.reference, r.unit) + at(ref, r.key)));
-      tr.appendChild(el('td', 'val', r.test === null ? 'Not recorded' : value(r.test, r.unit) + at(test, r.key)));
+      const cell = (rec, v) => {
+        const td = el('td', 'val', v === null ? 'Not recorded' : value(v, r.unit) + at(rec, r.key));
+        if (r.key === 'distance' && v === null && canEnterDistance(rec)) { const s = el('small'); const b = el('button', 'btn small ghost', 'Enter distance'); b.type = 'button'; b.addEventListener('click', () => editDistance(s, rec)); s.appendChild(b); td.appendChild(s); }
+        return td;
+      };
+      tr.appendChild(cell(ref, r.reference));
+      tr.appendChild(cell(test, r.test));
       tr.appendChild(el('td', 'val', difference(r)));
       const label = r.verdict === 'only_test' ? `${nameOf(test)} only` : r.verdict === 'only_reference' ? `${nameOf(ref)} only` : VERDICT[r.verdict];
       tr.appendChild(el('td')).appendChild(el('span', 'vd ' + r.verdict, label));
@@ -764,6 +793,7 @@
         const m = r.metrics[key];
         const td = el('td', 'val', m ? value(m.value, m.unit) : '—');
         if (m && m.min !== undefined && m.max !== undefined) td.appendChild(el('small', null, `${value(m.min, m.unit)} to ${value(m.max, m.unit)}`));
+        else if (m && m.from === 'manual') td.appendChild(el('small', null, 'entered by hand'));
         else if (m && m.approx) td.appendChild(el('small', null, 'estimate: its totals straddle the session'));
         else if (m && m.from === 'samples' && !r.logged) td.appendChild(el('small', null, 'during the session'));
         tr.appendChild(td);

@@ -55,8 +55,8 @@ export interface MetricValue {
   n?: number;
   /** A total pieced together from samples that only partly fall inside the session: an estimate. */
   approx?: boolean;
-  /** summary: the device's own total. samples: added up from its samples. derived: worked out here. */
-  from: 'summary' | 'samples' | 'derived';
+  /** summary: the device's own total. samples: added up from its samples. derived: worked out here. manual: typed in by a person. */
+  from: 'summary' | 'samples' | 'derived' | 'manual';
 }
 
 export interface HrQuality {
@@ -90,6 +90,8 @@ export interface Details {
   } | null;
   hr?: HrQuality | null;
   sleep?: { has_stages: boolean } | null;
+  /** Typed in by a person, read off the device's own app, for what it did not write to Apple Health. */
+  manual?: { distance_km: number; by: string | null; at: string } | null;
 }
 
 /** One device's recording, as stored. */
@@ -589,6 +591,9 @@ export function recordingMetrics(rec: Rec, kind: Kind, window: { start: number; 
       if (s.agg === 'sum' && s.sum !== undefined) metrics[s.key] = { label: s.label, unit: s.unit, agg: 'sum', value: s.sum, from: 'summary' };
       else if (s.agg === 'avg' && s.average !== undefined) metrics[s.key] = { label: s.label, unit: s.unit, agg: 'avg', value: s.average, min: s.minimum, max: s.maximum, from: 'summary' };
     }
+    // A distance typed in by hand stands in for the one the device did not write; pace and speed follow from it below.
+    const manual = rec.details.manual?.distance_km;
+    if (manual) metrics.distance = { label: 'Distance', unit: 'km', agg: 'sum', value: manual, from: 'manual' };
   }
   if (kind === 'sleep' && rec.stages) Object.assign(metrics, sleepMetrics(rec.stages, rec.start, rec.end));
 
@@ -823,7 +828,8 @@ export function compareRows(test: Rec, reference: Rec, kind: Kind, m: Map<string
   for (const key of keys) {
     const t = tm[key], r = rm[key];
     const info = (t ?? r)!;
-    add(key, key === 'heart_rate' ? 'Average heart rate' : info.label, info.unit, r?.value, t?.value);
+    const typed = key === 'distance' ? [t?.from === 'manual' ? test.label : null, r?.from === 'manual' ? reference.label : null].filter(Boolean) : [];
+    add(key, key === 'heart_rate' ? 'Average heart rate' : info.label, info.unit, r?.value, t?.value, typed.length ? `${typed.join(' and ')}: entered by hand, not written to Apple Health.` : undefined);
     if (key === 'heart_rate') {
       add('heart_rate_min', 'Minimum heart rate', info.unit, r?.min, t?.min);
       add('heart_rate_max', 'Maximum heart rate', info.unit, r?.max, t?.max);

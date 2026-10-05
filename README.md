@@ -416,7 +416,7 @@ to half an hour, 10 s beyond), on round clock times; "Every reading" shows the r
 | `POST /v1/admin/benchmarks/check` | which workouts and nights from an export are one session, and which are stored |
 | `POST /v1/admin/benchmarks/import` | one session's recordings (201 created, 200 updated or unchanged) |
 | `PATCH /v1/admin/benchmarks/{id}` | title, notes, tester, test flag |
-| `PATCH /v1/admin/benchmarks/{id}/recordings/{rid}` | brand tag and device name; redoes the comparison |
+| `PATCH /v1/admin/benchmarks/{id}/recordings/{rid}` | brand tag and device name, and for a workout Luna logged `distance_km` (typed in from its app, since Luna writes no distance to Apple Health; `null` clears it); redoes the comparison |
 | `POST /v1/admin/benchmarks/{id}/merge` | `{ "other": id or BM-ref }` joins another session into this one |
 | `GET /v1/admin/benchmarks/screenshot-auth` | ImageKit upload credentials for one screenshot |
 | `POST /v1/admin/benchmarks/{id}/screenshots` | `{ file_id, url, name?, width?, height?, size? }` attaches an uploaded image (409 once there are 6) |

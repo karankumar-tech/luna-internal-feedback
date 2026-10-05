@@ -265,6 +265,16 @@ export class BenchmarksRepo {
     );
   }
 
+  /** Sets or clears (null) what a person typed in for a recording. */
+  async setManual(c: Queryable, id: string, manual: Details['manual']): Promise<void> {
+    await c.query(
+      `update luna_feedback.benchmark_recordings
+          set details = case when $2::jsonb is null then details - 'manual' else jsonb_set(details, '{manual}', $2::jsonb) end
+        where id = $1`,
+      [id, manual ? JSON.stringify(manual) : null],
+    );
+  }
+
   /** Every session, oldest first: just enough to find ones that sit close together. */
   async allSpans(): Promise<{ id: string; ref: string }[]> {
     const r = await this.db.query<{ id: string; ref: string }>(`select id, ref from luna_feedback.benchmark_sessions order by started_at, ref_no`);

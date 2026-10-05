@@ -196,6 +196,41 @@ describe('importing a session', () => {
   });
 });
 
+describe('a distance entered by hand for Luna', () => {
+  it('stands in for the distance Luna did not write, gives pace and speed, and can be cleared', async () => {
+    const t = T0 + 200_000;
+    const bare = { ...lunaRec(t), workout: { ...workout(t + 10, t + 1190, 0, 110), stats: [{ type: 'HKQuantityTypeIdentifierActiveEnergyBurned', unit: 'kcal', sum: 110 }] } };
+    const ref = (await post(body(t, [polarRec(t), bare]))).json().session.ref;
+    const before = await get(ref);
+    const luna = before.recordings.find((x: { source_name: string }) => x.source_name === LUNA);
+    const polar = before.recordings.find((x: { source_name: string }) => x.source_name === POLAR);
+    expect(luna.metrics.distance).toBeUndefined();
+    const url = `/v1/admin/benchmarks/${ref}/recordings/${luna.id}`;
+
+    // The source took the Garmin tag an earlier session left it with; tagging it Luna in the same change is enough.
+    const r = await app.inject({ method: 'PATCH', url, headers: as('qc'), payload: { device_tag: 'luna', distance_km: 2.9 } });
+    expect(r.statusCode).toBe(200);
+    const after = r.json().recordings.find((x: { id: string }) => x.id === luna.id);
+    expect(after.metrics.distance).toMatchObject({ value: 2.9, from: 'manual' });
+    expect(after.metrics.pace).toMatchObject({ value: Math.round(1180 / 2.9), from: 'derived' });
+    expect(after.metrics.speed).toBeDefined();
+    expect(after.details.manual).toMatchObject({ distance_km: 2.9, by: email('qc') });
+    const row = r.json().summary.pairs[0].rows.find((x: { key: string }) => x.key === 'distance');
+    expect(row).toMatchObject({ reference: 3, test: 2.9 });
+    expect(row.note).toContain('entered by hand');
+
+    // Only for a workout Luna logged, only by a role that may change benchmarks, and only a real distance.
+    expect((await app.inject({ method: 'PATCH', url: `/v1/admin/benchmarks/${ref}/recordings/${polar.id}`, headers: as('qc'), payload: { distance_km: 3 } })).statusCode).toBe(422);
+    expect((await app.inject({ method: 'PATCH', url, headers: as('biz'), payload: { distance_km: 3 } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PATCH', url, headers: as('qc'), payload: { distance_km: -1 } })).statusCode).toBe(422);
+
+    const cleared = (await app.inject({ method: 'PATCH', url, headers: as('qc'), payload: { distance_km: null } })).json().recordings.find((x: { id: string }) => x.id === luna.id);
+    expect(cleared.metrics.distance).toBeUndefined();
+    expect(cleared.metrics.pace).toBeUndefined();
+    expect(cleared.details.manual).toBeUndefined();
+  });
+});
+
 describe('a night', () => {
   const V = 'HKCategoryValueSleepAnalysis';
   const N = T0 + 300_000, H = 3600;

@@ -116,7 +116,9 @@ const PatchBody = z.object({
 const RecordingPatch = z.object({
   device_tag: Tag.optional(),
   device_label: z.string().trim().max(80).transform((v) => v || null).nullable().optional(),
-}).strict().refine((b) => b.device_tag !== undefined || b.device_label !== undefined, { message: 'send device_tag or device_label' });
+  /** Luna only: the distance its app showed, typed in by hand. null clears it. */
+  distance_km: Num.min(0.01).max(1000).transform((v) => Math.round(v * 1000) / 1000).nullable().optional(),
+}).strict().refine((b) => b.device_tag !== undefined || b.device_label !== undefined || b.distance_km !== undefined, { message: 'send device_tag, device_label or distance_km' });
 
 const ScreenshotBody = z.object({
   file_id: z.string().trim().min(1).max(120),
@@ -158,7 +160,7 @@ export function registerBenchmarkRoutes(app: FastifyInstance, deps: { service: B
   app.patch<{ Params: { id: string } }>('/v1/admin/benchmarks/:id', manage, async (req) => service.update(req.params.id, parse(PatchBody, req.body)));
 
   app.patch<{ Params: { id: string; rid: string } }>('/v1/admin/benchmarks/:id/recordings/:rid', manage, async (req) =>
-    service.updateRecording(req.params.id, req.params.rid, parse(RecordingPatch, req.body)));
+    service.updateRecording(req.params.id, req.params.rid, parse(RecordingPatch, req.body), actorOf(req)));
 
   /** Joins another session into this one: one workout that two devices recorded with different clocks. */
   app.post<{ Params: { id: string } }>('/v1/admin/benchmarks/:id/merge', manage, async (req) => {
