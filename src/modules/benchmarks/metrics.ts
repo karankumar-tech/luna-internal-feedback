@@ -150,6 +150,7 @@ export const DEVICE_TAGS: { tag: string; label: string; match?: RegExp }[] = [
   { tag: 'suunto', label: 'Suunto', match: /suunto/ },
   { tag: 'wahoo', label: 'Wahoo', match: /wahoo/ },
   { tag: 'amazfit', label: 'Amazfit', match: /amazfit|zepp/ },
+  { tag: 'strava', label: 'Strava', match: /strava/ },
   { tag: 'phone', label: 'Phone', match: /iphone|ipad/ },
   { tag: 'other', label: 'Other' },
 ];
@@ -160,7 +161,7 @@ export const TEST_TAG = 'luna';
  * Which device the others are measured against, best first. Chest straps and sports watches lead;
  * the phone comes last because it only counts steps from a pocket.
  */
-const REFERENCE_ORDER = ['polar', 'garmin', 'coros', 'suunto', 'wahoo', 'apple_watch', 'whoop', 'oura', 'fitbit', 'samsung', 'ultrahuman', 'amazfit', 'other', 'phone'];
+const REFERENCE_ORDER = ['polar', 'garmin', 'coros', 'suunto', 'wahoo', 'apple_watch', 'whoop', 'oura', 'fitbit', 'samsung', 'ultrahuman', 'amazfit', 'strava', 'other', 'phone'];
 
 export function referenceRank(tag: string): number {
   const i = REFERENCE_ORDER.indexOf(tag);

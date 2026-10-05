@@ -253,6 +253,7 @@ describe('metric names, units and device tags', () => {
     expect(guessTag('Health Sync', { manufacturer: 'Fitbit', name: 'Charge 6' })).toBe('fitbit');
     // Fitbit's app now writes to Apple Health under this name.
     expect(guessTag('Google Health')).toBe('fitbit');
+    expect(guessTag('Strava')).toBe('strava');
     expect(guessTag('Navay’s iPhone', { name: 'iPhone', hardware: 'iPhone16,2' })).toBe('phone');
     expect(guessTag('Some new app')).toBe('other');
   });
