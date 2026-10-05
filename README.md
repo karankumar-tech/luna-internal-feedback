@@ -355,6 +355,13 @@ logged a workout in both is never offered: that is two workouts. `npm run benchm
 lists every stored pair that looks like this (different devices, starting within 20 minutes of each
 other, similar length) and merges them with `-- --apply`; it was written for a one-time clean-up.
 
+**Screenshots.** A session can carry up to 6 screenshots (what each device's app showed for that
+workout or night), added from its page by button or by dropping images on the card. The page shrinks
+each to 1600 px, uploads it straight to ImageKit with a short-lived signature (folder
+`<IMAGEKIT_FOLDER>/benchmarks`) and then attaches it to the session
+(`benchmark_sessions.screenshots`, migration `20261005000000_benchmark_screenshots.sql`). Removing
+one, or deleting the session, deletes the image; a merge keeps both sessions' screenshots up to 6.
+
 **What is stored** (migration `20261002000000_benchmarks.sql`): `benchmark_sessions` (`BM-0007`, a
 workout or a night for one tester, with the comparison in `summary`) and `benchmark_recordings`
 (one per Apple Health source: its totals in `metrics`, samples over time in `series`, sleep
@@ -411,6 +418,9 @@ to half an hour, 10 s beyond), on round clock times; "Every reading" shows the r
 | `PATCH /v1/admin/benchmarks/{id}` | title, notes, tester, test flag |
 | `PATCH /v1/admin/benchmarks/{id}/recordings/{rid}` | brand tag and device name; redoes the comparison |
 | `POST /v1/admin/benchmarks/{id}/merge` | `{ "other": id or BM-ref }` joins another session into this one |
+| `GET /v1/admin/benchmarks/screenshot-auth` | ImageKit upload credentials for one screenshot |
+| `POST /v1/admin/benchmarks/{id}/screenshots` | `{ file_id, url, name?, width?, height?, size? }` attaches an uploaded image (409 once there are 6) |
+| `DELETE /v1/admin/benchmarks/{id}/screenshots/{file_id}` | detaches a screenshot and deletes the image |
 | `DELETE /v1/admin/benchmarks/{id}` and `…/recordings/{rid}` | remove a session, or one device from it |
 
 All under `/v1/admin`, so a dashboard session or the admin key is needed: this is testers' health

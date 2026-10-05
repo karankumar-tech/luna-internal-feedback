@@ -7,6 +7,18 @@ export interface RecordingHead { id: string; session_id: string; source_name: st
 
 type Queryable = Pick<pg.PoolClient, 'query'> | Db;
 
+/** An image attached to a session, hosted on ImageKit. */
+export interface BenchmarkScreenshot {
+  file_id: string;
+  url: string;
+  name: string | null;
+  width: number | null;
+  height: number | null;
+  size: number | null;
+  added_by: string | null;
+  added_at: string;
+}
+
 export interface SessionRow {
   id: string;
   ref: string;
@@ -21,6 +33,7 @@ export interface SessionRow {
   devices: string[];
   summary: Summary | Record<string, never>;
   notes: string | null;
+  screenshots: BenchmarkScreenshot[];
   is_test: boolean;
   uploaded_by: string | null;
   created_at: Date;
@@ -59,7 +72,7 @@ export interface ListFilters {
 }
 
 const SESSION_COLS = `id, ref, kind, activity, title, tester, extract(epoch from started_at)::float8 as started_at,
-  extract(epoch from ended_at)::float8 as ended_at, utc_offset_min, devices, summary, notes, is_test, uploaded_by, created_at, updated_at`;
+  extract(epoch from ended_at)::float8 as ended_at, utc_offset_min, devices, summary, notes, screenshots, is_test, uploaded_by, created_at, updated_at`;
 const RECORDING_COLS = `id, session_id, source_name, source_version, device_tag, device_label, logged, fingerprint, activity,
   extract(epoch from started_at)::float8 as started_at, extract(epoch from ended_at)::float8 as ended_at,
   metrics, series, stages, route, details`;
@@ -272,6 +285,35 @@ export class BenchmarksRepo {
 
   async setNotes(c: Queryable, sessionId: string, notes: string | null): Promise<void> {
     await c.query(`update luna_feedback.benchmark_sessions set notes = $2, updated_at = now() where id = $1`, [sessionId, notes]);
+  }
+
+  /** Attaches one more screenshot. False when the session is full or already holds that file. */
+  async addScreenshot(sessionId: string, shot: BenchmarkScreenshot, max: number): Promise<boolean> {
+    const r = await this.db.query(
+      `update luna_feedback.benchmark_sessions
+          set screenshots = screenshots || $2::jsonb, updated_at = now()
+        where id = $1 and jsonb_array_length(screenshots) < $3
+          and not screenshots @> jsonb_build_array(jsonb_build_object('file_id', $4::text))`,
+      [sessionId, JSON.stringify([shot]), max, shot.file_id],
+    );
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  /** Detaches a screenshot. False when the session does not hold that file. */
+  async removeScreenshot(sessionId: string, fileId: string): Promise<boolean> {
+    const r = await this.db.query(
+      `update luna_feedback.benchmark_sessions
+          set screenshots = coalesce((select jsonb_agg(x order by ord) from jsonb_array_elements(screenshots) with ordinality as e(x, ord)
+                                       where x->>'file_id' <> $2), '[]'::jsonb),
+              updated_at = now()
+        where id = $1 and screenshots @> jsonb_build_array(jsonb_build_object('file_id', $2::text))`,
+      [sessionId, fileId],
+    );
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  async setScreenshots(c: Queryable, sessionId: string, shots: BenchmarkScreenshot[]): Promise<void> {
+    await c.query(`update luna_feedback.benchmark_sessions set screenshots = $2, updated_at = now() where id = $1`, [sessionId, JSON.stringify(shots)]);
   }
 
   async deleteRecording(c: Queryable, id: string): Promise<void> {

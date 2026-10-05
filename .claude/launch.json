@@ -1,6 +1,7 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "api", "runtimeExecutable": "npx", "runtimeArgs": ["tsx", "src/server.ts"], "port": 3000 }
+    { "name": "api", "runtimeExecutable": "npx", "runtimeArgs": ["tsx", "src/server.ts"], "port": 3000 },
+    { "name": "api-local-db", "runtimeExecutable": "env", "runtimeArgs": ["SUPABASE_DB_URL=postgres://postgres:localtest@127.0.0.1:55432/luna", "PORT=3055", "npx", "tsx", "src/server.ts"], "port": 3055 }
   ]
 }

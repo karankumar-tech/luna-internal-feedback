@@ -122,9 +122,18 @@
   .edit-actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
   .check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--gray-dark); cursor: pointer; }
   .method { font-size: 13px; line-height: 20px; color: var(--gray-dark); } .method li { margin-bottom: 4px; } .method b { color: var(--black); font-weight: 500; }
+  .shots { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+  .shot { position: relative; border: 1px solid var(--border-warm); border-radius: var(--r-l); overflow: hidden; background: var(--bg); min-width: 0; }
+  .shot a { display: block; text-decoration: none; }
+  .shot img { display: block; width: 100%; aspect-ratio: 9 / 16; object-fit: cover; object-position: top; background: var(--brief); }
+  .shot .cap { padding: 6px 8px; font-size: 11px; line-height: 15px; color: var(--gray-dark); background: var(--white); border-top: 1px solid var(--border-warm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .shot .rm { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: rgba(0,0,0,.72); color: var(--white); font-size: 15px; line-height: 24px; cursor: pointer; }
+  .shot .rm:hover, .shot .rm:focus-visible { background: var(--crit); outline: none; }
+  .shots-drop { border: 1px dashed var(--gray-mid); border-radius: var(--r-l); padding: 22px 16px; text-align: center; color: var(--gray-dark); font-size: 13px; }
+  #shotsCard.over { border-color: var(--black); box-shadow: 0 0 0 1px var(--black); }
   .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--black); color: var(--white); padding: 8px 14px; border-radius: var(--r-l); font-size: 13px; z-index: 40; display: none; }
   .loading { opacity: .45; pointer-events: none; }
-  @media (max-width: 980px) { .grid2, .multi, .findings, .edit { grid-template-columns: 1fr; } .tiles { grid-template-columns: 1fr 1fr; } .stats { grid-template-columns: 1fr; } }
+  @media (max-width: 980px) { .shots { grid-template-columns: repeat(3, minmax(0, 1fr)); } .grid2, .multi, .findings, .edit { grid-template-columns: 1fr; } .tiles { grid-template-columns: 1fr 1fr; } .stats { grid-template-columns: 1fr; } }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
@@ -223,6 +232,19 @@
   <section class="card" id="findingsCard" hidden>
     <div class="card-head"><div><h2>What stands out</h2><div class="sub">Worked out from the recordings by fixed rules, not by a model.</div></div></div>
     <div class="findings" id="findings"></div>
+  </section>
+
+  <section class="card" id="shotsCard" hidden>
+    <div class="card-head">
+      <div><h2>Screenshots</h2><div class="sub" id="shotsSub"></div></div>
+      <div class="card-tools">
+        <span class="tertiary" style="font-size:12px" id="shotsStatus" role="status"></span>
+        <button class="btn small" id="btnShots" type="button">Add screenshots</button>
+        <input type="file" id="shotsFile" accept="image/jpeg,image/png,image/webp,image/heic" multiple hidden>
+      </div>
+    </div>
+    <div class="shots" id="shots"></div>
+    <div class="shots-drop" id="shotsEmpty" hidden>No screenshots yet. Drop images here, or use Add screenshots.</div>
   </section>
 
   <section class="card" id="editCard" hidden>
@@ -1023,6 +1045,97 @@
     li('Times.', `Shown in the wearer's time zone (UTC${offset() >= 0 ? '+' : '−'}${pad(Math.floor(Math.abs(offset()) / 60))}:${pad(Math.abs(offset()) % 60)}).`);
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // Screenshots: uploaded straight to ImageKit with a short-lived signature, then attached here.
+  // ---------------------------------------------------------------------------------------------
+  const MAX_SHOTS = 6;
+  const shotsOf = () => state.s.screenshots || [];
+  let shotsBusy = false;
+
+  function renderShots() {
+    const shots = shotsOf(), full = shots.length >= MAX_SHOTS;
+    $('shotsCard').hidden = !shots.length && !state.canManage;
+    $('shotsSub').textContent = `What each device's app showed for this session. ${shots.length} of ${MAX_SHOTS}${shots.length ? ' · click one to open it full size' : ''}.`;
+    $('btnShots').hidden = !state.canManage;
+    $('btnShots').disabled = full || shotsBusy;
+    $('btnShots').title = full ? `A session holds at most ${MAX_SHOTS} screenshots. Remove one to add another.` : '';
+    $('shotsEmpty').hidden = shots.length > 0;
+    const host = $('shots'); host.hidden = !shots.length; host.replaceChildren();
+    for (const sc of shots) {
+      const box = el('div', 'shot');
+      const a = el('a'); a.href = sc.url; a.target = '_blank'; a.rel = 'noopener';
+      const img = el('img'); img.alt = sc.name || 'screenshot'; img.loading = 'lazy';
+      try { const u = new URL(sc.url); u.searchParams.set('tr', 'w-480,q-80'); img.src = u.toString(); } catch { img.src = sc.url; }
+      a.appendChild(img);
+      const cap = el('div', 'cap', sc.name || 'screenshot');
+      cap.title = [sc.name, sc.added_by && 'added by ' + sc.added_by.split('@')[0], sc.added_at && day(epoch(sc.added_at))].filter(Boolean).join(' · ');
+      a.appendChild(cap); box.appendChild(a);
+      if (state.canManage) {
+        const rm = el('button', 'rm', '×'); rm.type = 'button'; rm.setAttribute('aria-label', `Remove ${sc.name || 'screenshot'}`);
+        rm.addEventListener('click', () => removeShot(sc));
+        box.appendChild(rm);
+      }
+      host.appendChild(box);
+    }
+  }
+
+  /** Longest side at most 1600 px, as JPEG: what is uploaded is a few hundred KB whatever the phone made. */
+  async function shrink(file) {
+    try {
+      const bmp = await createImageBitmap(file);
+      const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+      if (k === 1 && file.size <= 600 * 1024) return file;
+      const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
+      const blob = await new Promise((done) => c.toBlob(done, 'image/jpeg', 0.85));
+      return blob || file;
+    } catch { return file; } // A format this browser cannot draw (HEIC outside Safari) goes up as it is.
+  }
+
+  async function uploadShot(file) {
+    const auth = await api('/v1/admin/benchmarks/screenshot-auth');
+    const blob = await shrink(file);
+    if (blob.size > auth.max_bytes) throw new Error(`${file.name} is larger than ${Math.round(auth.max_bytes / 1048576)} MB`);
+    const name = blob === file ? file.name : file.name.replace(/\.[^.]+$/, '') + '.jpg';
+    const fd = new FormData();
+    fd.append('file', blob, name); fd.append('fileName', name); fd.append('publicKey', auth.public_key);
+    fd.append('signature', auth.signature); fd.append('expire', String(auth.expire)); fd.append('token', auth.token);
+    fd.append('folder', auth.folder); fd.append('useUniqueFileName', 'true'); fd.append('tags', auth.tags.join(','));
+    fd.append('transformation', JSON.stringify(auth.transformation));
+    const r = await fetch(auth.upload_url, { method: 'POST', body: fd });
+    const up = await r.json().catch(() => null);
+    if (!r.ok || !up || !up.fileId) throw new Error((up && up.message) || `upload failed (HTTP ${r.status})`);
+    return api(`/v1/admin/benchmarks/${state.s.id}/screenshots`, { method: 'POST', body: { file_id: up.fileId, url: up.url, name: file.name.slice(0, 200), width: up.width || null, height: up.height || null, size: up.size || null } });
+  }
+
+  async function addShots(files) {
+    if (!state.canManage || shotsBusy) return;
+    let list = [...files].filter((f) => /^image\//.test(f.type) || /\.(heic|jpe?g|png|webp)$/i.test(f.name));
+    if (!list.length) { toast('Only images can be added as screenshots.'); return; }
+    const room = MAX_SHOTS - shotsOf().length;
+    if (room <= 0) { toast(`This session already has ${MAX_SHOTS} screenshots. Remove one to add another.`); return; }
+    const left = list.length - room;
+    list = list.slice(0, room);
+    shotsBusy = true; let added = 0;
+    try {
+      for (let i = 0; i < list.length; i++) {
+        $('shotsStatus').textContent = `Uploading ${i + 1} of ${list.length}…`; renderShots();
+        state.s = { ...state.s, screenshots: (await uploadShot(list[i])).screenshots }; added++;
+      }
+      toast(left > 0 ? `Added ${added}. ${left} left out: a session holds at most ${MAX_SHOTS}.` : added === 1 ? 'Screenshot added' : `${added} screenshots added`);
+    } catch (err) {
+      toast(err.status === 403 ? 'Your role cannot change benchmarks.' : 'Could not add the screenshot: ' + err.message);
+    } finally { shotsBusy = false; $('shotsStatus').textContent = ''; renderShots(); }
+  }
+
+  async function removeShot(sc) {
+    if (!confirm(`Remove ${sc.name || 'this screenshot'} from ${state.s.ref}? The image is deleted.`)) return;
+    try {
+      const s = await api(`/v1/admin/benchmarks/${state.s.id}/screenshots/${encodeURIComponent(sc.file_id)}`, { method: 'DELETE' });
+      state.s = { ...state.s, screenshots: s.screenshots }; renderShots(); toast('Screenshot removed');
+    } catch (err) { toast('Could not remove it: ' + err.message); }
+  }
+
   function renderEdit() {
     const s = state.s;
     $('editCard').hidden = !state.canManage;
@@ -1035,7 +1148,7 @@
   function render() {
     assignColors();
     if (state.pair >= pairs().length) state.pair = state.s.summary.primary ?? 0;
-    renderHeader(); renderTiles(); renderDevices(); renderNearby(); renderCompare(); renderAll(); renderSleep(); renderHeartRate(); renderOverTime(); renderRoute(); renderFindings(); renderEdit(); renderMethod();
+    renderHeader(); renderTiles(); renderDevices(); renderNearby(); renderCompare(); renderAll(); renderSleep(); renderHeartRate(); renderOverTime(); renderRoute(); renderFindings(); renderShots(); renderEdit(); renderMethod();
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -1061,6 +1174,12 @@
     if (!confirm(`Delete ${state.s.ref} and everything the devices recorded in it? This cannot be undone here; importing the export again recreates it.`)) return;
     try { await api(`/v1/admin/benchmarks/${state.s.id}`, { method: 'DELETE' }); location.href = '/dashboard/benchmarks'; } catch (err) { toast('Could not delete: ' + err.message); }
   });
+  $('btnShots').addEventListener('click', () => $('shotsFile').click());
+  $('shotsFile').addEventListener('change', (e) => { const files = [...e.target.files]; e.target.value = ''; addShots(files); });
+  const hasFiles = (e) => state.canManage && e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+  $('shotsCard').addEventListener('dragover', (e) => { if (!hasFiles(e)) return; e.preventDefault(); $('shotsCard').classList.add('over'); });
+  $('shotsCard').addEventListener('dragleave', (e) => { if (!$('shotsCard').contains(e.relatedTarget)) $('shotsCard').classList.remove('over'); });
+  $('shotsCard').addEventListener('drop', (e) => { if (!hasFiles(e)) return; e.preventDefault(); $('shotsCard').classList.remove('over'); addShots(e.dataTransfer.files); });
   $('pairSel').addEventListener('change', () => { state.pair = Number($('pairSel').value) || 0; renderCompare(); renderAll(); renderHeartRate(); renderSleep(); });
   $('hrView').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; state.hrView = b.dataset.view; renderHeartRate(); });
   $('hrDetail').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; state.hrDetail = b.dataset.detail; renderHeartRate(); });

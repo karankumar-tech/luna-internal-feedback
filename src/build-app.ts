@@ -214,7 +214,12 @@ export function buildApp(opts: BuildOptions = {}): App {
   registerAttentionRoutes(app, { service: attention, feedback: service });
   registerHomeRoutes(app, { service: new HomeService(new HomeRepo(db, config.APP_TIMEZONE), { categories, attention, timeZone: config.APP_TIMEZONE }) });
 
-  registerBenchmarkRoutes(app, { service: new BenchmarksService(new BenchmarksRepo(db)) });
+  const benchmarks = new BenchmarksService(new BenchmarksRepo(db));
+  if (imagekit) benchmarks.setScreenshotSupport({ isOurUrl: (u) => imagekit.isOurUrl(u), deleteFile: (id) => imagekit.deleteFile(id) });
+  registerBenchmarkRoutes(app, {
+    service: benchmarks,
+    uploads: imagekit ? { publicKey: imagekit.publicKey, urlEndpoint: imagekit.urlEndpoint, folder: imagekit.folder, maxBytes: config.SCREENSHOT_MAX_BYTES, maxCount: config.SCREENSHOT_MAX_COUNT, authParams: () => imagekit.authParams() } : null,
+  });
 
   app.addHook('onClose', async () => {
     if (!opts.db) await db.end();

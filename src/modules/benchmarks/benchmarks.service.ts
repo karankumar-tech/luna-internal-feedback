@@ -5,10 +5,15 @@ import {
   type Candidate, type IncomingRecording, type Kind,
 } from './analyze.js';
 import { guessTag, tagLabel } from './metrics.js';
-import { toRec, type BenchmarksRepo, type ListFilters, type RecordingHead, type RecordingRow, type SessionRow } from './benchmarks.repo.js';
+import { toRec, type BenchmarkScreenshot, type BenchmarksRepo, type ListFilters, type RecordingHead, type RecordingRow, type SessionRow } from './benchmarks.repo.js';
 
 /** How far apart two sessions may sit and still be offered as "possibly the same one". */
 const NEARBY_S = 30 * 60;
+
+/** How many screenshots one session may hold. */
+export const BENCHMARK_MAX_SCREENSHOTS = 6;
+
+export interface ScreenshotInput { file_id: string; url: string; name?: string | null; width?: number | null; height?: number | null; size?: number | null }
 
 export interface ImportInput {
   tester: string;
@@ -27,7 +32,44 @@ export type GroupStatus = 'new' | 'adds_device' | 'imported';
 const iso = (seconds: number) => new Date(seconds * 1000).toISOString();
 
 export class BenchmarksService {
+  /** Screenshot URL check + cleanup, wired when ImageKit is configured. */
+  private screenshots: { isOurUrl: (u: string) => boolean; deleteFile: (id: string) => Promise<boolean> } | null = null;
+
   constructor(private readonly repo: BenchmarksRepo) {}
+
+  setScreenshotSupport(s: { isOurUrl: (u: string) => boolean; deleteFile: (id: string) => Promise<boolean> } | null) { this.screenshots = s; }
+
+  /** Best effort, sequential to respect ImageKit rate limits; failures are ignored. */
+  private async deleteFiles(shots: BenchmarkScreenshot[]): Promise<void> {
+    if (!this.screenshots) return;
+    for (const s of shots) await this.screenshots.deleteFile(s.file_id);
+  }
+
+  /** Attaches an image already uploaded to ImageKit (see GET /v1/admin/benchmarks/screenshot-auth). */
+  async addScreenshot(idOrRef: string, input: ScreenshotInput, addedBy: string | null) {
+    if (!this.screenshots) throw AppError.validation([{ path: 'screenshots', message: 'screenshot uploads are not configured on the server' }], 'Uploads unavailable');
+    if (!this.screenshots.isOurUrl(input.url)) throw AppError.validation([{ path: 'url', message: 'must be an ImageKit URL from the screenshot upload flow' }]);
+    const session = await this.repo.session(idOrRef);
+    if (!session) throw AppError.notFound('No benchmark session with that id or reference');
+    const shot: BenchmarkScreenshot = {
+      file_id: input.file_id, url: input.url, name: input.name ?? null, width: input.width ?? null, height: input.height ?? null, size: input.size ?? null,
+      added_by: addedBy, added_at: new Date().toISOString(),
+    };
+    if (!(await this.repo.addScreenshot(session.id, shot, BENCHMARK_MAX_SCREENSHOTS))) {
+      if (session.screenshots.some((s) => s.file_id === shot.file_id)) return this.get(session.id);
+      throw AppError.conflict(`${session.ref} already has ${BENCHMARK_MAX_SCREENSHOTS} screenshots. Remove one to add another.`);
+    }
+    return this.get(session.id);
+  }
+
+  async removeScreenshot(idOrRef: string, fileId: string) {
+    const session = await this.repo.session(idOrRef);
+    if (!session) throw AppError.notFound('No benchmark session with that id or reference');
+    const shot = session.screenshots.find((s) => s.file_id === fileId);
+    if (!shot || !(await this.repo.removeScreenshot(session.id, fileId))) throw AppError.notFound('No such screenshot on this session');
+    await this.deleteFiles([shot]);
+    return this.get(session.id);
+  }
 
   /** Sessions whose numbers were worked out by an older version of the analysis are redone before they are shown. */
   private async refresh(sessions: SessionRow[]): Promise<boolean> {
@@ -86,6 +128,7 @@ export class BenchmarksService {
     if (!target || !other) throw AppError.notFound('No benchmark session with that id or reference');
     if (target.id === other.id) throw AppError.validation([{ path: 'other', message: 'a session cannot be merged with itself' }]);
     if (target.kind !== other.kind) throw AppError.validation([{ path: 'other', message: `${other.ref} is a ${other.kind} session and ${target.ref} a ${target.kind} session` }]);
+    const shots = [...target.screenshots, ...other.screenshots.filter((o) => !target.screenshots.some((t) => t.file_id === o.file_id))];
     await this.repo.transaction(async (c) => {
       const [here, there] = await Promise.all([this.repo.recordings(target.id, c), this.repo.recordings(other.id, c)]);
       const clash = there.find((b) => b.logged && here.some((a) => a.logged && a.source_name === b.source_name));
@@ -104,9 +147,12 @@ export class BenchmarksService {
       }
       const notes = [target.notes, other.notes].filter(Boolean).join('\n\n').slice(0, 4000);
       if (notes !== (target.notes ?? '')) await this.repo.setNotes(c, target.id, notes || null);
+      if (other.screenshots.length) await this.repo.setScreenshots(c, target.id, shots.slice(0, BENCHMARK_MAX_SCREENSHOTS));
       await this.repo.deleteSession(other.id, c);
       await this.recompute(c, target.id, target.kind);
     });
+    // Screenshots beyond what one session may hold do not survive the merge.
+    await this.deleteFiles(shots.slice(BENCHMARK_MAX_SCREENSHOTS));
     return { merged: other.ref, session: await this.get(target.id) };
   }
 
@@ -271,6 +317,7 @@ export class BenchmarksService {
     const session = await this.repo.session(idOrRef);
     if (!session) throw AppError.notFound('No benchmark session with that id or reference');
     await this.repo.deleteSession(session.id);
+    await this.deleteFiles(session.screenshots);
     return { deleted: session.ref };
   }
 
@@ -283,6 +330,7 @@ export class BenchmarksService {
     if (!rec) throw AppError.notFound('No such recording in this session');
     if (!rows.some((r) => r.id !== rec.id && r.logged)) {
       await this.repo.deleteSession(session.id);
+      await this.deleteFiles(session.screenshots);
       return { deleted: session.ref, session: null };
     }
     await this.repo.transaction(async (c) => {
@@ -297,7 +345,7 @@ function sessionDto(s: SessionRow) {
   return {
     id: s.id, ref: s.ref, kind: s.kind, activity: s.activity, title: s.title, tester: s.tester,
     started_at: iso(s.started_at), ended_at: iso(s.ended_at), duration_s: Math.round(s.ended_at - s.started_at),
-    utc_offset_min: s.utc_offset_min, devices: s.devices, summary: s.summary, notes: s.notes, is_test: s.is_test,
+    utc_offset_min: s.utc_offset_min, devices: s.devices, summary: s.summary, notes: s.notes, screenshots: s.screenshots ?? [], is_test: s.is_test,
     uploaded_by: s.uploaded_by, created_at: new Date(s.created_at).toISOString(), updated_at: new Date(s.updated_at).toISOString(),
   };
 }

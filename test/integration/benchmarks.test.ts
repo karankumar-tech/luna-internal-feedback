@@ -327,6 +327,53 @@ describe('who may do what', () => {
   });
 });
 
+describe('screenshots on a session', () => {
+  it('attaches up to six, shows them on the session, and deletes the files with it', async () => {
+    const { ImageKitClient } = await import('../../src/modules/uploads/imagekit.js');
+    const deleted: string[] = [];
+    const fakeFetch: typeof fetch = async (input, init) => { if (init?.method === 'DELETE') deleted.push(String(input).split('/').pop()!); return new Response('', { status: 204 }); };
+    const ik = new ImageKitClient({ publicKey: 'public_test_key', privateKey: 'private_test_key', urlEndpoint: 'https://ik.imagekit.io/testacct', folder: '/luna-feedback-screenshots', fetchImpl: fakeFetch });
+    const app2 = buildApp({ config: cfg, logger: false, db: app.db, jira: null, diagnosis: { logs: null, ai: null }, imagekit: ik });
+    await app2.ready();
+    const shot = (n: string) => ({ file_id: n, url: `https://ik.imagekit.io/testacct/luna-feedback-screenshots/benchmarks/${n}.jpg`, name: `${n}.png`, width: 739, height: 1600, size: 74_000 });
+    const add = (ref: string, payload: unknown, headers: Record<string, string> = as('qc')) => app2.inject({ method: 'POST', url: `/v1/admin/benchmarks/${ref}/screenshots`, headers, payload: payload as object });
+
+    const auth = await app2.inject({ method: 'GET', url: '/v1/admin/benchmarks/screenshot-auth', headers: as('qc') });
+    expect(auth.statusCode).toBe(200);
+    expect(auth.json()).toMatchObject({ public_key: 'public_test_key', folder: '/luna-feedback-screenshots/benchmarks', max_count: 6 });
+    expect(auth.json().signature).toMatch(/^[0-9a-f]{40}$/);
+    expect((await app2.inject({ method: 'GET', url: '/v1/admin/benchmarks/screenshot-auth', headers: as('biz') })).statusCode).toBe(403);
+
+    const t = T0 + 900_000;
+    const ref = (await post(body(t, [polarRec(t), lunaRec(t)]))).json().session.ref;
+    expect((await get(ref)).screenshots).toEqual([]);
+
+    const first = await add(ref, shot('bm_a'));
+    expect(first.statusCode).toBe(201);
+    expect(first.json().screenshots).toEqual([{ ...shot('bm_a'), added_by: email('qc'), added_at: expect.any(String) }]);
+    // The same file twice is one screenshot.
+    expect((await add(ref, shot('bm_a'))).json().screenshots).toHaveLength(1);
+    expect((await add(ref, shot('bm_x'), as('biz'))).statusCode).toBe(403);
+    expect((await add(ref, { file_id: 'bm_evil', url: 'https://evil.example.com/x.png' })).statusCode).toBe(422);
+    expect((await add('BM-99999999', shot('bm_a'))).statusCode).toBe(404);
+
+    for (const n of ['bm_b', 'bm_c', 'bm_d', 'bm_e', 'bm_f']) expect((await add(ref, shot(n))).statusCode).toBe(201);
+    const seventh = await add(ref, shot('bm_g'));
+    expect(seventh.statusCode).toBe(409);
+    expect((await get(ref)).screenshots.map((s: { file_id: string }) => s.file_id)).toEqual(['bm_a', 'bm_b', 'bm_c', 'bm_d', 'bm_e', 'bm_f']);
+
+    const gone = await app2.inject({ method: 'DELETE', url: `/v1/admin/benchmarks/${ref}/screenshots/bm_c`, headers: as('qc') });
+    expect(gone.statusCode).toBe(200);
+    expect(gone.json().screenshots.map((s: { file_id: string }) => s.file_id)).toEqual(['bm_a', 'bm_b', 'bm_d', 'bm_e', 'bm_f']);
+    expect(deleted).toEqual(['bm_c']);
+    expect((await app2.inject({ method: 'DELETE', url: `/v1/admin/benchmarks/${ref}/screenshots/bm_c`, headers: as('qc') })).statusCode).toBe(404);
+
+    expect((await app2.inject({ method: 'DELETE', url: `/v1/admin/benchmarks/${ref}`, headers: admin })).statusCode).toBe(200);
+    expect(deleted.sort()).toEqual(['bm_a', 'bm_b', 'bm_c', 'bm_d', 'bm_e', 'bm_f']);
+    await app2.close();
+  });
+});
+
 describe('what is refused', () => {
   it('rejects a session with no device that logged it, mismatched columns and oversized input', async () => {
     const none = await post(body(T0 + 700_000, [phoneRec(T0 + 700_000)]));

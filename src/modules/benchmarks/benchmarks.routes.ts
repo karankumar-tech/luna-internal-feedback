@@ -5,7 +5,8 @@ import { actorOf } from '../../lib/actor.js';
 import { requirePermission } from '../../plugins/auth.js';
 import { zodIssues } from '../../schema/buildValidator.js';
 import { DEVICE_TAGS } from './metrics.js';
-import type { BenchmarksService } from './benchmarks.service.js';
+import { SCREENSHOT_PRE_TRANSFORMATION, SCREENSHOT_TYPES, type ScreenshotUploads } from '../feedback/feedback.routes.js';
+import { BENCHMARK_MAX_SCREENSHOTS, type BenchmarksService } from './benchmarks.service.js';
 
 function parse<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, value: unknown): T {
   const r = schema.safeParse(value);
@@ -117,12 +118,21 @@ const RecordingPatch = z.object({
   device_label: z.string().trim().max(80).transform((v) => v || null).nullable().optional(),
 }).strict().refine((b) => b.device_tag !== undefined || b.device_label !== undefined, { message: 'send device_tag or device_label' });
 
+const ScreenshotBody = z.object({
+  file_id: z.string().trim().min(1).max(120),
+  url: z.string().trim().url().max(1000),
+  name: z.string().trim().max(200).nullish(),
+  width: z.number().int().positive().nullish(),
+  height: z.number().int().positive().nullish(),
+  size: z.number().int().nonnegative().nullish(),
+}).strict();
+
 /**
  * Device benchmarks. All under /v1/admin, so only a signed-in dashboard user or the admin key gets
  * in: this is testers' health data, and the app's key must not read it.
  */
-export function registerBenchmarkRoutes(app: FastifyInstance, deps: { service: BenchmarksService }) {
-  const { service } = deps;
+export function registerBenchmarkRoutes(app: FastifyInstance, deps: { service: BenchmarksService; uploads?: ScreenshotUploads | null }) {
+  const { service, uploads } = deps;
   const manage = { onRequest: requirePermission('manage_benchmarks') };
 
   app.get('/v1/admin/benchmarks', async (req) => service.list(parse(ListQuery, req.query ?? {})));
@@ -155,6 +165,26 @@ export function registerBenchmarkRoutes(app: FastifyInstance, deps: { service: B
     const body = parse(z.object({ other: z.string().trim().min(1).max(60) }).strict(), req.body);
     return service.merge(req.params.id, body.other);
   });
+
+  /** Short-lived ImageKit upload credentials: the page uploads a screenshot directly, then attaches it below. One call per file. */
+  app.get('/v1/admin/benchmarks/screenshot-auth', manage, async () => {
+    if (!uploads) throw AppError.validation([{ path: 'screenshots', message: 'screenshot uploads are not configured on the server' }], 'Uploads unavailable');
+    const a = uploads.authParams();
+    return {
+      upload_url: 'https://upload.imagekit.io/api/v1/files/upload',
+      public_key: uploads.publicKey,
+      token: a.token, expire: a.expire, signature: a.signature,
+      folder: `${uploads.folder.replace(/\/+$/, '')}/benchmarks`, use_unique_file_name: true, tags: ['luna-benchmark'],
+      transformation: { pre: SCREENSHOT_PRE_TRANSFORMATION },
+      max_bytes: uploads.maxBytes, max_count: BENCHMARK_MAX_SCREENSHOTS, accepted_types: [...SCREENSHOT_TYPES],
+    };
+  });
+
+  app.post<{ Params: { id: string } }>('/v1/admin/benchmarks/:id/screenshots', manage, async (req, reply) =>
+    reply.code(201).send(await service.addScreenshot(req.params.id, parse(ScreenshotBody, req.body), actorOf(req))));
+
+  app.delete<{ Params: { id: string; fileId: string } }>('/v1/admin/benchmarks/:id/screenshots/:fileId', manage, async (req) =>
+    service.removeScreenshot(req.params.id, req.params.fileId));
 
   app.delete<{ Params: { id: string } }>('/v1/admin/benchmarks/:id', manage, async (req) => service.remove(req.params.id));
 
