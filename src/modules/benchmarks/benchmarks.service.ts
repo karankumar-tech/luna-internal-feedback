@@ -301,21 +301,26 @@ export class BenchmarksService {
   }
 
   /**
-   * Re-tagging a device changes which one is under test, so the comparison is redone. distance_km is
-   * for Luna, which writes no distance to Apple Health: read off its app and typed in, null to clear.
+   * Re-tagging a device changes which one is under test, so the comparison is redone. distance_km and
+   * active_kcal are for Luna, which does not always write them to Apple Health: read off its app and
+   * typed in, null to clear.
    */
-  async updateRecording(idOrRef: string, recordingId: string, patch: { device_tag?: string; device_label?: string | null; distance_km?: number | null }, by: string | null = null) {
+  async updateRecording(idOrRef: string, recordingId: string, patch: { device_tag?: string; device_label?: string | null; distance_km?: number | null; active_kcal?: number | null }, by: string | null = null) {
     const session = await this.repo.session(idOrRef);
     if (!session) throw AppError.notFound('No benchmark session with that id or reference');
     const rec = (await this.repo.recordings(session.id)).find((r) => r.id === recordingId);
     if (!rec) throw AppError.notFound('No such recording in this session');
-    if (patch.distance_km != null && !(session.kind === 'workout' && rec.logged && (patch.device_tag ?? rec.device_tag) === 'luna')) {
-      throw AppError.validation([{ path: 'distance_km', message: 'a distance can only be entered for a workout that Luna logged' }]);
+    const typed = (['distance_km', 'active_kcal'] as const).filter((k) => patch[k] !== undefined);
+    const entered = typed.find((k) => patch[k] !== null);
+    if (entered && !(session.kind === 'workout' && rec.logged && (patch.device_tag ?? rec.device_tag) === 'luna')) {
+      throw AppError.validation([{ path: entered, message: 'distance and calories can only be entered for a workout that Luna logged' }]);
     }
     await this.repo.transaction(async (c) => {
       await this.repo.patchRecording(c, rec.id, patch);
-      if (patch.distance_km !== undefined) {
-        await this.repo.setManual(c, rec.id, patch.distance_km === null ? null : { distance_km: patch.distance_km, by, at: new Date().toISOString() });
+      if (typed.length) {
+        const { distance_km, active_kcal } = { ...rec.details.manual, ...patch };
+        const values = { ...(distance_km != null ? { distance_km } : {}), ...(active_kcal != null ? { active_kcal } : {}) };
+        await this.repo.setManual(c, rec.id, Object.keys(values).length ? { ...values, by, at: new Date().toISOString() } : null);
       }
       await this.recompute(c, session.id, session.kind);
     });

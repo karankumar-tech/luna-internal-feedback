@@ -616,19 +616,25 @@
     host.hidden = !tiles.length; host.append(...tiles);
   }
 
-  /** Luna writes no distance to Apple Health, so whoever may edit can type in what its app showed. */
-  const canEnterDistance = (r) => state.canManage && !isSleep() && r.logged && r.device_tag === 'luna' && (r.details.manual || !r.metrics.distance);
-  function editDistance(host, r) {
-    const inp = el('input'); inp.type = 'number'; inp.min = '0.01'; inp.max = '1000'; inp.step = '0.01'; inp.placeholder = 'km'; inp.style.width = '90px';
-    inp.setAttribute('aria-label', `Distance for ${nameOf(r)} in km`);
-    if (r.details.manual) inp.value = String(r.details.manual.distance_km);
+  /** Luna does not always write distance or calories to Apple Health, so whoever may edit can type in what its app showed. */
+  const MANUAL = [
+    { field: 'distance_km', metric: 'distance', unit: 'km', name: 'distance', title: 'Distance', min: 0.01, max: 1000, step: '0.01' },
+    { field: 'active_kcal', metric: 'active_energy', unit: 'kcal', name: 'calories', title: 'Active calories', min: 1, max: 20000, step: '1' },
+  ];
+  const manualOf = (r, f) => (r.details.manual && r.details.manual[f.field] != null ? r.details.manual[f.field] : null);
+  const canEnter = (r, f) => state.canManage && !isSleep() && r.logged && r.device_tag === 'luna' && (manualOf(r, f) !== null || !r.metrics[f.metric]);
+  function editManual(host, r, f) {
+    const inp = el('input'); inp.type = 'number'; inp.min = String(f.min); inp.max = String(f.max); inp.step = f.step; inp.placeholder = f.unit; inp.style.width = '90px';
+    inp.setAttribute('aria-label', `${f.title} for ${nameOf(r)} in ${f.unit}`);
+    const was = manualOf(r, f);
+    if (was !== null) inp.value = String(was);
     let done = false;
     const save = () => {
       if (done) return; done = true;
-      const km = inp.value.trim() === '' ? null : Number(inp.value);
-      if (km === (r.details.manual ? r.details.manual.distance_km : null)) { render(); return; }
-      if (km !== null && !(km >= 0.01 && km <= 1000)) { toast('Enter a distance in km, or leave it empty to clear.'); render(); return; }
-      patchRecording(r.id, { distance_km: km });
+      const v = inp.value.trim() === '' ? null : Number(inp.value);
+      if (v === was) { render(); return; }
+      if (v !== null && !(v >= f.min && v <= f.max)) { toast(`Enter the ${f.name} in ${f.unit}, or leave it empty to clear.`); render(); return; }
+      patchRecording(r.id, { [f.field]: v });
     };
     inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { done = true; render(); } });
     inp.addEventListener('blur', save);
@@ -679,9 +685,10 @@
       const rec = el('td', 'val');
       if (r.logged) { rec.textContent = `${clock(epoch(r.started_at), !isSleep())} to ${clock(epoch(r.ended_at), !isSleep())}`; rec.appendChild(el('small', null, isSleep() ? 'logged the night' : `logged as ${activityLabel(r.activity).toLowerCase()}`)); }
       else { rec.textContent = 'samples only'; rec.appendChild(el('small', null, 'did not log the session itself')); }
-      if (canEnterDistance(r)) {
-        const d = r.details.manual, line = el('small', null, d ? `Distance ${value(d.distance_km, 'km')}, entered by hand ` : 'Wrote no distance to Health ');
-        const b = el('button', 'btn small ghost', d ? 'Edit' : 'Enter distance'); b.type = 'button'; b.addEventListener('click', () => editDistance(line, r)); line.appendChild(b);
+      for (const f of MANUAL) {
+        if (!canEnter(r, f)) continue;
+        const d = manualOf(r, f), line = el('small', null, d !== null ? `${f.title} ${value(d, f.unit)}, entered by hand ` : `Wrote no ${f.name} to Health `);
+        const b = el('button', 'btn small ghost', d !== null ? 'Edit' : `Enter ${f.name}`); b.type = 'button'; b.addEventListener('click', () => editManual(line, r, f)); line.appendChild(b);
         rec.appendChild(line);
       }
       tr.appendChild(rec);
@@ -759,7 +766,8 @@
       const lbl = el('td', 'rowlabel', r.label); if (r.note) lbl.appendChild(el('small', null, r.note)); tr.appendChild(lbl);
       const cell = (rec, v) => {
         const td = el('td', 'val', v === null ? 'Not recorded' : value(v, r.unit) + at(rec, r.key));
-        if (r.key === 'distance' && v === null && canEnterDistance(rec)) { const s = el('small'); const b = el('button', 'btn small ghost', 'Enter distance'); b.type = 'button'; b.addEventListener('click', () => editDistance(s, rec)); s.appendChild(b); td.appendChild(s); }
+        const f = MANUAL.find((x) => x.metric === r.key);
+        if (f && v === null && canEnter(rec, f)) { const s = el('small'); const b = el('button', 'btn small ghost', `Enter ${f.name}`); b.type = 'button'; b.addEventListener('click', () => editManual(s, rec, f)); s.appendChild(b); td.appendChild(s); }
         return td;
       };
       tr.appendChild(cell(ref, r.reference));

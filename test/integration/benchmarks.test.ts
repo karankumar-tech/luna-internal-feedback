@@ -224,6 +224,19 @@ describe('a distance entered by hand for Luna', () => {
     expect((await app.inject({ method: 'PATCH', url, headers: as('biz'), payload: { distance_km: 3 } })).statusCode).toBe(403);
     expect((await app.inject({ method: 'PATCH', url, headers: as('qc'), payload: { distance_km: -1 } })).statusCode).toBe(422);
 
+    // Calories go in the same way, beside the distance; clearing one leaves the other.
+    const noKcal = (await app.inject({ method: 'PATCH', url: `/v1/admin/benchmarks/${ref}/recordings/${polar.id}`, headers: as('qc'), payload: { active_kcal: 200 } }));
+    expect(noKcal.statusCode).toBe(422);
+    const kcal = (await app.inject({ method: 'PATCH', url, headers: as('qc'), payload: { active_kcal: 250 } })).json();
+    const withBoth = kcal.recordings.find((x: { id: string }) => x.id === luna.id);
+    expect(withBoth.metrics.active_energy).toMatchObject({ value: 250, from: 'manual' });
+    expect(withBoth.metrics.distance).toMatchObject({ value: 2.9, from: 'manual' });
+    expect(withBoth.details.manual).toMatchObject({ distance_km: 2.9, active_kcal: 250 });
+    const onlyDistance = (await app.inject({ method: 'PATCH', url, headers: as('qc'), payload: { active_kcal: null } })).json().recordings.find((x: { id: string }) => x.id === luna.id);
+    expect(onlyDistance.metrics.active_energy.from).toBe('summary');
+    expect(onlyDistance.details.manual).toMatchObject({ distance_km: 2.9 });
+    expect(onlyDistance.details.manual.active_kcal).toBeUndefined();
+
     const cleared = (await app.inject({ method: 'PATCH', url, headers: as('qc'), payload: { distance_km: null } })).json().recordings.find((x: { id: string }) => x.id === luna.id);
     expect(cleared.metrics.distance).toBeUndefined();
     expect(cleared.metrics.pace).toBeUndefined();

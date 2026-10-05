@@ -116,9 +116,10 @@ const PatchBody = z.object({
 const RecordingPatch = z.object({
   device_tag: Tag.optional(),
   device_label: z.string().trim().max(80).transform((v) => v || null).nullable().optional(),
-  /** Luna only: the distance its app showed, typed in by hand. null clears it. */
+  /** Luna only: the distance and active calories its app showed, typed in by hand. null clears one. */
   distance_km: Num.min(0.01).max(1000).transform((v) => Math.round(v * 1000) / 1000).nullable().optional(),
-}).strict().refine((b) => b.device_tag !== undefined || b.device_label !== undefined || b.distance_km !== undefined, { message: 'send device_tag, device_label or distance_km' });
+  active_kcal: Num.min(1).max(20_000).transform((v) => Math.round(v * 10) / 10).nullable().optional(),
+}).strict().refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'send device_tag, device_label, distance_km or active_kcal' });
 
 const ScreenshotBody = z.object({
   file_id: z.string().trim().min(1).max(120),
