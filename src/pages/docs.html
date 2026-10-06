@@ -3,12 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Luna Feedback API</title>
+<title>Luna Pulse · API</title>
 <meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
+<link rel="icon" href="/mark.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
 <style>
+  .logo { display: inline-flex; align-items: center; flex: none; } .logo img { display: block; height: 22px; width: auto; }
   :root {
     --black: #000; --white: #fff; --gray-dark: #737373; --gray-mid: #9E9E9E; --gray-light: #D9D9D9;
     --bg: #F0EFEA; --brief: #E8E6E0; --border-warm: #E2E0D9; --border-ghost: #F0F0F0; --hero: #1A1A18; --hero-muted: #8A887F;
@@ -92,7 +96,8 @@
 <header class="top">
   <div class="top-inner">
     <div>
-      <div class="overline">Luna · Internal feedback · v1</div>
+      <a class="logo" href="/dashboard" title="Luna Pulse"><img src="/logo-light.svg" alt="Luna Pulse" width="77" height="22"></a>
+      <div class="overline" style="margin-top:14px">Luna · Internal feedback · v1</div>
       <h1>Luna Feedback API</h1>
       <p class="lede">Fetch the form definition, render it, post the tester's answer. Everything the front end needs to integrate the Stage-only feedback prompt.</p>
     </div>

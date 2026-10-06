@@ -3,12 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Luna Feedback Submission</title>
+<title>Luna Pulse · Report</title>
 <meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
+<link rel="icon" href="/mark.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&display=swap">
 <style>
+  .lead { display: flex; align-items: center; gap: 14px; } .logo { display: inline-flex; align-items: center; flex: none; } .logo img { display: block; height: 22px; width: auto; }
   :root {
     --black: #000; --white: #fff; --gray-dark: #737373; --gray-mid: #9E9E9E; --gray-light: #D9D9D9;
     --bg: #F0EFEA; --brief: #E8E6E0; --border-warm: #E2E0D9; --border-ghost: #F0F0F0; --hero: #1A1A18; --hero-muted: #8A887F;
@@ -218,9 +222,12 @@
 <body>
 <header class="top">
   <div class="top-inner">
-    <div>
-      <a class="crumb" href="/dashboard">← Dashboard</a>
-      <div class="overline" style="margin-top:2px">Luna · Feedback · Report</div>
+    <div class="lead">
+      <a class="logo" href="/dashboard" title="Luna Pulse"><img src="/logo.svg" alt="Luna Pulse" width="77" height="22"></a>
+      <div>
+        <a class="crumb" href="/dashboard">← Dashboard</a>
+        <div class="overline" style="margin-top:2px">Luna · Feedback · Report</div>
+      </div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <label class="overline" for="statusSel" style="letter-spacing:.1em">Status</label>
@@ -433,7 +440,7 @@
   function renderSubmission() {
     const r = state.sub; const f = feature();
     $('btnFlag').textContent = r.is_test ? 'Mark as real' : 'Mark as test';
-    document.title = `${r.ref} · ${f.label} · ${r.is_positive ? 'Working fine' : 'Issue'} · Luna Feedback`;
+    document.title = `${r.ref} · ${f.label} · ${r.is_positive ? 'Working fine' : 'Issue'} · Luna Pulse`;
     $('title').replaceChildren(
       el('span', 'refno', r.ref), el('span', null, f.label + ' · '), el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue'),
       ...(r.origin === 'cx' ? [el('span', null, ' '), el('span', 'chip cx', 'CX')] : []),

@@ -1,7 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { PAGES, SCRIPTS } from '../../pages/generated.js';
+import { ASSETS, PAGES, SCRIPTS } from '../../pages/generated.js';
 import { AppError } from '../../lib/errors.js';
 import { DASHBOARD_HEADER } from '../../plugins/auth.js';
 import {
@@ -92,6 +92,15 @@ export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
       .header('cdn-cache-control', 'public, s-maxage=86400, stale-while-revalidate=604800')
       .send(body);
   });
+  // Brand assets at the root: the logo the headers show and the icons browsers ask for by name.
+  // favicon.ico is the PNG under the name every browser tries first; they read it by content.
+  const asset = ({ type, base64 }: { type: string; base64: string }) => async (_req: FastifyRequest, reply: FastifyReply) =>
+    reply.header('content-type', type)
+      .header('cache-control', 'public, max-age=86400')
+      .header('cdn-cache-control', 'public, s-maxage=604800, stale-while-revalidate=604800')
+      .send(Buffer.from(base64, 'base64'));
+  for (const [name, file] of Object.entries(ASSETS)) app.get(`/${name}`, asset(file));
+  if (ASSETS['favicon.png']) app.get('/favicon.ico', asset(ASSETS['favicon.png']));
   app.get('/', async (_req, reply) => reply.redirect('/docs', 302));
 
   // Short links for sharing: /i/LN-00042, /k/LNK-0007 and /b/BM-0007. The page behind them still needs a sign-in.

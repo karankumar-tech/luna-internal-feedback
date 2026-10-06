@@ -3,12 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Luna Needs Attention</title>
+<title>Luna Pulse · Needs attention</title>
 <meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
+<link rel="icon" href="/mark.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&display=swap">
 <style>
+  .lead { display: flex; align-items: center; gap: 14px; } .logo { display: inline-flex; align-items: center; flex: none; } .logo img { display: block; height: 22px; width: auto; }
   :root {
     --black: #000; --white: #fff; --gray-dark: #737373; --gray-mid: #9E9E9E; --gray-light: #D9D9D9;
     --bg: #F0EFEA; --brief: #E8E6E0; --border-warm: #E2E0D9; --border-ghost: #F0F0F0; --hero: #1A1A18; --hero-muted: #8A887F;
@@ -84,10 +88,13 @@
 <body>
 <header class="top">
   <div class="top-inner">
-    <div>
-      <a class="crumb" href="/dashboard">← Dashboard</a>
-      <div class="overline" style="margin-top:2px">Luna · Feedback</div>
-      <h1>Needs attention</h1>
+    <div class="lead">
+      <a class="logo" href="/dashboard" title="Luna Pulse"><img src="/logo.svg" alt="Luna Pulse" width="77" height="22"></a>
+      <div>
+        <a class="crumb" href="/dashboard">← Dashboard</a>
+        <div class="overline" style="margin-top:2px">Luna · Feedback</div>
+        <h1>Needs attention</h1>
+      </div>
     </div>
     <span style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <span class="tertiary" id="freshness" style="font-size:12px"></span>

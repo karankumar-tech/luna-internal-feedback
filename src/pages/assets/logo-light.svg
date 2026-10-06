@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-44 -14 468 134" role="img" aria-label="Luna Pulse">
+  <title>Luna Pulse</title>
+  <g fill="#FFFFFF">
+    <path d="M0 0h24v56h46v24H0z"/>
+    <path d="M90 0h24v40a16 16 0 0 0 32 0V0h24v40a40 40 0 0 1-80 0z"/>
+    <path d="M190 0h24v80h-24zM256 0h24v80h-24zM190 80 256 0h24l-66 80z"/>
+    <path d="M300 80 338 0h24l38 80h-28l-22-46.3L328 80z"/>
+  </g>
+  <path d="M-40 56h46l8 14 8-48 9 56 7-22h42" fill="none" stroke="#2BB3A3" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>
+  <text x="2" y="114" font-family="Geist, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="600" letter-spacing="7" fill="#9A9A9A">PULSE</text>
+</svg>
