@@ -5,7 +5,7 @@ import { buildCxSubmissionValidator, buildSubmissionValidator, zodIssues, type V
 import { DEFAULT_CX_ENVIRONMENT, SCHEMA_VERSION, isFeatureKey, type FeatureKey } from '../../schema/registry.js';
 import { redact } from '../diagnosis/logs/redact.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
-import { parseSubmissionRef, type FeedbackRepo, type NewSubmission, type Priority, type SubmissionRow, type ListFilters, type StatsFilters, type Screenshot, type SubmissionStatus } from './feedback.repo.js';
+import { MAX_TAGS, normalizeTag, parseSubmissionRef, type FeedbackRepo, type NewSubmission, type Priority, type SubmissionRow, type ListFilters, type StatsFilters, type Screenshot, type SubmissionStatus } from './feedback.repo.js';
 import type { ActivityRepo, NoteVisibility } from '../activity/activity.repo.js';
 import type { FastifyBaseLogger } from 'fastify';
 
@@ -243,6 +243,27 @@ export class FeedbackService {
     if (before.priority !== priority) await this.activity?.record({ submissionId: row.id, actor: by, action: 'priority', from: before.priority, to: priority, touch: true });
     return this.toDto(row);
   }
+
+  /**
+   * Adds and removes tags in one step. Tags are normalised (lowercase, spaces to dashes); a tag both
+   * added and removed ends up removed. The history records the whole set before and after.
+   */
+  async changeTags(id: string, change: { add?: string[]; remove?: string[] }, by: string | null): Promise<SubmissionDto> {
+    const bad = [...(change.add ?? []), ...(change.remove ?? [])].find((t) => normalizeTag(t) === null);
+    if (bad !== undefined) throw AppError.validation([{ path: 'tags', message: `"${bad}" is not a tag: use letters, digits, dot, dash or underscore, up to 30` }]);
+    const remove = new Set((change.remove ?? []).map((t) => normalizeTag(t)!));
+    const before = await this.row(id);
+    const next = [...new Set([...before.tags, ...(change.add ?? []).map((t) => normalizeTag(t)!)])].filter((t) => !remove.has(t));
+    if (next.length > MAX_TAGS) throw AppError.validation([{ path: 'tags', message: `at most ${MAX_TAGS} tags on a report` }]);
+    if (next.length === before.tags.length && next.every((t, i) => t === before.tags[i])) return this.toDto(before);
+    const row = await this.feedback.setTags(before.id, next);
+    if (!row) throw AppError.notFound('Submission not found');
+    await this.activity?.record({ submissionId: row.id, actor: by, action: 'tag', from: before.tags.join(', ') || null, to: next.join(', ') || null, touch: true });
+    return this.toDto(row);
+  }
+
+  /** Tags in use, most used first, with the common ones always included. */
+  knownTags() { return this.feedback.knownTags(); }
 
   /**
    * A note on a report. On a CX report the text is redacted like everything else CX sends, since

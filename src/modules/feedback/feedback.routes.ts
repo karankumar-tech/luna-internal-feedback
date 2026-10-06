@@ -30,6 +30,8 @@ export const CommonQuery = z.object({
   jira: z.enum(['any', 'none']).optional(),
   ai_status: AiStatus, ai_side: AiSide, ai_severity: AiSeverity,
   ai_tag: z.string().max(60).optional(),
+  /** A tag, several comma-separated (reports with any of them), or 'none' for untagged. */
+  tag: z.string().trim().toLowerCase().max(200).optional(),
   event_code: z.string().max(20).optional(),
   kind_id: z.string().uuid().optional(),
   /** An owner's email, 'me' for the signed-in person, or 'none' for unassigned. */
@@ -197,6 +199,18 @@ export function registerFeedbackRoutes(
     if (status !== undefined) dto = await service.setStatus(req.params.id, status, status_note ?? null, by, isTeamAction(req));
     return dto ?? service.get(req.params.id);
   });
+
+  // ---- tags (QC, developers) ----
+  app.post<{ Params: { id: string } }>('/v1/admin/submissions/:id/tags', { onRequest: requirePermission('tag_reports') }, async (req) => {
+    const parsed = z.object({ add: z.array(z.string().max(40)).max(10).optional(), remove: z.array(z.string().max(40)).max(10).optional() }).strict()
+      .refine((b) => (b.add?.length ?? 0) + (b.remove?.length ?? 0) > 0, { message: 'send add or remove' })
+      .safeParse(req.body);
+    if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
+    return service.changeTags(req.params.id, parsed.data, actorOf(req));
+  });
+
+  /** Tags to offer: those in use (most used first) and the common ones. */
+  app.get('/v1/admin/tags', async () => ({ items: await service.knownTags() }));
 
   // ---- test data housekeeping (admin) ----------------------------------------
   app.get('/v1/admin/test-data', async () => ({ count: await service.countTestData() }));

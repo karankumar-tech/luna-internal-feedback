@@ -194,6 +194,63 @@ describe('bulk changes', () => {
   });
 });
 
+describe('tags', () => {
+  const t = `zz${run.slice(-6)}`; // unique per run, so the filters see only this file's reports
+  const tags = (id: string, body: unknown, who = 'dev') => app.inject({ method: 'POST', url: `/v1/admin/submissions/${id}/tags`, headers: as(who), payload: body });
+  const listed = async (q: string) => ((await app.inject({ method: 'GET', url: `/v1/feedback?is_test=true&${q}`, headers: adminHeaders })).json().items as { id: string }[]).map((i) => i.id);
+
+  it('lets QC and developers tag a report, normalises the tag and logs the change', async () => {
+    const r = await report();
+    const added = await tags(r.id, { add: ['Firmware', `  ${t} App `] });
+    expect(added.statusCode).toBe(200);
+    expect(added.json().tags).toEqual(['firmware', `${t}-app`]);
+    expect((await history(r.id)).at(-1)).toMatchObject({ action: 'tag', actor: email('dev'), from_value: null, to_value: `firmware, ${t}-app` });
+
+    const removed = await tags(r.id, { remove: ['firmware'] }, 'qc');
+    expect(removed.json().tags).toEqual([`${t}-app`]);
+    // the same set again is not a change, so nothing more is logged
+    await tags(r.id, { add: [`${t}-app`] });
+    expect((await history(r.id)).filter((e) => e.action === 'tag')).toHaveLength(2);
+
+    expect((await tags(r.id, { add: ['app'] }, 'biz')).statusCode).toBe(403);
+    expect((await tags(r.id, { add: ['not a tag!'] })).statusCode).toBe(422);
+    expect((await tags(r.id, {})).statusCode).toBe(422);
+  });
+
+  it('filters by a tag, by any of several, and by "untagged"', async () => {
+    const fw = await report();
+    const ap = await report();
+    const none = await report();
+    await tags(fw.id, { add: [`${t}-fw`] });
+    await tags(ap.id, { add: [`${t}-ap`] });
+
+    expect(await listed(`tag=${t}-fw`)).toEqual([fw.id]);
+    expect((await listed(`tag=${t}-fw,${t}-ap`)).sort()).toEqual([fw.id, ap.id].sort());
+    expect(await listed(`ref=${none.ref}&tag=none`)).toEqual([none.id]);
+    expect(await listed(`ref=${fw.ref}&tag=none`)).toEqual([]);
+
+    const home = (await app.inject({ method: 'GET', url: `/v1/home/reports?data=test&view=all&tag=${t}-ap`, headers: as('qc') })).json();
+    expect(home.items.map((i: { id: string; tags: string[] }) => [i.id, i.tags])).toEqual([[ap.id, [`${t}-ap`]]]);
+  });
+
+  it('tags many reports at once without touching their other tags, and lists the tags in use', async () => {
+    const a = await report();
+    const b = await report();
+    await tags(a.id, { add: [`${t}-keep`] });
+    const r = await app.inject({ method: 'POST', url: '/v1/admin/submissions/bulk', headers: as('qc'), payload: { ids: [a.id, b.ref], add_tags: [`${t}-bulk`] } });
+    expect(r.json()).toEqual({ updated: 2, failed: [] });
+    expect((await get(a.id)).tags).toEqual([`${t}-keep`, `${t}-bulk`]);
+    expect((await get(b.id)).tags).toEqual([`${t}-bulk`]);
+
+    await app.inject({ method: 'POST', url: '/v1/admin/submissions/bulk', headers: as('qc'), payload: { ids: [a.id, b.id], remove_tags: [`${t}-bulk`] } });
+    expect((await get(a.id)).tags).toEqual([`${t}-keep`]);
+
+    const known = (await app.inject({ method: 'GET', url: '/v1/admin/tags', headers: as('dev') })).json().items as { tag: string; count: number }[];
+    expect(known.map((k) => k.tag)).toEqual(expect.arrayContaining(['app', 'firmware', `${t}-keep`]));
+    expect(known.find((k) => k.tag === `${t}-keep`)?.count).toBe(1);
+  });
+});
+
 describe('problem owners and response times', () => {
   it('gives a problem an owner', async () => {
     const k = (await app.inject({ method: 'POST', url: '/v1/admin/kinds', headers: adminHeaders, payload: { title: `ZZ act ${run} workout time lost`, key: `zz_act_${run}_kind` } })).json();

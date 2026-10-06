@@ -58,6 +58,8 @@ export interface SubmissionRow {
   assigned_to: string | null;
   /** A person's call, p0 (drop everything) to p3; overrides the AI's severity for ordering and time limits. */
   priority: string | null;
+  /** The team's labels (app, firmware, …), lowercase, at most MAX_TAGS. */
+  tags: string[];
   first_touched_at: Date | null;
   last_activity_at: Date | null;
   resolved_at: Date | null;
@@ -138,6 +140,8 @@ export interface CommonFilters {
   ai_side?: string;
   ai_severity?: string;
   ai_tag?: string;
+  /** A tag, several comma-separated (any of them), or 'none' for untagged reports. */
+  tag?: string;
   event_code?: string;
   kind_id?: string;
   user_id?: number;
@@ -203,6 +207,8 @@ export function buildWhere(f: Partial<StatsFilters>, alias = 's'): { where: stri
   if (f.ai_side) add(`${alias}.ai_side = ?`, f.ai_side);
   if (f.ai_severity) add(`${alias}.ai_severity = ?`, f.ai_severity);
   if (f.event_code) add(`? = any(${alias}.ai_event_codes)`, f.event_code);
+  if (f.tag === 'none') add(`cardinality(${alias}.tags) = 0`, undefined);
+  else if (f.tag) add(`${alias}.tags && ?::text[]`, f.tag.split(',').map((t) => t.trim()).filter(Boolean));
   if (f.ai_tag) add(`exists (select 1 from luna_feedback.diagnoses dt where dt.submission_id = ${alias}.id and ? = any(dt.tags))`, f.ai_tag);
   if (f.kind_id) add(`exists (select 1 from luna_feedback.submission_issue_kinds sk where sk.submission_id = ${alias}.id and sk.kind_id = ?::uuid and sk.state = 'linked')`, f.kind_id);
   if (f.user_id !== undefined) add(`${alias}.user_id = ?`, f.user_id);
@@ -217,8 +223,19 @@ const COLUMNS = `id, ref, feature_key, is_positive, occurred_on::text as occurre
   created_at, feedback_text, device_serial, details, screenshots, environment, platform, app_version, build_number, build_channel, firmware_version, os_version,
   device_id, session_id, idempotency_key, schema_version, is_test,
   origin, submitted_via, cx_ref, cx_url, cx_channel, cx_agent, cx_transcript,
-  assigned_to, priority, first_touched_at, last_activity_at, resolved_at, status, status_note, status_changed_at, status_changed_by,
+  assigned_to, priority, tags, first_touched_at, last_activity_at, resolved_at, status, status_note, status_changed_at, status_changed_by,
   jira_key, jira_url, jira_status, jira_synced_at, jira_created_by, ai_status, ai_side, ai_severity, ai_event_codes, ai_checked_at`;
+
+/** Offered on every report even before anyone has used them. */
+export const COMMON_TAGS = ['app', 'firmware'] as const;
+export const MAX_TAGS = 10;
+export const TAG_PATTERN = /^[a-z0-9][a-z0-9._-]{0,29}$/;
+
+/** "  Ring SDK " -> "ring-sdk". Null when what is left is not a usable tag. */
+export function normalizeTag(raw: string): string | null {
+  const t = raw.trim().toLowerCase().replace(/^#/, '').replace(/\s+/g, '-');
+  return TAG_PATTERN.test(t) ? t : null;
+}
 
 export class FeedbackRepo {
   constructor(private readonly db: Db) {}
@@ -305,6 +322,22 @@ export class FeedbackRepo {
   async setPriority(id: string, priority: Priority | null): Promise<SubmissionRow | undefined> {
     const r = await this.db.query<SubmissionRow>(`update luna_feedback.submissions set priority = $2 where id = $1 returning ${COLUMNS}`, [id, priority]);
     return r.rows[0];
+  }
+
+  async setTags(id: string, tags: string[]): Promise<SubmissionRow | undefined> {
+    const r = await this.db.query<SubmissionRow>(`update luna_feedback.submissions set tags = $2 where id = $1 returning ${COLUMNS}`, [id, tags]);
+    return r.rows[0];
+  }
+
+  /** Every tag in use with how many reports carry it, most used first; the common ones are always offered. */
+  async knownTags(): Promise<{ tag: string; count: number }[]> {
+    const r = await this.db.query<{ tag: string; count: number }>(
+      `select t.tag, count(*)::int as count
+         from luna_feedback.submissions s cross join lateral unnest(s.tags) as t(tag)
+        group by t.tag order by count(*) desc, t.tag`,
+    );
+    const seen = new Set(r.rows.map((x) => x.tag));
+    return [...r.rows, ...COMMON_TAGS.filter((t) => !seen.has(t)).map((tag) => ({ tag, count: 0 }))];
   }
 
   /** Records the Jira ticket created for this submission. */

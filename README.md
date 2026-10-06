@@ -87,8 +87,8 @@ removed or disabled, so a deployment can never become unreachable. Two more ways
 | role | can |
 |---|---|
 | `admin` | everything, including adding and removing people |
-| `qc` | Jira, triage and issue status, issue kinds, diagnosis and review, benchmarks |
-| `developer` | issue kinds, diagnosis and review, benchmarks. No Jira, triage or people |
+| `qc` | Jira, triage and issue status, tags, issue kinds, diagnosis and review, benchmarks |
+| `developer` | tags, issue kinds, diagnosis and review, benchmarks. No Jira, triage or people |
 | `business` | read-only across the dashboard |
 | `cx` | read-only, plus the AI on a report (diagnose, chat). CX files reports from its own tool, not the dashboard |
 
@@ -215,8 +215,15 @@ or a problem; **My queue** on the dashboard shows yours. QC sets a priority (P0â
 the AI's severity. Notes are team-only or customer-safe; CX users can write both, and the CX tool
 reads the latest customer-safe one and can post replies back. **Needs info** parks a report while
 waiting on the tester or customer (Ask reporter posts the AI's questions and sets it); a reply
-through the CX tool puts it back where it was. The dashboard list does bulk status, owner and priority
-changes. Analytics shows time to first response and to resolve, per source, and time in each status.
+through the CX tool puts it back where it was. The dashboard list does bulk status, owner, priority
+and tag changes.
+
+**Tags** are short labels on a report, such as `app` or `firmware`: free-form, stored lowercase
+(spaces become dashes), up to 10 per report. QC and developers add them on the report page, where
+`app` and `firmware` are one click and tags already in use are suggested; QC can also tag many
+reports at once from the list. The list filters by a tag, by several (any of them) or by
+**Untagged**, and clicking a tag on a row filters by it. Tags go onto Jira tickets as `tag-â€¦` labels,
+and every change is in the report's history. Analytics shows time to first response and to resolve, per source, and time in each status.
 
 ## Needs attention
 

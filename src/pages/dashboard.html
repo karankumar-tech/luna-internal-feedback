@@ -166,6 +166,11 @@
   .prio { font-family: var(--mono); font-size: 10px; line-height: 16px; letter-spacing: .06em; padding: 0 5px; border-radius: var(--r-xs); }
   .prio.p0 { background: var(--crit); color: var(--white); } .prio.p1 { background: var(--orange); color: var(--white); }
   .prio.p2 { background: var(--brief); } .prio.p3 { background: var(--brief); color: var(--gray-dark); }
+  /* a report's tags: small outlined chips, above the row's link so they can be clicked */
+  .item .meta .utag { position: relative; z-index: 1; display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--card); font: 500 11px/16px var(--sans); color: var(--foreground); cursor: pointer; transition: border-color .15s var(--ease), background-color .15s var(--ease); }
+  .item .meta .utag:hover { border-color: var(--primary); }
+  .item .meta .utag:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+  .bulkbar input[type=text] { min-height: 0; height: 28px; width: 130px; padding: 3px 8px; font-size: 12px; border-radius: var(--r-s); }
   .owner { font-size: 12px; line-height: 16px; color: var(--gray-dark); white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
 
   .empty { padding: 40px 20px; text-align: center; color: var(--gray-dark); font-size: 14px; }
@@ -336,6 +341,9 @@
         <select id="bStatus" aria-label="Set status"><option value="">Status…</option><option value="triaged">Triaged</option><option value="in_progress">In progress</option><option value="needs_info">Needs info</option><option value="resolved">Resolved</option><option value="closed">Closed</option><option value="wont_fix">Won't fix</option></select>
         <select id="bOwner" aria-label="Set owner"><option value="">Owner…</option><option value="__none">Unassign</option></select>
         <select id="bPrio" aria-label="Set priority"><option value="">Priority…</option><option value="p0">P0</option><option value="p1">P1</option><option value="p2">P2</option><option value="p3">P3</option><option value="__none">Clear</option></select>
+        <input id="bTag" type="text" list="knownTags" placeholder="Add tag…" aria-label="Add a tag" autocomplete="off" spellcheck="false" maxlength="30">
+        <select id="bUntag" aria-label="Remove a tag"><option value="">Remove tag…</option></select>
+        <datalist id="knownTags"></datalist>
         <button class="btn small primary" id="btnBulk" type="button">Apply</button>
         <button class="btn small" id="btnBulkTest" type="button">Mark as test</button>
         <button class="btn small ghost" id="btnBulkClear" type="button">Clear selection</button>
@@ -367,8 +375,8 @@
    * What the page is showing. Anything other than the first page of issues with no filters is a
    * "custom" view: it is fetched on its own and never cached, so the default stays cheap and instant.
    */
-  const S = { home: null, viewer: null, labels: null, list: null, view: 'issues', page: 1, filters: {}, picked: new Set(), people: null, kinds: null, keyLogin: false, loadedAt: 0 };
-  const FILTER_KEYS = ['received', 'from', 'to', 'feature', 'category', 'origin', 'environment', 'platform', 'status', 'assigned_to', 'priority', 'kind_id', 'jira', 'ai_status', 'ai_side', 'ai_severity', 'data', 'user_id'];
+  const S = { home: null, viewer: null, labels: null, list: null, view: 'issues', page: 1, filters: {}, picked: new Set(), people: null, kinds: null, tags: null, keyLogin: false, loadedAt: 0 };
+  const FILTER_KEYS = ['received', 'from', 'to', 'feature', 'category', 'origin', 'environment', 'platform', 'status', 'assigned_to', 'priority', 'tag', 'kind_id', 'jira', 'ai_status', 'ai_side', 'ai_severity', 'data', 'user_id'];
   const isDefault = () => S.view === 'issues' && S.page === 1 && !Object.keys(S.filters).length;
   const can = (p) => !!(S.viewer && S.viewer.permissions && S.viewer.permissions[p]);
 
@@ -552,6 +560,11 @@
       add(el('span', 'ref', r.ref));
       if (h.kind) add(el('span', 'ref', h.kind.ref)).title = h.kind.title;
       add(featLabel(r.feature_key) + (r.issue_categories.length ? ' — ' + r.issue_categories.map((c) => catLabel(r.feature_key, c)).join(', ') : ''));
+      for (const t of r.tags || []) {
+        const b = el('button', 'utag', t); b.type = 'button'; b.title = `Show reports tagged ${t}`;
+        b.addEventListener('click', () => { S.filters.tag = t; S.page = 1; changed(); });
+        add(b);
+      }
       if (r.origin === 'cx') { const s = el('span'); s.appendChild(el('span', 'tag cx', 'CX')); s.appendChild(document.createTextNode(' ' + (r.user_id ? 'user ' + r.user_id : 'ring ' + (r.device_serial || '')))); add(s); }
       else if (r.user_id) add('tester ' + r.user_id);
       if (r.environment && r.environment !== 'stage') add(ENV[r.environment] || r.environment);
@@ -661,6 +674,7 @@
     { key: 'status', label: 'Status', options: () => Object.entries(STATUS) },
     { key: 'assigned_to', label: 'Owner', options: () => [['me', 'Me'], ['none', 'Nobody'], ...(S.people || []).map((p) => [p.email, p.name || p.email])] },
     { key: 'priority', label: 'Priority', options: () => [['p0', 'P0'], ['p1', 'P1'], ['p2', 'P2'], ['p3', 'P3'], ['none', 'Not set']] },
+    { key: 'tag', label: 'Tag', options: () => [['none', 'Untagged'], ...(S.tags || []).map((t) => [t.tag, t.count ? `${t.tag} (${t.count})` : t.tag])] },
     { key: 'kind_id', label: 'Problem', options: () => (S.kinds || []).map((k) => [k.id, `${k.ref} · ${k.title}`]) },
     { key: 'jira', label: 'Jira', options: () => [['any', 'Has a ticket'], ['none', 'No ticket']] },
     { key: 'ai_status', label: 'AI check', options: () => [['none', 'Not checked'], ['waiting_logs', 'Waiting for logs'], ['done', 'Diagnosed'], ['no_logs', 'No logs'], ['failed', 'Failed']] },
@@ -708,10 +722,20 @@
     const [people, kinds] = await Promise.all([
       S.people ? Promise.resolve(S.people) : api('/v1/admin/assignees').then((x) => x.items || []).catch(() => []),
       S.kinds ? Promise.resolve(S.kinds) : api('/v1/kinds?from=2020-01-01').then((x) => x.items || []).catch(() => []),
+      loadTags(),
     ]);
     S.people = people; S.kinds = kinds;
-    fillSelect(FILTERS.find((x) => x.key === 'assigned_to')); fillSelect(FILTERS.find((x) => x.key === 'kind_id'));
+    fillSelect(FILTERS.find((x) => x.key === 'assigned_to')); fillSelect(FILTERS.find((x) => x.key === 'kind_id')); fillSelect(FILTERS.find((x) => x.key === 'tag'));
     renderFilterValues(); renderChips();
+  }
+  /** Tags in use (most used first) and the common ones; fetched once, when first needed. */
+  async function loadTags() {
+    if (!S.tags) S.tags = await api('/v1/admin/tags').then((x) => x.items || []).catch(() => []);
+    const dl = $('knownTags'); dl.replaceChildren();
+    for (const t of S.tags) dl.appendChild(Object.assign(el('option'), { value: t.tag }));
+    const un = $('bUntag'); un.replaceChildren(Object.assign(el('option', null, 'Remove tag…'), { value: '' }));
+    for (const t of S.tags) if (t.count) un.appendChild(Object.assign(el('option', null, t.tag), { value: t.tag }));
+    return S.tags;
   }
   function fillSelect(f) {
     const sel = $('f_' + f.key); if (!sel) return;
@@ -741,6 +765,7 @@
     if (k === 'from') return 'From ' + v;
     if (k === 'to') return 'To ' + v;
     if (k === 'user_id') return 'ID ' + v;
+    if (k === 'tag') return v === 'none' ? 'Untagged' : 'Tag: ' + v.split(',').join(' or ');
     if (k === 'kind_id') { const kk = (S.kinds || []).find((x) => x.id === v); return kk ? `${kk.ref} ${kk.title}` : 'One problem'; }
     const opt = f && f.options ? f.options().find(([o]) => o === v) : null;
     return `${f ? f.label : k}: ${opt ? opt[1] : v}`;
@@ -783,7 +808,7 @@
     if (!rows.length) { toast('Nothing to export'); return; }
     const cols = [['ref', (r) => r.ref], ['received', (r) => r.created_at], ['happened', (r) => r.occurred_on], ['problem', (r) => (r.kinds || []).map((k) => `${k.ref} ${k.title}`).join(' | ')],
       ['feature', (r) => featLabel(r.feature_key)], ['categories', (r) => r.issue_categories.map((c) => catLabel(r.feature_key, c)).join(' | ')], ['text', (r) => r.feedback_text],
-      ['result', (r) => r.is_positive ? 'working fine' : 'issue'], ['status', (r) => r.status], ['priority', (r) => r.priority], ['owner', (r) => r.assigned_to], ['source', (r) => r.origin],
+      ['result', (r) => r.is_positive ? 'working fine' : 'issue'], ['status', (r) => r.status], ['priority', (r) => r.priority], ['tags', (r) => (r.tags || []).join(' | ')], ['owner', (r) => r.assigned_to], ['source', (r) => r.origin],
       ['environment', (r) => r.environment], ['user_id', (r) => r.user_id], ['ring', (r) => r.device_serial], ['cx_ticket', (r) => r.cx_ref], ['ai_side', (r) => r.ai_side], ['ai_severity', (r) => r.ai_severity], ['jira', (r) => r.jira_key], ['test', (r) => r.is_test]];
     const esc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const csv = [cols.map(([h]) => h).join(','), ...rows.map((r) => cols.map(([, f]) => esc(f(r))).join(','))].join('\n');
@@ -795,6 +820,7 @@
     const n = S.picked.size;
     $('bulkbar').hidden = n === 0 || !can('manage_triage');
     $('bulkN').textContent = `${n} selected`;
+    if (n) loadTags();
     if (n && !S.people) api('/v1/admin/assignees').then((x) => { S.people = x.items || []; fillOwners(); }).catch(() => {});
     else if (n) fillOwners();
   }
@@ -815,9 +841,12 @@
     if ($('bStatus').value) change.status = $('bStatus').value;
     if ($('bOwner').value) change.assigned_to = $('bOwner').value === '__none' ? null : $('bOwner').value;
     if ($('bPrio').value) change.priority = $('bPrio').value === '__none' ? null : $('bPrio').value;
-    if (!Object.keys(change).length) { toast('Pick a status, owner or priority to apply'); return; }
+    if ($('bTag').value.trim()) change.add_tags = [$('bTag').value.trim()];
+    if ($('bUntag').value) change.remove_tags = [$('bUntag').value];
+    if (!Object.keys(change).length) { toast('Pick a status, owner, priority or tag to apply'); return; }
+    if (change.add_tags || change.remove_tags) S.tags = null; // counts change; fetch again next time
     bulk(change, 'Applied');
-    $('bStatus').value = ''; $('bOwner').value = ''; $('bPrio').value = '';
+    $('bStatus').value = ''; $('bOwner').value = ''; $('bPrio').value = ''; $('bTag').value = ''; $('bUntag').value = '';
   });
   $('btnBulkTest').addEventListener('click', () => bulk({ is_test: true }, 'Marked as test'));
   $('btnBulkClear').addEventListener('click', () => { S.picked.clear(); for (const b of document.querySelectorAll('.item .pick input')) b.checked = false; renderBulk(); });

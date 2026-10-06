@@ -632,10 +632,12 @@ Every new issue is matched against open problems when it arrives; a clear match 
 | `GET` | `/v1/feedback/{id}/activity` | the report's history, oldest first: arrival, status, owner, priority, grouping, Jira, diagnosis runs and notes |
 | `POST` | `/v1/admin/submissions/{id}/notes` | `{ "body", "visibility": "internal" \| "customer" }` (`add_notes`: admin, QC, developer, CX). `customer` notes are ones CX may pass on |
 | `POST` | `/v1/admin/submissions/{id}/ask-reporter` | `{ "questions": [...] }` posts the questions as a note (customer-safe on CX reports) and sets `needs_info` |
-| `POST` | `/v1/admin/submissions/bulk` | `{ "ids": [...], "status"?, "assigned_to"?, "priority"?, "is_test"?, "kind_id"? }` → `{ updated, failed: [{ id, error }] }` |
+| `POST` | `/v1/admin/submissions/{id}/tags` | `{ "add"?: [...], "remove"?: [...] }` (`tag_reports`: admin, QC, developer) → the report. Tags are lowercased, spaces become dashes; letters, digits, `.`, `_` and `-`, up to 30 characters and 10 per report |
+| `GET` | `/v1/admin/tags` | `{ items: [{ tag, count }] }`: tags in use, most used first, plus `app` and `firmware` |
+| `POST` | `/v1/admin/submissions/bulk` | `{ "ids": [...], "status"?, "assigned_to"?, "priority"?, "is_test"?, "kind_id"?, "add_tags"?, "remove_tags"? }` → `{ updated, failed: [{ id, error }] }` |
 | `GET` | `/v1/admin/assignees` | everyone a report can be assigned to |
 
-List, stats and the attention page accept `assigned_to` (an email, `me` or `none`) and `priority` (`p0`..`p3` or `none`). Reports carry `first_touched_at` (the team's first action), `last_activity_at` and `resolved_at`; the analytics overview adds `response_times` and `time_in_status`.
+List, stats and the attention page accept `assigned_to` (an email, `me` or `none`), `priority` (`p0`..`p3` or `none`) and `tag` (one tag, several comma-separated for any of them, or `none` for untagged). Reports carry `tags`. Reports carry `first_touched_at` (the team's first action), `last_activity_at` and `resolved_at`; the analytics overview adds `response_times` and `time_in_status`.
 
 **Home page** (dashboard). The home page makes one request on arrival and keeps its last copy in the browser.
 

@@ -55,8 +55,10 @@ export function registerActivityRoutes(app: FastifyInstance, deps: {
       priority: z.enum(PRIORITIES).nullable().optional(),
       is_test: z.boolean().optional(),
       kind_id: z.string().trim().max(60).optional(),
-    }).strict().refine((b) => b.status !== undefined || b.assigned_to !== undefined || b.priority !== undefined || b.is_test !== undefined || b.kind_id !== undefined, {
-      message: 'send at least one of status, assigned_to, priority, is_test, kind_id',
+      add_tags: z.array(z.string().max(40)).max(10).optional(),
+      remove_tags: z.array(z.string().max(40)).max(10).optional(),
+    }).strict().refine((b) => b.status !== undefined || b.assigned_to !== undefined || b.priority !== undefined || b.is_test !== undefined || b.kind_id !== undefined || !!b.add_tags?.length || !!b.remove_tags?.length, {
+      message: 'send at least one of status, assigned_to, priority, is_test, kind_id, add_tags, remove_tags',
     }), req.body);
     if (body.kind_id && !can(req.actor, 'manage_kinds')) throw AppError.forbidden(`Your role (${req.actor?.role}) cannot link problems`);
     if (body.assigned_to && !(await deps.assignable()).some((u) => u.email === body.assigned_to)) {
@@ -74,6 +76,7 @@ export function registerActivityRoutes(app: FastifyInstance, deps: {
         if (body.priority !== undefined) await feedback.setPriority(id, body.priority, by);
         if (body.status !== undefined) await feedback.setStatus(id, body.status, null, by, team);
         if (body.kind_id) await kinds.link((await feedback.row(id)).id, body.kind_id, 'manual', null, by);
+        if (body.add_tags?.length || body.remove_tags?.length) await feedback.changeTags(id, { add: body.add_tags, remove: body.remove_tags }, by);
         updated += 1;
       } catch (err) {
         failed.push({ id, error: err instanceof Error ? err.message : String(err) });

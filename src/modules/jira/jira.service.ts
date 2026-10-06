@@ -132,6 +132,7 @@ export class JiraService {
       `origin-${sub.origin}`,
       ...(sub.platform ? [`platform-${sub.platform}`] : []),
       ...(diagnosis?.root_cause_side ? [`side-${diagnosis.root_cause_side}`] : []),
+      ...(sub.tags ?? []).map((t) => `tag-${t}`),
     ];
 
     const issue = await client.createIssue({ summary, description, labels });

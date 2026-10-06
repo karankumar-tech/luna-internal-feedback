@@ -206,6 +206,19 @@
 
   @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
   @media (prefers-reduced-motion: reduce) { .meter .fill { transition: none; } }
+  /* tags under the title: removable chips, one-click common tags, and an input with suggestions */
+  .tag-line { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .tag-line .overline { margin-right: 4px; }
+  .tagchips { display: contents; }
+  .tagchip { display: inline-flex; align-items: center; gap: 2px; height: 24px; padding: 0 3px 0 9px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--card); font-size: 12px; line-height: 16px; font-weight: 500; }
+  .tagchip:not(:has(.x)) { padding-right: 9px; }
+  .tagchip a { color: inherit; text-decoration: none; } .tagchip a:hover { text-decoration: underline; text-underline-offset: 2px; }
+  .tagchip .x { width: 18px; height: 18px; display: grid; place-items: center; border: 0; border-radius: 4px; background: none; color: var(--muted-foreground); cursor: pointer; transition: background-color .15s var(--ease), color .15s var(--ease); }
+  .tagchip .x:hover { background: var(--muted); color: var(--foreground); }
+  .tagpick { height: 24px; padding: 0 9px; border: 1px dashed var(--border-strong); border-radius: 6px; background: transparent; font-size: 12px; font-weight: 500; color: var(--muted-foreground); cursor: pointer; transition: border-color .15s var(--ease), color .15s var(--ease); }
+  .tagpick:hover { border-style: solid; border-color: var(--primary); color: var(--foreground); }
+  .tagchip .x:focus-visible, .tagpick:focus-visible, .tagchip a:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+  .tag-line input[type=text] { min-height: 0; height: 24px; width: 130px; padding: 0 8px; font-size: 12px; border-radius: 6px; box-shadow: none; }
 </style>
 <link rel="stylesheet" href="/dashboard/assets/app.css">
 </head>
@@ -220,6 +233,12 @@
       <div class="meta" id="meta"></div>
       <div class="problem-line" id="problemLine" hidden></div>
       <div class="device-line" id="deviceLine" hidden></div>
+      <div class="tag-line" id="tagLine" hidden>
+        <span class="overline">Tags</span>
+        <span class="tagchips" id="tagChips"></span>
+        <input id="tagInput" type="text" list="tagOptions" placeholder="Add tag…" maxlength="30" autocomplete="off" spellcheck="false" aria-label="Add a tag, then press Enter">
+        <datalist id="tagOptions"></datalist>
+      </div>
     </div>
     <div class="page-actions report-actions">
       <label class="overline" for="statusSel">Status</label>
@@ -389,6 +408,7 @@
     loadSameDevice();
     loadActivity();
     loadAssignees();
+    if (can('tag_reports')) loadTagOptions();
     loadJiraStatus();
     loadCatalog();
     await refreshDiagnosis();
@@ -421,6 +441,7 @@
     const r = state.sub; const f = feature();
     $('btnFlag').textContent = r.is_test ? 'Mark as real' : 'Mark as test';
     $('crumbRef').textContent = r.ref;
+    renderTags();
     document.title = `${r.ref} · ${f.label} · ${r.is_positive ? 'Working fine' : 'Issue'} · Luna Pulse`;
     $('title').replaceChildren(
       el('span', 'refno', r.ref), el('span', null, f.label + ' · '), el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue'),
@@ -525,6 +546,51 @@
   $('ownerSel').addEventListener('change', (ev) => { const v = ev.target.value || null; patchSub({ assigned_to: v }, v ? `Assigned to ${v}` : 'Unassigned'); });
   $('prioSel').addEventListener('change', (ev) => { const v = ev.target.value || null; patchSub({ priority: v }, v ? `Priority ${v.toUpperCase()}` : 'Priority cleared'); });
 
+  // ---------- tags ----------
+  /** Offered on every report as one-click picks; the server keeps the same list. */
+  const COMMON_TAGS = ['app', 'firmware'];
+  let knownTags = null;
+  async function loadTagOptions() {
+    if (!knownTags) knownTags = await api('/v1/admin/tags').then((x) => (x.items || []).map((t) => t.tag)).catch(() => COMMON_TAGS.slice());
+    $('tagOptions').replaceChildren(...knownTags.map((t) => Object.assign(el('option'), { value: t })));
+  }
+  function renderTags() {
+    const r = state.sub; if (!r) return;
+    const tags = r.tags || []; const edit = can('tag_reports');
+    const host = $('tagChips'); host.replaceChildren();
+    for (const t of tags) {
+      const c = el('span', 'tagchip');
+      const a = el('a', null, t); a.href = '/dashboard?tag=' + encodeURIComponent(t); a.title = `All reports tagged ${t}`; c.appendChild(a);
+      if (edit) {
+        const x = el('button', 'x'); x.type = 'button'; x.setAttribute('aria-label', `Remove the tag ${t}`); x.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+        x.addEventListener('click', () => changeTags({ remove: [t] }, `Removed ${t}`));
+        c.appendChild(x);
+      }
+      host.appendChild(c);
+    }
+    if (edit) for (const t of COMMON_TAGS) if (!tags.includes(t)) {
+      const b = el('button', 'tagpick', '+ ' + t); b.type = 'button'; b.title = `Tag this report ${t}`;
+      b.addEventListener('click', () => changeTags({ add: [t] }, `Tagged ${t}`));
+      host.appendChild(b);
+    }
+    $('tagInput').hidden = !edit;
+    $('tagLine').hidden = !edit && !tags.length;
+  }
+  async function changeTags(change, done) {
+    try {
+      state.sub = await api(`/v1/admin/submissions/${id}/tags`, { method: 'POST', body: JSON.stringify(change) });
+      renderTags(); loadActivity(); toast(done);
+      if (change.add) { knownTags = null; loadTagOptions(); }
+    } catch (err) { toast('Could not change the tags: ' + err.message); }
+  }
+  $('tagInput').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ',') return;
+    e.preventDefault();
+    const v = $('tagInput').value.trim(); if (!v) return;
+    $('tagInput').value = '';
+    changeTags({ add: [v] }, `Tagged ${v.toLowerCase().replace(/\s+/g, '-')}`);
+  });
+
   async function askReporter(questions) {
     if (!confirm(`Send these ${questions.length} question(s) ${state.sub.origin === 'cx' ? 'to the customer through CX' : 'to the tester'} and mark the report Needs info?\n\n• ${questions.join('\n• ')}`)) return;
     try { state.sub = await api(`/v1/admin/submissions/${id}/ask-reporter`, { method: 'POST', body: JSON.stringify({ questions }) }); renderSubmission(); renderDiagnosis(); loadActivity(); toast('Asked. The report is waiting on the reporter.'); }
@@ -547,6 +613,11 @@
     jira: (e) => `filed Jira ${e.to_value}`,
     diagnosis: (e) => `ran a diagnosis (${e.to_value})`,
     regression: (e) => `flagged it as ${e.to_value} coming back after its fix`,
+    tag: (e) => {
+      const before = (e.from_value || '').split(', ').filter(Boolean); const after = (e.to_value || '').split(', ').filter(Boolean);
+      const added = after.filter((t) => !before.includes(t)); const removed = before.filter((t) => !after.includes(t));
+      return [added.length ? `tagged it ${added.join(', ')}` : '', removed.length ? `removed the tag${removed.length > 1 ? 's' : ''} ${removed.join(', ')}` : ''].filter(Boolean).join(' and ') || 'changed its tags';
+    },
   };
   const label = (st) => (TRIAGE.find((t) => t[0] === st) || [, st || '—'])[1];
   const nameOf = (email) => { const p = (state.people || []).find((x) => x.email === email); return p && p.name ? p.name : email; };
