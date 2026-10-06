@@ -6,23 +6,11 @@
 <title>Luna Pulse · Diagnosis</title>
 <meta name="robots" content="noindex">
 <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
-<link rel="icon" href="/mark.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&display=swap">
 <style>
-  .lead { display: flex; align-items: center; gap: 14px; }
-  .logo { display: inline-flex; align-items: center; gap: 9px; flex: none; text-decoration: none; }
-  .logo img { display: block; height: 20px; width: auto; }
-  .logo-sub { font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; line-height: 14px; font-weight: 500; letter-spacing: .24em; text-transform: uppercase; color: #6B7280; padding-left: 9px; border-left: 1px solid #E5E7EB; }
-  :root {
-    --black: #000; --white: #fff; --gray-dark: #737373; --gray-mid: #9E9E9E; --gray-light: #D9D9D9;
-    --bg: #F0EFEA; --brief: #E8E6E0; --border-warm: #E2E0D9; --border-ghost: #F0F0F0; --hero: #1A1A18; --hero-muted: #8A887F;
-    --yellow: #F5F85D; --yellow-50: #FEFFD6; --blue: #2E64E4; --orange: #EF7432; --magenta: #E0237A; --ok: #00C37A; --ok-bg: #E6F8F0; --crit: #FF3B3B; --crit-bg: #FFECEC;
-    --sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-    --r-xs: 2px; --r-s: 4px; --r-m: 6px; --r-l: 8px; --r-xl: 12px;
-  }
   * { box-sizing: border-box; }
   html { color-scheme: light; }
   body { margin: 0; background: var(--bg); color: var(--black); font-family: var(--sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased; }
@@ -32,9 +20,6 @@
   h2 { font-size: 16px; line-height: 20px; font-weight: 600; margin: 0; }
   .tertiary { color: var(--gray-mid); }
   .wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px 64px; }
-  .top { background: var(--white); border-bottom: 1px solid var(--gray-light); }
-  .top-inner { max-width: 1240px; margin: 0 auto; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-  .crumb { font-size: 13px; color: var(--gray-dark); text-decoration: none; } .crumb:hover { color: var(--black); }
   .btn { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-l); padding: 7px 12px; line-height: 18px; cursor: pointer; font-weight: 500; }
   .btn.small { padding: 4px 10px; font-size: 12px; line-height: 16px; border-radius: var(--r-s); }
   .btn:focus-visible, input:focus-visible, select:focus-visible { outline: none; border-color: var(--black); box-shadow: 0 0 0 1px var(--black); }
@@ -79,26 +64,19 @@
   @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
   @media (max-width: 600px) { .kpis { grid-template-columns: 1fr 1fr; } }
 </style>
+<link rel="stylesheet" href="/dashboard/assets/app.css">
 </head>
 <body>
-<header class="top">
-  <div class="top-inner">
-    <div class="lead">
-      <a class="logo" href="/dashboard" aria-label="Luna Pulse"><img src="/wordmark.svg" alt="" width="102" height="20"><span class="logo-sub">Pulse</span></a>
-      <div>
-        <a class="crumb" href="/dashboard">← Dashboard</a>
-        <div class="overline" style="margin-top:2px">Luna · Internal feedback</div>
-        <h1>Diagnosis overview</h1>
-      </div>
-    </div>
-    <span style="display:flex;align-items:center;gap:10px">
-      <span class="tertiary" id="rangeLabel" style="font-size:12px"></span>
-      <span class="tertiary" id="freshness" style="font-size:12px"></span>
-      <button class="btn small" id="btnRefresh" type="button">Refresh</button>
-    </span>
-  </div>
-</header>
+<script src="/dashboard/assets/shell.js"></script>
 <main class="wrap">
+  <div class="page-head">
+    <div>
+      <nav class="crumbs" aria-label="Breadcrumb"><a href="/dashboard">Reports</a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg><span aria-current="page">Diagnosis</span></nav>
+      <h1>Diagnosis</h1>
+      <p class="page-sub">What the AI found in the logs, and where it is stuck. <span id="rangeLabel"></span> <span id="freshness"></span></p>
+    </div>
+    <div class="page-actions"><button class="btn" id="btnRefresh" type="button">Refresh</button></div>
+  </div>
   <section class="filters">
     <label class="field"><span>Range</span>
       <div class="seg" id="presets"><button type="button" data-days="7">7d</button><button type="button" data-days="30" class="on">30d</button><button type="button" data-days="90">90d</button><button type="button" data-days="all">All</button></div>
@@ -176,7 +154,7 @@
   const istToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const shift = (iso, d) => { const x = new Date(iso + 'T00:00:00Z'); x.setUTCDate(x.getUTCDate() + d); return x.toISOString().slice(0, 10); };
   const shortDate = (iso) => { const [y, m, d] = iso.split('-'); return `${d} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m - 1]}`; };
-  const SIDES = [{ key: 'firmware', label: 'Firmware', color: '#EF7432' }, { key: 'sdk', label: 'Ring SDK', color: '#2E64E4' }, { key: 'app', label: 'App', color: '#000000' }, { key: 'backend', label: 'Backend', color: '#E0237A' }, { key: 'other', label: 'Other / unclear', color: '#9E9E9E' }];
+  const SIDES = [{ key: 'firmware', label: 'Firmware', color: '#0A0A0A' }, { key: 'sdk', label: 'Ring SDK', color: '#3F3F46' }, { key: 'app', label: 'App', color: '#71717A' }, { key: 'backend', label: 'Backend', color: '#A1A1AA' }, { key: 'other', label: 'Other / unclear', color: '#D4D4D8' }];
   const SIDE_LABEL = { firmware: 'Firmware', sdk: 'Ring SDK', app: 'App', backend: 'Backend', user_expectation: 'User expectation', not_a_bug: 'Not a bug', insufficient_logs: 'Insufficient logs' };
   const sideOf = (s) => (SIDES.find((x) => x.key === s) ? s : 'other');
 
@@ -258,9 +236,9 @@
     }
 
     const fwMax = Math.max(1, ...o.firmware_versions.map((r) => r.issues));
-    table($('tFw'), [{ h: 'firmware', render: (r) => el('span', 'mono', r.version) }, { h: 'issues', k: 'issues', num: true }, { h: 'share', render: (r) => bar(r.issues, fwMax, '#EF7432') }, { h: 'firmware-side', num: true, render: (r) => `${r.firmware_side} (${pct(r.firmware_side, r.issues)})` }, { h: 'high+', k: 'high', num: true }], o.firmware_versions, 'No firmware versions seen yet.');
+    table($('tFw'), [{ h: 'firmware', render: (r) => el('span', 'mono', r.version) }, { h: 'issues', k: 'issues', num: true }, { h: 'share', render: (r) => bar(r.issues, fwMax, '#0A0A0A') }, { h: 'firmware-side', num: true, render: (r) => `${r.firmware_side} (${pct(r.firmware_side, r.issues)})` }, { h: 'high+', k: 'high', num: true }], o.firmware_versions, 'No firmware versions seen yet.');
     const appMax = Math.max(1, ...o.app_versions.map((r) => r.issues));
-    table($('tApp'), [{ h: 'app', render: (r) => el('span', 'mono', r.version) }, { h: 'platform', render: (r) => r.platform === 'ios' ? 'iOS' : r.platform === 'android' ? 'Android' : '—' }, { h: 'issues', k: 'issues', num: true }, { h: 'share', render: (r) => bar(r.issues, appMax, '#2E64E4') }, { h: 'app/sdk-side', num: true, render: (r) => `${r.app_side} (${pct(r.app_side, r.issues)})` }], o.app_versions, 'No app versions seen yet.');
+    table($('tApp'), [{ h: 'app', render: (r) => el('span', 'mono', r.version) }, { h: 'platform', render: (r) => r.platform === 'ios' ? 'iOS' : r.platform === 'android' ? 'Android' : '—' }, { h: 'issues', k: 'issues', num: true }, { h: 'share', render: (r) => bar(r.issues, appMax, '#3F3F46') }, { h: 'app/sdk-side', num: true, render: (r) => `${r.app_side} (${pct(r.app_side, r.issues)})` }], o.app_versions, 'No app versions seen yet.');
     const tagMax = Math.max(1, ...o.tags.map((r) => r.count));
     table($('tTags'), [{ h: 'tag', render: (r) => el('span', 'mono', r.tag) }, { h: 'count', k: 'count', num: true }, { h: '', render: (r) => bar(r.count, tagMax, '#000') }, { h: 'features', render: (r) => (r.features || []).join(', ') }], o.tags, 'No tags yet.');
 

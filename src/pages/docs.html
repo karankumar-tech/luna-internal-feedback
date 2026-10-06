@@ -6,27 +6,17 @@
 <title>Luna Pulse · API</title>
 <meta name="robots" content="noindex">
 <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
-<link rel="icon" href="/mark.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/dashboard/assets/app.css">
 <style>
-    .logo { display: inline-flex; align-items: center; gap: 9px; flex: none; text-decoration: none; }
-  .logo img { display: block; height: 20px; width: auto; }
-  .logo-sub { font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; line-height: 14px; font-weight: 500; letter-spacing: .24em; text-transform: uppercase; color: #9CA3AF; padding-left: 9px; border-left: 1px solid #3A3A38; }
-  :root {
-    --black: #000; --white: #fff; --gray-dark: #737373; --gray-mid: #9E9E9E; --gray-light: #D9D9D9;
-    --bg: #F0EFEA; --brief: #E8E6E0; --border-warm: #E2E0D9; --border-ghost: #F0F0F0; --hero: #1A1A18; --hero-muted: #8A887F;
-    --yellow: #F5F85D; --blue: #2E64E4; --orange: #FF985D; --ok: #00C37A; --crit: #FF3B3B;
-    --sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  }
   * { box-sizing: border-box; }
   html { color-scheme: light; scroll-behavior: smooth; }
   @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
   body { margin: 0; background: var(--bg); color: var(--black); font-family: var(--sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased; }
-  a { color: var(--blue); text-decoration: none; } a:hover { text-decoration: underline; }
+  a { color: var(--foreground); text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 3px; transition: text-decoration-color .15s var(--ease); } a:hover { text-decoration-color: var(--foreground); }
   code { font-family: var(--mono); font-size: 12.5px; background: var(--brief); padding: 1px 5px; border-radius: 2px; }
   pre { background: var(--brief); border-radius: 8px; padding: 14px 16px; overflow-x: auto; margin: 12px 0; font-size: 12.5px; line-height: 19px; }
   pre code { background: none; padding: 0; font-size: inherit; }
@@ -35,33 +25,36 @@
   h2 { font-size: 24px; line-height: 28px; font-weight: 700; margin: 0 0 12px; letter-spacing: -0.01em; }
   h3 { font-size: 16px; line-height: 20px; font-weight: 600; margin: 24px 0 8px; }
   h4 { font-size: 14px; line-height: 18px; font-weight: 600; margin: 18px 0 6px; }
-  p { margin: 0 0 12px; max-width: 70ch; color: #262626; }
+  p { margin: 0 0 12px; max-width: 70ch; color: var(--ink-2); }
   ul, ol { margin: 0 0 12px; padding-left: 20px; max-width: 70ch; } li { margin: 4px 0; }
   .lede { font-size: 16px; line-height: 26px; color: var(--gray-dark); max-width: 62ch; }
 
-  .top { background: var(--hero); color: var(--white); }
-  .top-inner { max-width: 1180px; margin: 0 auto; padding: 32px 20px 28px; display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap; }
-  .top .overline { color: var(--hero-muted); }
-  .top h1 { color: var(--white); margin-bottom: 0; }
-  .top .lede { color: #C9C7BE; margin: 8px 0 0; }
-  .facts { display: grid; grid-template-columns: auto auto; gap: 4px 16px; font-size: 12px; line-height: 18px; }
-  .facts dt { color: var(--hero-muted); font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; padding-top: 2px; }
-  .facts dd { margin: 0; font-family: var(--mono); color: var(--white); }
-  .facts dd .y { color: var(--yellow); }
+  .bar { position: sticky; top: 0; z-index: 30; background: oklch(100% 0 0 / .85); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); border-bottom: 1px solid var(--border); }
+  .bar-inner { max-width: 1180px; margin: 0 auto; padding: 0 20px; height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .bar .logo { display: flex; align-items: center; border-radius: var(--r-m); }
+  .bar .logo img { display: block; height: 46px; width: auto; }
+  .bar .logo:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .top-inner { max-width: 1180px; margin: 0 auto; padding: 32px 20px 8px; display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap; }
+  .top-inner h1 { margin-bottom: 0; }
+  .top-inner .lede { margin: 8px 0 0; }
+  .facts { display: grid; grid-template-columns: auto auto; gap: 4px 16px; font-size: 12px; line-height: 18px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px 18px; box-shadow: var(--shadow-sm); }
+  .facts dt { color: var(--muted-foreground); font-family: var(--sans); font-size: 11px; font-weight: 500; padding-top: 1px; }
+  .facts dd { margin: 0; font-family: var(--mono); color: var(--foreground); }
+  .facts dd .y { color: var(--muted-foreground); }
 
   .layout { max-width: 1180px; margin: 0 auto; padding: 24px 20px 80px; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 32px; }
-  nav.side { position: sticky; top: 16px; align-self: start; font-size: 13px; line-height: 20px; }
+  nav.side { position: sticky; top: 84px; align-self: start; font-size: 13px; line-height: 20px; }
   nav.side .overline { margin-bottom: 8px; }
-  nav.side a { display: block; color: var(--gray-dark); padding: 3px 0 3px 10px; border-left: 1px solid var(--gray-light); }
+  nav.side a { text-decoration: none; transition: color .15s var(--ease), border-color .15s var(--ease); display: block; color: var(--gray-dark); padding: 3px 0 3px 10px; border-left: 1px solid var(--gray-light); }
   nav.side a:hover { color: var(--black); text-decoration: none; border-left-color: var(--black); }
   nav.side a.sub { padding-left: 22px; font-size: 12px; }
   nav.side a .m { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; margin-right: 6px; }
   nav.side .grp { margin-top: 14px; }
 
-  section.block { background: var(--white); border: 1px solid var(--gray-light); border-radius: 12px; padding: 24px 28px; margin-bottom: 16px; }
+  section.block { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 24px 28px; margin-bottom: 16px; box-shadow: var(--shadow-sm); }
   section.block > .overline { margin-bottom: 4px; }
-  .callout { border: 1px solid var(--border-warm); background: var(--bg); border-radius: 8px; padding: 12px 14px; margin: 12px 0; max-width: 72ch; }
-  .callout.warn { border-color: #545500; background: #FEFFD6; }
+  .callout { border: 1px solid var(--border); background: var(--muted); border-radius: 10px; padding: 12px 14px; margin: 12px 0; max-width: 72ch; }
+  .callout.warn { border-color: oklch(85% .09 110); background: var(--accent-soft); }
   .callout .overline { margin-bottom: 4px; }
   .callout p:last-child { margin: 0; }
 
@@ -77,9 +70,9 @@
   .endpoint { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 6px; }
   .endpoint code.path { font-size: 15px; background: none; padding: 0; font-weight: 500; }
   .method { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; padding: 3px 8px; border-radius: 4px; color: var(--white); font-weight: 500; }
-  .method.get { background: var(--blue); } .method.post { background: var(--black); } .method.patch { background: var(--orange); }
+  .method.get { background: var(--card); color: var(--foreground); box-shadow: inset 0 0 0 1px var(--border-strong); } .method.post { background: var(--primary); } .method.patch { background: var(--accent); color: var(--primary); }
   .auth { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--gray-dark); border: 1px solid var(--gray-light); padding: 2px 7px; border-radius: 4px; }
-  .auth.open { border-color: var(--ok); color: #00583A; }
+  .auth.open { border-color: var(--primary); color: var(--foreground); }
   hr.ep { border: 0; border-top: 1px solid var(--border-warm); margin: 28px 0; }
   .status { font-family: var(--mono); font-weight: 500; }
   .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } @media (max-width: 800px) { .two { grid-template-columns: 1fr; } }
@@ -95,22 +88,25 @@
 </head>
 <body>
 
-<header class="top">
-  <div class="top-inner">
-    <div>
-      <a class="logo" href="/dashboard" aria-label="Luna Pulse"><img src="/wordmark-light.svg" alt="" width="102" height="20"><span class="logo-sub">Pulse</span></a>
-      <div class="overline" style="margin-top:14px">Luna · Internal feedback · v1</div>
-      <h1>Luna Feedback API</h1>
-      <p class="lede">Fetch the form definition, render it, post the tester's answer. Everything the front end needs to integrate the Stage-only feedback prompt.</p>
-    </div>
-    <dl class="facts">
-      <dt>Base URL</dt><dd>https://luna-feedback.buildsage.tech</dd>
-      <dt>Auth</dt><dd>x-api-key <span class="y">·</span> shared out of band</dd>
-      <dt>Schema version</dt><dd>1</dd>
-      <dt>Format</dt><dd>JSON · UTF-8</dd>
-    </dl>
+<header class="bar">
+  <div class="bar-inner">
+    <a class="logo" href="/dashboard" aria-label="Luna Pulse dashboard"><img src="/logo.png" alt="Luna Pulse" width="141" height="46"></a>
+    <a class="btn small" href="/dashboard">Open the dashboard</a>
   </div>
 </header>
+<div class="top-inner">
+  <div>
+    <div class="overline">Luna · Internal feedback · v1</div>
+    <h1>Luna Feedback API</h1>
+    <p class="lede">Fetch the form definition, render it, post the tester's answer. Everything the front end needs to integrate the Stage-only feedback prompt.</p>
+  </div>
+  <dl class="facts">
+    <dt>Base URL</dt><dd>https://luna-feedback.buildsage.tech</dd>
+    <dt>Auth</dt><dd>x-api-key <span class="y">·</span> shared out of band</dd>
+    <dt>Schema version</dt><dd>1</dd>
+    <dt>Format</dt><dd>JSON · UTF-8</dd>
+  </dl>
+</div>
 
 <div class="layout">
 <nav class="side" aria-label="Contents">

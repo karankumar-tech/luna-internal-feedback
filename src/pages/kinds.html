@@ -6,27 +6,11 @@
 <title>Luna Pulse · Problems</title>
 <meta name="robots" content="noindex">
 <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
-<link rel="icon" href="/mark.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&display=swap">
 <style>
-    .logo { display: inline-flex; align-items: center; gap: 9px; flex: none; text-decoration: none; }
-  .logo img { display: block; height: 20px; width: auto; }
-  .logo-sub { font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; line-height: 14px; font-weight: 500; letter-spacing: .24em; text-transform: uppercase; color: #6B7280; padding-left: 9px; border-left: 1px solid #E5E7EB; }
-  :root {
-    --black: #000000; --white: #FFFFFF;
-    --gray-dark: #737373; --gray-mid: #9E9E9E; --gray-light: #D9D9D9;
-    --bg: #F0EFEA; --brief: #E8E6E0; --border-warm: #E2E0D9; --border-ghost: #F0F0F0;
-    --hero: #1A1A18; --hero-muted: #8A887F;
-    --yellow: #F5F85D; --yellow-50: #FEFFD6;
-    --blue: #2E64E4; --blue-50: #EAF0FD; --orange: #EF7432; --orange-50: #FFF3EC; --magenta: #E0237A; --magenta-50: #FFE8F4;
-    --ok: #00C37A; --ok-bg: #E6F8F0; --crit: #FF3B3B; --crit-bg: #FFECEC; --warn: #F0B429;
-    --sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-    --r-xs: 2px; --r-s: 4px; --r-m: 6px; --r-l: 8px; --r-xl: 12px;
-  }
   * { box-sizing: border-box; }
   html { color-scheme: light; }
   body { margin: 0; background: var(--bg); color: var(--black); font-family: var(--sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased; }
@@ -39,12 +23,7 @@
   h3 { font-size: 12px; line-height: 16px; font-weight: 600; margin: 16px 0 6px; color: var(--gray-dark); text-transform: uppercase; letter-spacing: .08em; font-family: var(--mono); }
   .muted { color: var(--gray-dark); } .tertiary { color: var(--gray-mid); }
   .wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px 64px; }
-
-  .top { background: var(--white); border-bottom: 1px solid var(--gray-light); }
-  .top-inner { max-width: 1240px; margin: 0 auto; padding: 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-  .brand { display: flex; align-items: center; gap: 14px; }
   .status { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--gray-dark); flex-wrap: wrap; }
-  .crumb { font-size: 13px; color: var(--gray-dark); text-decoration: none; } .crumb:hover { color: var(--black); }
 
   .btn { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-l); padding: 7px 12px; line-height: 18px; cursor: pointer; font-weight: 500; text-decoration: none; display: inline-block; }
   .btn:hover { border-color: var(--gray-mid); }
@@ -135,27 +114,20 @@
   @media (max-width: 1000px) { .kpis { grid-template-columns: repeat(3, 1fr); } }
   @media (max-width: 600px) { .kpis { grid-template-columns: 1fr 1fr; } }
 </style>
+<link rel="stylesheet" href="/dashboard/assets/app.css">
 </head>
-<body data-palette="#00C37A,#FF3B3B">
+<body data-palette="#0A0A0A,#D4D4D8">
+<script src="/dashboard/assets/shell.js"></script>
 
-<header class="top">
-  <div class="top-inner">
-    <div class="brand">
-      <a class="logo" href="/dashboard" aria-label="Luna Pulse"><img src="/wordmark.svg" alt="" width="102" height="20"><span class="logo-sub">Pulse</span></a>
-      <div>
-        <a class="crumb" href="/dashboard">← Dashboard</a>
-        <h1 id="pageTitle">Issue kinds</h1>
-      </div>
-    </div>
-    <div class="status">
-      <span id="rangeLabel" class="tertiary"></span>
-      <a class="btn small" href="/dashboard/analytics">Analytics →</a>
-      <a class="btn small" href="/dashboard/diagnosis">Diagnosis →</a>
-    </div>
-  </div>
-</header>
 
 <main class="wrap">
+  <div class="page-head">
+    <div>
+      <nav class="crumbs" aria-label="Breadcrumb"><a href="/dashboard">Reports</a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg><a href="/dashboard/kinds">Problems</a></nav>
+      <h1 id="pageTitle">Problems</h1>
+      <p class="page-sub">Reports grouped by the problem behind them. <span id="rangeLabel"></span></p>
+    </div>
+  </div>
   <section class="filters" aria-label="Filters">
     <label class="field"><span>From</span><input type="date" id="fFrom"></label>
     <label class="field"><span>To</span><input type="date" id="fTo"></label>
@@ -258,7 +230,7 @@
 (() => {
   'use strict';
   const $ = (id) => document.getElementById(id);
-  const BLUE = '#2E64E4', CRIT = '#FF3B3B';
+  const BLUE = '#71717A', CRIT = '#0A0A0A';
   const parts = location.pathname.split('/').filter(Boolean);
   // Opened by reference (/dashboard/kinds/LNK-0007) or by id; API calls that change things use the id.
   const kindParam = parts[1] === 'kinds' && parts[2] ? decodeURIComponent(parts[2]) : null;
@@ -375,7 +347,10 @@
 
   function renderDetail(k, tickets) {
     document.title = `${k.ref} · ${k.title} · Luna Pulse`;
-    $('pageTitle').textContent = 'Issue kind';
+    $('pageTitle').textContent = k.title;
+    const crumbs = document.querySelector('.crumbs');
+    if (crumbs && !crumbs.querySelector('[aria-current]')) crumbs.insertAdjacentHTML('beforeend', LunaShell.icon('right') + '<span aria-current="page"></span>');
+    if (crumbs) crumbs.querySelector('[aria-current]').textContent = k.ref;
     $('dTitle').textContent = k.title;
     const ref = $('dRef'); ref.hidden = !k.reference_ref; ref.replaceChildren();
     if (k.reference_ref) { ref.appendChild(document.createTextNode('Read first: ')); const a = el('a', null, k.reference_ref); a.href = '/dashboard/submissions/' + encodeURIComponent(k.reference_ref); ref.appendChild(a); }
@@ -678,7 +653,7 @@
   async function boot() {
     const s = await api('/dashboard/session').catch(() => ({ authenticated: false }));
     if (!s.authenticated) { location.replace('/dashboard?next=' + encodeURIComponent(location.pathname)); return; }
-    state.me = await api('/v1/me').catch(() => null);
+    state.me = await LunaShell.me().catch(() => null);
     document.querySelector('.newform').hidden = !can('manage_kinds');
     const to = istToday();
     $('fTo').value = to; $('fFrom').value = shift(to, -89);

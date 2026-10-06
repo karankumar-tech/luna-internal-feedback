@@ -83,11 +83,12 @@ export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
   app.get('/dashboard/benchmarks', html(PAGES.benchmarks));
   app.get('/dashboard/benchmarks/:ref', html(PAGES.benchmark));
 
-  // Scripts the pages load. Code only, no data, so they are as public as the pages themselves.
+  // Scripts and the shared stylesheet the pages load. Code only, no data, so they are as public as the pages themselves.
   app.get<{ Params: { name: string } }>('/dashboard/assets/:name', async (req, reply) => {
     const body = Object.hasOwn(SCRIPTS, req.params.name) ? SCRIPTS[req.params.name] : undefined;
     if (body === undefined) return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'No such asset' } });
-    return reply.header('content-type', 'text/javascript; charset=utf-8')
+    const type = req.params.name.endsWith('.css') ? 'text/css' : 'text/javascript';
+    return reply.header('content-type', `${type}; charset=utf-8`)
       .header('cache-control', 'public, max-age=0, must-revalidate')
       .header('cdn-cache-control', 'public, s-maxage=86400, stale-while-revalidate=604800')
       .send(body);

@@ -6,23 +6,11 @@
 <title>Luna Pulse · Benchmarks</title>
 <meta name="robots" content="noindex">
 <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
-<link rel="icon" href="/mark.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&display=swap">
 <style>
-  .lead { display: flex; align-items: center; gap: 14px; }
-  .logo { display: inline-flex; align-items: center; gap: 9px; flex: none; text-decoration: none; }
-  .logo img { display: block; height: 20px; width: auto; }
-  .logo-sub { font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; line-height: 14px; font-weight: 500; letter-spacing: .24em; text-transform: uppercase; color: #6B7280; padding-left: 9px; border-left: 1px solid #E5E7EB; }
-  :root {
-    --black: #000; --white: #fff; --gray-dark: #737373; --gray-mid: #9E9E9E; --gray-light: #D9D9D9;
-    --bg: #F0EFEA; --brief: #E8E6E0; --border-warm: #E2E0D9; --border-ghost: #F0F0F0; --hero: #1A1A18; --hero-muted: #8A887F;
-    --yellow: #F5F85D; --yellow-50: #FEFFD6; --blue: #2E64E4; --blue-50: #EAF0FD; --orange: #EF7432; --orange-50: #FFF3EC; --ok: #00C37A; --ok-bg: #E6F8F0; --crit: #FF3B3B; --crit-bg: #FFECEC;
-    --sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-    --r-xs: 2px; --r-s: 4px; --r-m: 6px; --r-l: 8px; --r-xl: 12px;
-  }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
   html { color-scheme: light; }
@@ -35,9 +23,6 @@
   .tertiary { color: var(--gray-mid); } .muted { color: var(--gray-dark); }
   .mono { font-family: var(--mono); font-size: 12px; }
   .wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px 64px; }
-  .top { background: var(--white); border-bottom: 1px solid var(--gray-light); }
-  .top-inner { max-width: 1240px; margin: 0 auto; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-  .crumb { font-size: 13px; color: var(--gray-dark); text-decoration: none; } .crumb:hover { color: var(--black); }
   .btn { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-l); padding: 7px 12px; line-height: 18px; cursor: pointer; font-weight: 500; text-decoration: none; display: inline-block; }
   .btn:hover { border-color: var(--gray-mid); }
   .btn.primary { background: var(--black); border-color: var(--black); color: var(--white); } .btn.primary:hover { background: #222; }
@@ -107,26 +92,20 @@
   .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--black); color: var(--white); padding: 8px 14px; border-radius: var(--r-l); font-size: 13px; z-index: 40; display: none; }
   @media (max-width: 720px) { .steps { grid-template-columns: 1fr; } }
 </style>
+<link rel="stylesheet" href="/dashboard/assets/app.css">
 </head>
 <body>
-<header class="top">
-  <div class="top-inner">
-    <div class="lead">
-      <a class="logo" href="/dashboard" aria-label="Luna Pulse"><img src="/wordmark.svg" alt="" width="102" height="20"><span class="logo-sub">Pulse</span></a>
-      <div>
-        <a class="crumb" href="/dashboard">← Dashboard</a>
-        <div class="overline" style="margin-top:2px">Luna · Feedback</div>
-        <h1>Benchmarks</h1>
-      </div>
-    </div>
-    <span style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <span class="tertiary" id="totals" style="font-size:12px"></span>
-      <button class="btn primary" id="btnImport" type="button" hidden>Import a health export</button>
-    </span>
-  </div>
-</header>
+<script src="/dashboard/assets/shell.js"></script>
 
 <main class="wrap">
+  <div class="page-head">
+    <div>
+      <nav class="crumbs" aria-label="Breadcrumb"><a href="/dashboard">Reports</a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg><span aria-current="page">Benchmarks</span></nav>
+      <h1>Benchmarks</h1>
+      <p class="page-sub">Luna against Polar, Garmin and others, from Apple Health exports. <span id="totals"></span></p>
+    </div>
+    <div class="page-actions"><button class="btn primary" id="btnImport" type="button" hidden>Import a health export</button></div>
+  </div>
   <section class="card" id="importCard" style="margin-top:20px" hidden>
     <div class="card-head">
       <div>
@@ -560,7 +539,7 @@
   async function boot() {
     const s = await api('/dashboard/session').catch(() => ({ authenticated: false }));
     if (!s.authenticated) { location.replace('/dashboard?next=' + encodeURIComponent(HERE)); return; }
-    const me = await api('/v1/me').catch(() => null);
+    const me = await LunaShell.me().catch(() => null);
     state.canManage = Boolean(me && me.permissions && me.permissions.manage_benchmarks);
     $('btnImport').hidden = !state.canManage;
     await load();

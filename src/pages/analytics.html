@@ -6,27 +6,11 @@
 <title>Luna Pulse · Analytics</title>
 <meta name="robots" content="noindex">
 <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
-<link rel="icon" href="/mark.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&display=swap">
 <style>
-    .logo { display: inline-flex; align-items: center; gap: 9px; flex: none; text-decoration: none; }
-  .logo img { display: block; height: 20px; width: auto; }
-  .logo-sub { font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; line-height: 14px; font-weight: 500; letter-spacing: .24em; text-transform: uppercase; color: #6B7280; padding-left: 9px; border-left: 1px solid #E5E7EB; }
-  :root {
-    --black: #000000; --white: #FFFFFF;
-    --gray-dark: #737373; --gray-mid: #9E9E9E; --gray-light: #D9D9D9;
-    --bg: #F0EFEA; --brief: #E8E6E0; --border-warm: #E2E0D9; --border-ghost: #F0F0F0;
-    --hero: #1A1A18; --hero-muted: #8A887F;
-    --yellow: #F5F85D; --yellow-50: #FEFFD6; --yellow-700: #545500;
-    --blue: #2E64E4; --blue-50: #EAF0FD; --orange: #EF7432; --orange-50: #FFF3EC; --magenta: #E0237A; --magenta-50: #FFE8F4;
-    --ok: #00C37A; --ok-bg: #E6F8F0; --crit: #FF3B3B; --crit-bg: #FFECEC; --warn: #F0B429;
-    --sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-    --r-xs: 2px; --r-s: 4px; --r-m: 6px; --r-l: 8px; --r-xl: 12px;
-  }
   * { box-sizing: border-box; }
   html { color-scheme: light; }
   body { margin: 0; background: var(--bg); color: var(--black); font-family: var(--sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased; }
@@ -38,10 +22,6 @@
   h2 { font-size: 16px; line-height: 20px; font-weight: 600; margin: 0; }
   .muted { color: var(--gray-dark); } .tertiary { color: var(--gray-mid); }
   .wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px 64px; }
-
-  .top { background: var(--white); border-bottom: 1px solid var(--gray-light); }
-  .top-inner { max-width: 1240px; margin: 0 auto; padding: 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-  .brand { display: flex; align-items: center; gap: 14px; }
   .status { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--gray-dark); flex-wrap: wrap; }
 
   .btn { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-l); padding: 7px 12px; line-height: 18px; cursor: pointer; font-weight: 500; text-decoration: none; display: inline-block; }
@@ -121,28 +101,20 @@
   @media (max-width: 980px) { .grid2 { grid-template-columns: 1fr; } }
   @media (max-width: 600px) { .kpis { grid-template-columns: 1fr 1fr; } }
 </style>
+<link rel="stylesheet" href="/dashboard/assets/app.css">
 </head>
-<body data-palette="#00C37A,#FF3B3B">
+<body data-palette="#0A0A0A,#D4D4D8">
+<script src="/dashboard/assets/shell.js"></script>
 
-<header class="top">
-  <div class="top-inner">
-    <div class="brand">
-      <a class="logo" href="/dashboard" aria-label="Luna Pulse"><img src="/wordmark.svg" alt="" width="102" height="20"><span class="logo-sub">Pulse</span></a>
-      <div>
-        <div class="overline">Luna · Internal feedback</div>
-        <h1>Analytics</h1>
-      </div>
-    </div>
-    <div class="status">
-      <span id="rangeLabel" class="tertiary"></span>
-      <a class="btn small" href="/dashboard">← Dashboard</a>
-      <a class="btn small" href="/dashboard/kinds">Issue kinds →</a>
-      <a class="btn small" href="/dashboard/diagnosis">Diagnosis →</a>
-    </div>
-  </div>
-</header>
 
 <main class="wrap">
+  <div class="page-head">
+    <div>
+      <nav class="crumbs" aria-label="Breadcrumb"><a href="/dashboard">Reports</a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg><span aria-current="page">Analytics</span></nav>
+      <h1>Analytics</h1>
+      <p class="page-sub">Internal feedback and CX reports over time. <span id="rangeLabel"></span></p>
+    </div>
+  </div>
   <section class="filters" aria-label="Filters">
     <label class="field"><span>Range</span>
       <div class="seg" id="presets" role="group" aria-label="Date presets">
@@ -272,14 +244,15 @@
 (() => {
   'use strict';
   const $ = (id) => document.getElementById(id);
-  const OK = '#00C37A', CRIT = '#FF3B3B', BLUE = '#2E64E4';
+  // Two colours: issues and anything open in black, the rest in greys.
+  const OK = '#D4D4D8', CRIT = '#0A0A0A', BLUE = '#71717A';
   const SIDES = [
-    { key: 'firmware', label: 'Firmware', color: '#EF7432' },
-    { key: 'sdk', label: 'Ring SDK', color: '#2E64E4' },
-    { key: 'app', label: 'App', color: '#000000' },
-    { key: 'backend', label: 'Backend', color: '#E0237A' },
-    { key: 'user_expectation', label: 'User expectation', color: '#9E9E9E' },
-    { key: 'not_a_bug', label: 'Not a bug', color: '#C9C7C0' },
+    { key: 'firmware', label: 'Firmware', color: '#0A0A0A' },
+    { key: 'sdk', label: 'Ring SDK', color: '#3F3F46' },
+    { key: 'app', label: 'App', color: '#71717A' },
+    { key: 'backend', label: 'Backend', color: '#A1A1AA' },
+    { key: 'user_expectation', label: 'User expectation', color: '#D4D4D8' },
+    { key: 'not_a_bug', label: 'Not a bug', color: '#E4E4E7' },
     { key: 'insufficient_logs', label: 'Insufficient logs', color: '#F5F85D' },
   ];
   const STATUS_LABEL = { open: 'Open', triaged: 'Triaged', in_progress: 'In progress', needs_info: 'Needs info', resolved: 'Resolved', closed: 'Closed', wont_fix: "Won't fix" };
@@ -481,17 +454,17 @@
     ], d.by_event, { empty: 'No catalog events cited yet. They appear once diagnoses run against logs containing known events.' });
 
     const sideRows = d.by_side.map((s) => {
-      const meta = SIDES.find((x) => x.key === s.side) || { label: s.side, color: '#9E9E9E' };
+      const meta = SIDES.find((x) => x.key === s.side) || { label: s.side, color: '#D4D4D8' };
       return { label: meta.label, value: s.count, color: meta.color };
     });
     barRows($('cSide'), sideRows, { label: 'Root cause side', padL: 130, empty: 'Nothing diagnosed in this window.' });
 
-    barRows($('cEnv'), d.by_environment.map((e) => ({ label: e.environment, value: e.issues, color: e.environment === 'production' ? '#E0237A' : e.environment === 'uat' ? BLUE : '#9E9E9E', title: `${e.issues} issue(s), ${e.positive} working fine, ${e.users} people` })), { label: 'Issues by environment', padL: 110, rowH: 28 });
-    barRows($('cOrigin'), (d.by_origin || []).map((o) => ({ label: o.origin === 'cx' ? 'CX' : 'Internal', value: o.issues, color: o.origin === 'cx' ? '#E0237A' : '#000', title: `${o.issues} issue(s), ${o.positive} working fine, ${o.users} people` })), { label: 'Issues by source', padL: 110, rowH: 28 });
+    barRows($('cEnv'), d.by_environment.map((e) => ({ label: e.environment, value: e.issues, color: e.environment === 'production' ? '#0A0A0A' : e.environment === 'uat' ? BLUE : '#D4D4D8', title: `${e.issues} issue(s), ${e.positive} working fine, ${e.users} people` })), { label: 'Issues by environment', padL: 110, rowH: 28 });
+    barRows($('cOrigin'), (d.by_origin || []).map((o) => ({ label: o.origin === 'cx' ? 'CX' : 'Internal', value: o.issues, color: o.origin === 'cx' ? '#0A0A0A' : '#A1A1AA', title: `${o.issues} issue(s), ${o.positive} working fine, ${o.users} people` })), { label: 'Issues by source', padL: 110, rowH: 28 });
 
     barRows($('cStatus'), d.by_status.map((s) => ({
       label: STATUS_LABEL[s.status] || s.status, value: s.count,
-      color: s.status === 'open' ? CRIT : s.status === 'triaged' || s.status === 'in_progress' || s.status === 'needs_info' ? '#EF7432' : OK,
+      color: s.status === 'open' ? CRIT : s.status === 'triaged' || s.status === 'in_progress' || s.status === 'needs_info' ? '#A1A1AA' : OK,
     })), { label: 'Triage status', padL: 120, rowH: 28, empty: 'No issues in this window.' });
 
     table($('tResponse'), [

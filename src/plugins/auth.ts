@@ -21,7 +21,7 @@ export const PUBLIC_PATHS = new Set([
   '/dashboard', '/dashboard/diagnosis', '/dashboard/analytics', '/dashboard/kinds', '/dashboard/users', '/dashboard/attention', '/dashboard/settings', '/dashboard/benchmarks',
   '/dashboard/login', '/dashboard/logout', '/dashboard/session', '/dashboard/bootstrap',
   // Brand assets: the logo in every header and the icons browsers fetch on their own.
-  '/logo.svg', '/wordmark.svg', '/wordmark-light.svg', '/mark.svg', '/favicon.png', '/favicon.ico', '/apple-touch-icon.png',
+  '/logo.png', '/mark.png', '/favicon.png', '/favicon.ico', '/apple-touch-icon.png',
 ]);
 
 /** Detail pages, the short share links (/i/LN-00042, /k/LNK-0007, /b/BM-0007) that redirect to them, and the pages' scripts. */

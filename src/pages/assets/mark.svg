@@ -1,5 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Luna Pulse">
-  <rect width="64" height="64" rx="14" fill="#0E1116"/>
-  <path d="M22 14h11v26h19v10H22z" fill="#FFFFFF"/>
-  <path d="M6 40h9l4 6 4-24 4.5 30 3.5-12h19" fill="none" stroke="#2BB3A3" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>
-</svg>

@@ -6,24 +6,11 @@
 <title>Luna Pulse · Report</title>
 <meta name="robots" content="noindex">
 <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
-<link rel="icon" href="/mark.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&display=swap">
 <style>
-  .lead { display: flex; align-items: center; gap: 14px; }
-  .logo { display: inline-flex; align-items: center; gap: 9px; flex: none; text-decoration: none; }
-  .logo img { display: block; height: 20px; width: auto; }
-  .logo-sub { font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; line-height: 14px; font-weight: 500; letter-spacing: .24em; text-transform: uppercase; color: #6B7280; padding-left: 9px; border-left: 1px solid #E5E7EB; }
-  :root {
-    --black: #000; --white: #fff; --gray-dark: #737373; --gray-mid: #9E9E9E; --gray-light: #D9D9D9;
-    --bg: #F0EFEA; --brief: #E8E6E0; --border-warm: #E2E0D9; --border-ghost: #F0F0F0; --hero: #1A1A18; --hero-muted: #8A887F;
-    --yellow: #F5F85D; --yellow-50: #FEFFD6; --blue: #2E64E4; --blue-50: #EAF0FD; --orange: #EF7432; --orange-50: #FFF3EC; --magenta: #E0237A; --magenta-50: #FFE8F4;
-    --ok: #00C37A; --ok-bg: #E6F8F0; --crit: #FF3B3B; --crit-bg: #FFECEC; --warn: #F0B429;
-    --sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-    --r-xs: 2px; --r-s: 4px; --r-m: 6px; --r-l: 8px; --r-xl: 12px;
-  }
   * { box-sizing: border-box; }
   html { color-scheme: light; }
   body { margin: 0; background: var(--bg); color: var(--black); font-family: var(--sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased; }
@@ -33,13 +20,9 @@
   .overline { font-family: var(--mono); font-size: 11px; line-height: 16px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray-dark); }
   h1 { font-size: 24px; line-height: 28px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
   h2 { font-size: 16px; line-height: 20px; font-weight: 600; margin: 0; }
-  h3 { font-size: 12px; line-height: 16px; font-weight: 600; margin: 16px 0 6px; color: var(--gray-dark); text-transform: uppercase; letter-spacing: .08em; font-family: var(--mono); }
+  h3 { font-size: 11px; line-height: 16px; font-weight: 600; margin: 18px 0 8px; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: .08em; font-family: var(--sans); }
   .tertiary { color: var(--gray-mid); } .muted { color: var(--gray-dark); }
   .wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px 64px; }
-
-  .top { background: var(--white); border-bottom: 1px solid var(--gray-light); }
-  .top-inner { max-width: 1240px; margin: 0 auto; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-  .crumb { font-size: 13px; color: var(--gray-dark); text-decoration: none; }
   .crumb:hover { color: var(--black); }
   .btn { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-l); padding: 7px 12px; line-height: 18px; cursor: pointer; font-weight: 500; }
   .btn:hover { border-color: var(--gray-mid); }
@@ -49,7 +32,10 @@
   .btn[disabled] { opacity: .5; cursor: default; }
   .btn:focus-visible, textarea:focus-visible, input:focus-visible { outline: none; border-color: var(--black); box-shadow: 0 0 0 1px var(--black); }
 
-  .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 20px 0 16px; }
+  /* title first, then the triage controls as one toolbar under it */
+  .page-head.head { flex-direction: column; align-items: stretch; gap: 16px; }
+  .report-actions { justify-content: flex-start; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-sm); }
+  .report-actions label.overline { margin-left: 4px; }
   .head .meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--gray-dark); margin-top: 6px; }
   .head .meta b { color: var(--black); font-weight: 500; }
   .res { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; letter-spacing: .04em; padding: 2px 8px; border-radius: var(--r-s); border: 1px solid; white-space: nowrap; vertical-align: 2px; }
@@ -221,23 +207,26 @@
   @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
   @media (prefers-reduced-motion: reduce) { .meter .fill { transition: none; } }
 </style>
+<link rel="stylesheet" href="/dashboard/assets/app.css">
 </head>
 <body>
-<header class="top">
-  <div class="top-inner">
-    <div class="lead">
-      <a class="logo" href="/dashboard" aria-label="Luna Pulse"><img src="/wordmark.svg" alt="" width="102" height="20"><span class="logo-sub">Pulse</span></a>
-      <div>
-        <a class="crumb" href="/dashboard">← Dashboard</a>
-        <div class="overline" style="margin-top:2px">Luna · Feedback · Report</div>
-      </div>
+<script src="/dashboard/assets/shell.js"></script>
+
+<main class="wrap">
+  <div class="page-head head">
+    <div>
+      <nav class="crumbs" aria-label="Breadcrumb"><a href="/dashboard">Reports</a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg><span aria-current="page" id="crumbRef">Report</span></nav>
+      <h1 id="title"></h1>
+      <div class="meta" id="meta"></div>
+      <div class="problem-line" id="problemLine" hidden></div>
+      <div class="device-line" id="deviceLine" hidden></div>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <label class="overline" for="statusSel" style="letter-spacing:.1em">Status</label>
+    <div class="page-actions report-actions">
+      <label class="overline" for="statusSel">Status</label>
       <select id="statusSel" title="Move this ticket through triage"></select>
-      <label class="overline" for="ownerSel" style="letter-spacing:.1em">Owner</label>
+      <label class="overline" for="ownerSel">Owner</label>
       <select id="ownerSel" class="hdr-sel" title="Who owns this report"><option value="">Unassigned</option></select>
-      <label class="overline" for="prioSel" style="letter-spacing:.1em">Priority</label>
+      <label class="overline" for="prioSel">Priority</label>
       <select id="prioSel" title="A person's call; overrides the AI's severity"><option value="">None</option><option value="p0">P0 · now</option><option value="p1">P1 · today</option><option value="p2">P2 · normal</option><option value="p3">P3 · later</option></select>
       <a class="jira-link" id="jiraLink" href="#" target="_blank" rel="noopener" hidden></a>
       <button class="btn small" id="btnJira" type="button" hidden>Create Jira ticket</button>
@@ -247,20 +236,8 @@
       <button class="btn primary" id="btnDiagnose" type="button" hidden>Diagnose now</button>
     </div>
   </div>
-</header>
-
-<main class="wrap">
   <div id="loading" class="empty">Loading…</div>
   <div id="page" hidden>
-    <section class="head">
-      <div>
-        <h1 id="title"></h1>
-        <div class="meta" id="meta"></div>
-        <div class="problem-line" id="problemLine" hidden></div>
-        <div class="device-line" id="deviceLine" hidden></div>
-      </div>
-    </section>
-
     <div class="grid">
       <div>
         <section class="card">
@@ -396,7 +373,7 @@
     const s = await api('/dashboard/session').catch(() => ({ authenticated: false }));
     if (!s.authenticated) { location.replace('/dashboard?next=' + encodeURIComponent(location.pathname)); return; }
     const [sub, schema, me, summary] = await Promise.all([
-      api('/v1/feedback/' + encodeURIComponent(param)), api('/v1/feedback/schema'), api('/v1/me'),
+      api('/v1/feedback/' + encodeURIComponent(param)), api('/v1/feedback/schema'), LunaShell.me(),
       api('/v1/admin/diagnoses/summary').catch(() => null),
     ]);
     id = sub.id;
@@ -443,6 +420,7 @@
   function renderSubmission() {
     const r = state.sub; const f = feature();
     $('btnFlag').textContent = r.is_test ? 'Mark as real' : 'Mark as test';
+    $('crumbRef').textContent = r.ref;
     document.title = `${r.ref} · ${f.label} · ${r.is_positive ? 'Working fine' : 'Issue'} · Luna Pulse`;
     $('title').replaceChildren(
       el('span', 'refno', r.ref), el('span', null, f.label + ' · '), el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue'),
