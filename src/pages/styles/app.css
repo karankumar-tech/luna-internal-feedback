@@ -101,7 +101,7 @@ body.entering .page-head { animation: fade-in .3s ease-out backwards; }
 }
 
 /* ---------- shell: sidebar ---------- */
-body.has-shell { padding-left: var(--sidebar-w); transition: padding-left .3s var(--ease); }
+body.has-shell { padding-left: var(--sidebar-w); }
 body.has-shell.sb-collapsed { padding-left: var(--sidebar-rail); }
 body.shell-off { padding-left: 0; }
 body.shell-off .app-sidebar, body.shell-off .app-header, body.shell-off .sb-scrim { display: none; }
