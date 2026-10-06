@@ -412,7 +412,7 @@ describe('pages', () => {
     expect(dash.body).toContain('<title>Luna Pulse</title>');
     expect(dash.body).toContain('<link rel="icon" href="/favicon.png"');
     expect(dash.body).toContain('Where the issues are');
-    for (const [url, type] of [['/logo.svg', 'image/svg+xml'], ['/favicon.png', 'image/png'], ['/favicon.ico', 'image/png'], ['/apple-touch-icon.png', 'image/png']]) {
+    for (const [url, type] of [['/logo.svg', 'image/svg+xml'], ['/wordmark.svg', 'image/svg+xml'], ['/favicon.png', 'image/png'], ['/favicon.ico', 'image/png'], ['/apple-touch-icon.png', 'image/png']]) {
       const res = await app.inject({ method: 'GET', url });
       expect(res.statusCode).toBe(200);
       expect(res.headers['content-type']).toBe(type);

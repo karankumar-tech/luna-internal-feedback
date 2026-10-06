@@ -12,7 +12,10 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&display=swap">
 <style>
-  .lead { display: flex; align-items: center; gap: 14px; } .logo { display: inline-flex; align-items: center; flex: none; } .logo img { display: block; height: 22px; width: auto; }
+  .lead { display: flex; align-items: center; gap: 14px; }
+  .logo { display: inline-flex; align-items: center; gap: 9px; flex: none; text-decoration: none; }
+  .logo img { display: block; height: 20px; width: auto; }
+  .logo-sub { font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; line-height: 14px; font-weight: 500; letter-spacing: .24em; text-transform: uppercase; color: #6B7280; padding-left: 9px; border-left: 1px solid #E5E7EB; }
   :root {
     --black: #000; --white: #fff; --gray-dark: #737373; --gray-mid: #9E9E9E; --gray-light: #D9D9D9;
     --bg: #F0EFEA; --brief: #E8E6E0; --border-warm: #E2E0D9; --border-ghost: #F0F0F0; --hero: #1A1A18; --hero-muted: #8A887F;
@@ -89,7 +92,7 @@
 <header class="top">
   <div class="top-inner">
     <div class="lead">
-      <a class="logo" href="/dashboard" title="Luna Pulse"><img src="/logo.svg" alt="Luna Pulse" width="77" height="22"></a>
+      <a class="logo" href="/dashboard" aria-label="Luna Pulse"><img src="/wordmark.svg" alt="" width="102" height="20"><span class="logo-sub">Pulse</span></a>
       <div>
         <a class="crumb" href="/dashboard">← Dashboard</a>
         <div class="overline" style="margin-top:2px">Luna · Feedback</div>
