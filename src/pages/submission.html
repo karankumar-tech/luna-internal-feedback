@@ -209,6 +209,9 @@
   /* tags under the title: removable chips, one-click common tags, and an input with suggestions */
   .tag-line { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .tag-line .overline { margin-right: 4px; }
+  .golive-line { margin-top: 6px; }
+  .golive-line input[type=date] { min-height: 0; height: 24px; padding: 0 8px; font-size: 12px; border-radius: 6px; box-shadow: none; }
+  #goLiveText { font-size: 13px; font-weight: 500; }
   .tagchips { display: contents; }
   .tagchip { display: inline-flex; align-items: center; gap: 2px; height: 24px; padding: 0 3px 0 9px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--card); font-size: 12px; line-height: 16px; font-weight: 500; }
   .tagchip:not(:has(.x)) { padding-right: 9px; }
@@ -238,6 +241,12 @@
         <span class="tagchips" id="tagChips"></span>
         <input id="tagInput" type="text" list="tagOptions" placeholder="Add tag…" maxlength="30" autocomplete="off" spellcheck="false" aria-label="Add a tag, then press Enter">
         <datalist id="tagOptions"></datalist>
+      </div>
+      <div class="tag-line golive-line" id="goLiveLine" hidden>
+        <span class="overline">Go-live</span>
+        <span id="goLiveText"></span>
+        <input id="goLiveInput" type="date" aria-label="Date the fix is planned to go live">
+        <button class="tagpick" id="goLiveClear" type="button" title="Remove the go-live date">Clear</button>
       </div>
     </div>
     <div class="page-actions report-actions">
@@ -442,6 +451,7 @@
     $('btnFlag').textContent = r.is_test ? 'Mark as real' : 'Mark as test';
     $('crumbRef').textContent = r.ref;
     renderTags();
+    renderGoLive();
     document.title = `${r.ref} · ${f.label} · ${r.is_positive ? 'Working fine' : 'Issue'} · Luna Pulse`;
     $('title').replaceChildren(
       el('span', 'refno', r.ref), el('span', null, f.label + ' · '), el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue'),
@@ -584,6 +594,33 @@
     $('tagInput').hidden = !edit;
     $('tagLine').hidden = !edit && !tags.length;
   }
+  // ---------- go-live date ----------
+  function renderGoLive() {
+    const r = state.sub; if (!r) return;
+    const edit = can('set_go_live'); const d = r.go_live_on;
+    $('goLiveLine').hidden = !edit && !d;
+    $('goLiveInput').hidden = !edit; $('goLiveClear').hidden = !edit || !d;
+    $('goLiveInput').value = d || '';
+    let text = '';
+    if (d) {
+      const day = new Date(d + 'T00:00:00'); const today = new Date(); today.setHours(0, 0, 0, 0);
+      const diff = Math.round((day - today) / 86400000);
+      const nice = day.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+      text = diff === 0 ? `${nice} · today` : diff > 0 ? `${nice} · in ${diff} day${diff === 1 ? '' : 's'}` : `${nice} · ${-diff} day${diff === -1 ? '' : 's'} ago`;
+    } else text = edit ? 'Not planned' : '';
+    // Editors read the date in the picker itself; the text adds how far off it is.
+    $('goLiveText').textContent = edit && d ? text.replace(/^.*? · /, '') : text;
+    $('goLiveText').className = d ? '' : 'tertiary';
+  }
+  async function setGoLive(date) {
+    try {
+      state.sub = await api(`/v1/admin/submissions/${id}/go-live`, { method: 'PATCH', body: JSON.stringify({ go_live_on: date }) });
+      renderGoLive(); loadActivity(); toast(date ? 'Go-live set to ' + date : 'Go-live date removed');
+    } catch (err) { toast('Could not set the go-live date: ' + err.message); renderGoLive(); }
+  }
+  $('goLiveInput').addEventListener('change', () => { const v = $('goLiveInput').value; if (v && v !== state.sub.go_live_on) setGoLive(v); });
+  $('goLiveClear').addEventListener('click', () => setGoLive(null));
+
   async function changeTags(change, done) {
     try {
       state.sub = await api(`/v1/admin/submissions/${id}/tags`, { method: 'POST', body: JSON.stringify(change) });
@@ -621,6 +658,7 @@
     jira: (e) => `filed Jira ${e.to_value}`,
     diagnosis: (e) => `ran a diagnosis (${e.to_value})`,
     regression: (e) => `flagged it as ${e.to_value} coming back after its fix`,
+    go_live: (e) => e.to_value ? (e.from_value ? `moved go-live from ${e.from_value} to ${e.to_value}` : `planned go-live for ${e.to_value}`) : `removed the go-live date (was ${e.from_value})`,
     tag: (e) => {
       const before = (e.from_value || '').split(', ').filter(Boolean); const after = (e.to_value || '').split(', ').filter(Boolean);
       const added = after.filter((t) => !before.includes(t)); const removed = before.filter((t) => !after.includes(t));

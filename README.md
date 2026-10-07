@@ -230,7 +230,14 @@ and tag changes.
 `app` and `firmware` are one click and tags already in use are suggested; QC can also tag many
 reports at once from the list. The list filters by a tag, by several (any of them) or by
 **Untagged**, and clicking a tag on a row filters by it. Tags go onto Jira tickets as `tag-…` labels,
-and every change is in the report's history. Analytics shows time to first response and to resolve, per source, and time in each status.
+and every change is in the report's history.
+
+**Go-live date.** A report can carry the date its fix is planned to go live. It is optional: admin, QC
+and developers set, move or clear it on the report page (`PATCH /v1/admin/submissions/{id}/go-live` with
+`{ "go_live_on": "YYYY-MM-DD" | null }`), every change is in the history, and the list shows it on each
+row, filters by it (`go_live=any|none`, `go_live_from`, `go_live_to`) and exports it in the CSV.
+
+Analytics shows time to first response and to resolve, per source, and time in each status.
 
 ## Needs attention
 

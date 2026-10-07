@@ -116,6 +116,44 @@ describe('posting a report from the dashboard', () => {
     expect((await app.inject({ method: 'PATCH', url: '/v1/me/reporter', headers: asUser(), payload: { nickname: 'x' } })).statusCode).toBe(422);
   });
 
+  it('a go-live date: QC and developers set and clear it, read-only roles cannot, the list filters by it', async () => {
+    const made = await app.inject({ method: 'POST', url: '/v1/feedback/home', headers: appHeaders, payload: body({ user_id: 900780 }) });
+    const id = made.json().id as string;
+    expect(made.json().go_live_on).toBeNull();
+
+    // Business is read-only: refused.
+    const refused = await app.inject({ method: 'PATCH', url: `/v1/admin/submissions/${id}/go-live`, headers: asUser(), payload: { go_live_on: '2026-10-20' } });
+    expect(refused.statusCode).toBe(403);
+
+    // A developer can.
+    await app.inject({ method: 'POST', url: '/v1/admin/users', headers: adminHeaders, payload: { email: email('dev'), role: 'developer', name: 'Dev Person', password: PASSWORD } });
+    const login = await app.inject({ method: 'POST', url: '/dashboard/login', headers: dash, payload: { email: email('dev'), password: PASSWORD } });
+    const dev = { ...dash, cookie: String(login.headers['set-cookie'] ?? '').split(';')[0] ?? '' };
+    const set = await app.inject({ method: 'PATCH', url: `/v1/admin/submissions/${id}/go-live`, headers: dev, payload: { go_live_on: '2026-10-20' } });
+    expect(set.statusCode).toBe(200);
+    expect(set.json().go_live_on).toBe('2026-10-20');
+    const moved = await app.inject({ method: 'PATCH', url: `/v1/admin/submissions/${id}/go-live`, headers: dev, payload: { go_live_on: '2026-10-24' } });
+    expect(moved.json().go_live_on).toBe('2026-10-24');
+    expect((await app.inject({ method: 'PATCH', url: `/v1/admin/submissions/${id}/go-live`, headers: dev, payload: { go_live_on: '2026-02-30' } })).statusCode).toBe(422);
+
+    const q = (extra: string) => app.inject({ method: 'GET', url: `/v1/home/reports?view=all&data=test&user_id=900780&${extra}`, headers: asUser() }).then((r) => r.json().items.map((i: { id: string }) => i.id));
+    expect(await q('go_live=any')).toEqual([id]);
+    expect(await q('go_live=none')).toEqual([]);
+    expect(await q('go_live_from=2026-10-21&go_live_to=2026-10-31')).toEqual([id]);
+    expect(await q('go_live_to=2026-10-21')).toEqual([]);
+    expect((await app.inject({ method: 'GET', url: '/v1/home/reports?go_live_from=2026-11-01&go_live_to=2026-10-01', headers: asUser() })).statusCode).toBe(422);
+    const listed = await app.inject({ method: 'GET', url: '/v1/feedback?user_id=900780&go_live=any', headers: asUser() });
+    expect(listed.json().items.map((i: { id: string }) => i.id)).toEqual([id]);
+
+    // Cleared, and every step is in the history with who did it.
+    const cleared = await app.inject({ method: 'PATCH', url: `/v1/admin/submissions/${id}/go-live`, headers: dev, payload: { go_live_on: null } });
+    expect(cleared.json().go_live_on).toBeNull();
+    expect(await q('go_live=none')).toEqual([id]);
+    const events = (await app.inject({ method: 'GET', url: `/v1/feedback/${id}/activity`, headers: asUser() })).json().items
+      .filter((e: { action: string }) => e.action === 'go_live').map((e: { actor: string; from_value: string | null; to_value: string | null }) => [e.actor, e.from_value, e.to_value]);
+    expect(events).toEqual([[email('dev'), null, '2026-10-20'], [email('dev'), '2026-10-20', '2026-10-24'], [email('dev'), '2026-10-24', null]]);
+  });
+
   it('validates per field, the same as for the app', async () => {
     const r = await app.inject({ method: 'POST', url: '/v1/feedback/sleep', headers: asUser(), payload: body({ issue_categories: [], details: { actual_start_time: '11:30 PM', actual_end_time: '11:30 PM' } }) });
     expect(r.statusCode).toBe(422);

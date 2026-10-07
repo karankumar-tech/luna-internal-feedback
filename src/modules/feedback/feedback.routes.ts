@@ -32,6 +32,11 @@ export const CommonQuery = z.object({
   ai_tag: z.string().max(60).optional(),
   /** A tag, several comma-separated (reports with any of them), or 'none' for untagged. */
   tag: z.string().trim().toLowerCase().max(200).optional(),
+  /** 'any': a go-live date is planned; 'none': it is not. */
+  go_live: z.enum(['any', 'none']).optional(),
+  /** Go-live date within this range, inclusive. */
+  go_live_from: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
+  go_live_to: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
   event_code: z.string().max(20).optional(),
   kind_id: z.string().uuid().optional(),
   /** An owner's email, 'me' for the signed-in person, or 'none' for unassigned. */
@@ -221,6 +226,16 @@ export function registerFeedbackRoutes(
       .safeParse(req.body);
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
     return service.changeTags(req.params.id, parsed.data, actorOf(req));
+  });
+
+  // ---- go-live date (QC, developers) ----
+  app.patch<{ Params: { id: string } }>('/v1/admin/submissions/:id/go-live', { onRequest: requirePermission('set_go_live') }, async (req) => {
+    const parsed = z.object({
+      /** YYYY-MM-DD, or null to clear. Any real date: a past one records when it went live. */
+      go_live_on: z.string().refine(isValidCalendarDate, 'must be a real date in YYYY-MM-DD format').nullable(),
+    }).strict().safeParse(req.body);
+    if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
+    return service.setGoLive(req.params.id, parsed.data.go_live_on, actorOf(req));
   });
 
   /** Tags to offer: those in use (most used first) and the common ones. */

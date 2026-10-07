@@ -60,6 +60,8 @@ export interface SubmissionRow {
   priority: string | null;
   /** The team's labels (app, firmware, …), lowercase, at most MAX_TAGS. */
   tags: string[];
+  /** YYYY-MM-DD the fix is planned to go live; optional. */
+  go_live_on: string | null;
   first_touched_at: Date | null;
   last_activity_at: Date | null;
   resolved_at: Date | null;
@@ -143,6 +145,11 @@ export interface CommonFilters {
   ai_tag?: string;
   /** A tag, several comma-separated (any of them), or 'none' for untagged reports. */
   tag?: string;
+  /** 'any' = a go-live date is set, 'none' = no date. */
+  go_live?: 'any' | 'none';
+  /** Go-live date within this range, inclusive (YYYY-MM-DD). */
+  go_live_from?: string;
+  go_live_to?: string;
   event_code?: string;
   kind_id?: string;
   user_id?: number;
@@ -210,6 +217,10 @@ export function buildWhere(f: Partial<StatsFilters>, alias = 's'): { where: stri
   if (f.event_code) add(`? = any(${alias}.ai_event_codes)`, f.event_code);
   if (f.tag === 'none') add(`cardinality(${alias}.tags) = 0`, undefined);
   else if (f.tag) add(`${alias}.tags && ?::text[]`, f.tag.split(',').map((t) => t.trim()).filter(Boolean));
+  if (f.go_live === 'any') add(`${alias}.go_live_on is not null`, undefined);
+  if (f.go_live === 'none') add(`${alias}.go_live_on is null`, undefined);
+  if (f.go_live_from) add(`${alias}.go_live_on >= ?::date`, f.go_live_from);
+  if (f.go_live_to) add(`${alias}.go_live_on <= ?::date`, f.go_live_to);
   if (f.ai_tag) add(`exists (select 1 from luna_feedback.diagnoses dt where dt.submission_id = ${alias}.id and ? = any(dt.tags))`, f.ai_tag);
   if (f.kind_id) add(`exists (select 1 from luna_feedback.submission_issue_kinds sk where sk.submission_id = ${alias}.id and sk.kind_id = ?::uuid and sk.state = 'linked')`, f.kind_id);
   if (f.user_id !== undefined) add(`${alias}.user_id = ?`, f.user_id);
@@ -224,7 +235,7 @@ const COLUMNS = `id, ref, feature_key, is_positive, occurred_on::text as occurre
   created_at, feedback_text, device_serial, details, screenshots, environment, platform, app_version, build_number, build_channel, firmware_version, os_version,
   device_id, session_id, idempotency_key, schema_version, is_test,
   origin, submitted_via, cx_ref, cx_url, cx_channel, cx_agent, cx_transcript,
-  assigned_to, priority, tags, first_touched_at, last_activity_at, resolved_at, status, status_note, status_changed_at, status_changed_by,
+  assigned_to, priority, tags, go_live_on::text as go_live_on, first_touched_at, last_activity_at, resolved_at, status, status_note, status_changed_at, status_changed_by,
   jira_key, jira_url, jira_status, jira_synced_at, jira_created_by, ai_status, ai_side, ai_severity, ai_event_codes, ai_checked_at`;
 
 /** Offered on every report even before anyone has used them. */
@@ -322,6 +333,11 @@ export class FeedbackRepo {
 
   async setPriority(id: string, priority: Priority | null): Promise<SubmissionRow | undefined> {
     const r = await this.db.query<SubmissionRow>(`update luna_feedback.submissions set priority = $2 where id = $1 returning ${COLUMNS}`, [id, priority]);
+    return r.rows[0];
+  }
+
+  async setGoLive(id: string, date: string | null): Promise<SubmissionRow | undefined> {
+    const r = await this.db.query<SubmissionRow>(`update luna_feedback.submissions set go_live_on = $2::date where id = $1 returning ${COLUMNS}`, [id, date]);
     return r.rows[0];
   }
 

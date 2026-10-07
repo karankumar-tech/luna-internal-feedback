@@ -170,6 +170,7 @@
   .item .meta .utag { position: relative; z-index: 1; display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--card); font: 500 11px/16px var(--sans); color: var(--foreground); cursor: pointer; transition: border-color .15s var(--ease), background-color .15s var(--ease); }
   .item .meta .utag:hover { border-color: var(--primary); }
   .item .meta .utag:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+  .item .meta .golive { font-weight: 500; color: var(--foreground); }
   .bulkbar input[type=text] { min-height: 0; height: 28px; width: 130px; padding: 3px 8px; font-size: 12px; border-radius: var(--r-s); }
   .owner { font-size: 12px; line-height: 16px; color: var(--gray-dark); white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
 
@@ -377,7 +378,7 @@
    * "custom" view: it is fetched on its own and never cached, so the default stays cheap and instant.
    */
   const S = { home: null, viewer: null, labels: null, list: null, view: 'issues', page: 1, filters: {}, picked: new Set(), people: null, kinds: null, tags: null, keyLogin: false, loadedAt: 0 };
-  const FILTER_KEYS = ['received', 'from', 'to', 'feature', 'category', 'origin', 'environment', 'platform', 'status', 'assigned_to', 'priority', 'tag', 'kind_id', 'jira', 'ai_status', 'ai_side', 'ai_severity', 'data', 'user_id'];
+  const FILTER_KEYS = ['received', 'from', 'to', 'feature', 'category', 'origin', 'environment', 'platform', 'status', 'assigned_to', 'priority', 'tag', 'go_live', 'go_live_from', 'go_live_to', 'kind_id', 'jira', 'ai_status', 'ai_side', 'ai_severity', 'data', 'user_id'];
   const isDefault = () => S.view === 'issues' && S.page === 1 && !Object.keys(S.filters).length;
   const can = (p) => !!(S.viewer && S.viewer.permissions && S.viewer.permissions[p]);
 
@@ -548,6 +549,8 @@
       const label = r.tester_name || (p && p.name) || (email ? email.split('@')[0] : null) || (r.user_id ? 'tester ' + r.user_id : null);
       return label ? { label, title: ['Luna user ' + (r.user_id || '?'), r.email].filter(Boolean).join(' · ') } : null;
     };
+    // "12 Oct", with the year only when it is not this one.
+    const goLiveLabel = (iso) => { const d = new Date(iso + 'T00:00:00'); return d.toLocaleDateString('en-IN', d.getFullYear() === new Date().getFullYear() ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' }); };
     const picking = can('manage_triage');
     for (const r of list.items) {
       const h = headlineOf(r);
@@ -579,6 +582,7 @@
       if (!r.is_positive && r.ai_side) { const s = el('span', 'ai ' + r.ai_side, 'AI: ' + (SIDE[r.ai_side] || r.ai_side) + (r.ai_severity ? ', ' + r.ai_severity : '')); add(s); }
       else if (!r.is_positive && r.ai_status === 'waiting_logs') add('AI waiting for logs');
       if (r.jira_key) add(el('span', 'ref', r.jira_key));
+      if (r.go_live_on) { const g = add(el('span', 'golive', 'Live ' + goLiveLabel(r.go_live_on))); g.title = 'Planned to go live on ' + r.go_live_on; }
       if (r.is_test) { const s = el('span'); s.appendChild(el('span', 'tag test', 'TEST')); add(s); }
       main.appendChild(meta);
       li.appendChild(main);
@@ -683,6 +687,9 @@
     { key: 'assigned_to', label: 'Owner', options: () => [['me', 'Me'], ['none', 'Nobody'], ...(S.people || []).map((p) => [p.email, p.name || p.email])] },
     { key: 'priority', label: 'Priority', options: () => [['p0', 'P0'], ['p1', 'P1'], ['p2', 'P2'], ['p3', 'P3'], ['none', 'Not set']] },
     { key: 'tag', label: 'Tag', options: () => [['none', 'Untagged'], ...(S.tags || []).map((t) => [t.tag, t.count ? `${t.tag} (${t.count})` : t.tag])] },
+    { key: 'go_live', label: 'Go-live', options: () => [['any', 'Date planned'], ['none', 'No date']] },
+    { key: 'go_live_from', label: 'Goes live from', type: 'date' },
+    { key: 'go_live_to', label: 'Goes live to', type: 'date' },
     { key: 'kind_id', label: 'Problem', options: () => (S.kinds || []).map((k) => [k.id, `${k.ref} · ${k.title}`]) },
     { key: 'jira', label: 'Jira', options: () => [['any', 'Has a ticket'], ['none', 'No ticket']] },
     { key: 'ai_status', label: 'AI check', options: () => [['none', 'Not checked'], ['waiting_logs', 'Waiting for logs'], ['done', 'Diagnosed'], ['no_logs', 'No logs'], ['failed', 'Failed']] },
@@ -772,6 +779,8 @@
     if (k === 'feature') return featLabel(v);
     if (k === 'from') return 'From ' + v;
     if (k === 'to') return 'To ' + v;
+    if (k === 'go_live_from') return 'Goes live from ' + v;
+    if (k === 'go_live_to') return 'Goes live by ' + v;
     if (k === 'user_id') return 'ID ' + v;
     if (k === 'tag') return v === 'none' ? 'Untagged' : 'Tag: ' + v.split(',').join(' or ');
     if (k === 'kind_id') { const kk = (S.kinds || []).find((x) => x.id === v); return kk ? `${kk.ref} ${kk.title}` : 'One problem'; }
@@ -816,7 +825,7 @@
     if (!rows.length) { toast('Nothing to export'); return; }
     const cols = [['ref', (r) => r.ref], ['received', (r) => r.created_at], ['happened', (r) => r.occurred_on], ['problem', (r) => (r.kinds || []).map((k) => `${k.ref} ${k.title}`).join(' | ')],
       ['feature', (r) => featLabel(r.feature_key)], ['categories', (r) => r.issue_categories.map((c) => catLabel(r.feature_key, c)).join(' | ')], ['text', (r) => r.feedback_text],
-      ['result', (r) => r.is_positive ? 'working fine' : 'issue'], ['status', (r) => r.status], ['priority', (r) => r.priority], ['tags', (r) => (r.tags || []).join(' | ')], ['owner', (r) => r.assigned_to], ['source', (r) => r.origin],
+      ['result', (r) => r.is_positive ? 'working fine' : 'issue'], ['status', (r) => r.status], ['priority', (r) => r.priority], ['tags', (r) => (r.tags || []).join(' | ')], ['go_live', (r) => r.go_live_on], ['owner', (r) => r.assigned_to], ['source', (r) => r.origin],
       ['environment', (r) => r.environment], ['user_id', (r) => r.user_id], ['ring', (r) => r.device_serial], ['cx_ticket', (r) => r.cx_ref], ['ai_side', (r) => r.ai_side], ['ai_severity', (r) => r.ai_severity], ['jira', (r) => r.jira_key], ['test', (r) => r.is_test]];
     const esc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const csv = [cols.map(([h]) => h).join(','), ...rows.map((r) => cols.map(([, f]) => esc(f(r))).join(','))].join('\n');

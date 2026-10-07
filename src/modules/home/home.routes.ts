@@ -42,6 +42,7 @@ export function registerHomeRoutes(app: FastifyInstance, deps: { service: HomeSe
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error), 'Invalid query');
     const { view, data, received, page, page_size, ...rest } = parsed.data;
     if (rest.from && rest.to && rest.from > rest.to) throw AppError.validation([{ path: 'from', message: 'must not be after to' }], 'Invalid query');
+    if (rest.go_live_from && rest.go_live_to && rest.go_live_from > rest.go_live_to) throw AppError.validation([{ path: 'go_live_from', message: 'must not be after go_live_to' }], 'Invalid query');
     const filters: HomeListFilters = resolveMe({
       ...rest,
       ...(view === 'mine' ? { assigned_to: 'me', openOnly: !rest.status } : {}),

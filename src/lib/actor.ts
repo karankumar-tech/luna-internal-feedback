@@ -30,6 +30,8 @@ export const PERMISSIONS = {
   manage_triage: ['admin', 'qc'],
   /** Put tags on a report (app, firmware, …) and take them off. */
   tag_reports: ['admin', 'qc', 'developer'],
+  /** Set or clear the date a report's fix is planned to go live. */
+  set_go_live: ['admin', 'qc', 'developer'],
   /** Create, edit and link issue kinds; confirm or reject suggested links; merge kinds. */
   manage_kinds: ['admin', 'qc', 'developer'],
   /** Say "this report looks like that problem" for someone who can manage kinds to confirm. */

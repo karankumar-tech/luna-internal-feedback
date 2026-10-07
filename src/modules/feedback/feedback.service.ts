@@ -266,6 +266,16 @@ export class FeedbackService {
     return this.toDto(row);
   }
 
+  /** Plans (or, with null, unplans) the date the fix goes live. The history keeps both dates. */
+  async setGoLive(id: string, date: string | null, by: string | null): Promise<SubmissionDto> {
+    const before = await this.row(id);
+    if (before.go_live_on === date) return this.toDto(before);
+    const row = await this.feedback.setGoLive(before.id, date);
+    if (!row) throw AppError.notFound('Submission not found');
+    await this.activity?.record({ submissionId: row.id, actor: by, action: 'go_live', from: before.go_live_on, to: date, touch: true });
+    return this.toDto(row);
+  }
+
   /** Tags in use, most used first, with the common ones always included. */
   knownTags() { return this.feedback.knownTags(); }
 
