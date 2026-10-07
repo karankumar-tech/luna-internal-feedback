@@ -541,6 +541,13 @@
       else li.appendChild(el('b', null, 'No reports yet.'));
       host.appendChild(li); $('pager').hidden = true; return;
     }
+    // A person, not a number: the dashboard account's name for that email, else the part of the email before @.
+    const testerOf = (r) => {
+      const email = (r.email || '').toLowerCase();
+      const p = email && (S.people || []).find((x) => x.email === email);
+      const label = r.tester_name || (p && p.name) || (email ? email.split('@')[0] : null) || (r.user_id ? 'tester ' + r.user_id : null);
+      return label ? { label, title: ['Luna user ' + (r.user_id || '?'), r.email].filter(Boolean).join(' · ') } : null;
+    };
     const picking = can('manage_triage');
     for (const r of list.items) {
       const h = headlineOf(r);
@@ -567,7 +574,7 @@
         add(b);
       }
       if (r.origin === 'cx') { const s = el('span'); s.appendChild(el('span', 'tag cx', 'CX')); s.appendChild(document.createTextNode(' ' + (r.user_id ? 'user ' + r.user_id : 'ring ' + (r.device_serial || '')))); add(s); }
-      else if (r.user_id) add('tester ' + r.user_id);
+      else { const who = testerOf(r); if (who) add(who.label).title = who.title; }
       if (r.environment && r.environment !== 'stage') add(ENV[r.environment] || r.environment);
       if (!r.is_positive && r.ai_side) { const s = el('span', 'ai ' + r.ai_side, 'AI: ' + (SIDE[r.ai_side] || r.ai_side) + (r.ai_severity ? ', ' + r.ai_severity : '')); add(s); }
       else if (!r.is_positive && r.ai_status === 'waiting_logs') add('AI waiting for logs');

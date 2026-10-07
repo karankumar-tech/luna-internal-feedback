@@ -50,6 +50,16 @@ export class UsersRepo {
   }
 
   /** Everyone who can sign in: anyone may own a report. */
+  /** Display names for the accounts among these emails (lowercased), for naming testers on report lists. */
+  async namesFor(emails: string[]): Promise<Map<string, string>> {
+    const wanted = [...new Set(emails.map((e) => e.toLowerCase()))];
+    if (!wanted.length) return new Map();
+    const r = await this.db.query<{ email: string; name: string }>(
+      `select email, name from luna_feedback.dashboard_users where email = any($1::text[]) and name is not null`, [wanted],
+    );
+    return new Map(r.rows.map((x) => [x.email, x.name]));
+  }
+
   async assignable(): Promise<{ email: string; name: string | null; role: string }[]> {
     const r = await this.db.query<{ email: string; name: string | null; role: string }>(
       `select email, name, role from luna_feedback.dashboard_users where not is_disabled order by coalesce(name, email)`,

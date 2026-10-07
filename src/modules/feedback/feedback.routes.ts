@@ -96,9 +96,11 @@ export function registerFeedbackRoutes(
     kindsFor?: (ids: string[]) => Promise<Map<string, { id: string; ref: string; title: string }[]>>;
     /** Whether an email belongs to an enabled dashboard account, for assigning. */
     isAssignable?: (email: string) => Promise<boolean>;
+    /** Display names of dashboard accounts by (lowercased) email, so lists can name a tester rather than number them. */
+    testerNames?: (emails: string[]) => Promise<Map<string, string>>;
   },
 ) {
-  const { service, categories, timeZone, uploads, kindsFor, isAssignable } = deps;
+  const { service, categories, timeZone, uploads, kindsFor, isAssignable, testerNames } = deps;
   const uploadsDescriptor = () => ({
     screenshots: uploads
       ? { enabled: true, auth_endpoint: '/v1/uploads/screenshot-auth', upload_url: 'https://upload.imagekit.io/api/v1/files/upload', max_count: uploads.maxCount, max_bytes: uploads.maxBytes, accepted_types: [...SCREENSHOT_TYPES], url_endpoint: uploads.urlEndpoint, client_resize: SCREENSHOT_CLIENT_RESIZE }
@@ -168,9 +170,19 @@ export function registerFeedbackRoutes(
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error), 'Invalid query');
     const { ref, ...filters } = resolveMe(parsed.data, req);
     const page = await service.list({ ...filters, ref_no: ref });
-    if (!kindsFor) return page;
-    const kinds = await kindsFor(page.items.map((i) => i.id));
-    return { ...page, items: page.items.map((i) => ({ ...i, kinds: kinds.get(i.id) ?? [] })) };
+    if (!kindsFor && !testerNames) return page;
+    const [kinds, names] = await Promise.all([
+      kindsFor ? kindsFor(page.items.map((i) => i.id)) : null,
+      testerNames ? testerNames(page.items.map((i) => i.email).filter((e): e is string => !!e)) : null,
+    ]);
+    return {
+      ...page,
+      items: page.items.map((i) => ({
+        ...i,
+        ...(kinds ? { kinds: kinds.get(i.id) ?? [] } : {}),
+        ...(names ? { tester_name: (i.email && names.get(i.email.toLowerCase())) ?? null } : {}),
+      })),
+    };
   });
 
   /** By uuid or by reference (LN-00042, ln-42, 42). */

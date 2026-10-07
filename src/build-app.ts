@@ -197,6 +197,7 @@ export function buildApp(opts: BuildOptions = {}): App {
   registerFeedbackRoutes(app, {
     service, categories, timeZone: config.APP_TIMEZONE, kindsFor: (ids) => kindsRepo.forSubmissions(ids),
     isAssignable: async (email) => (await users.assignable()).some((u) => u.email === email),
+    testerNames: (emails) => usersRepo.namesFor(emails),
     uploads: imagekit ? { publicKey: imagekit.publicKey, urlEndpoint: imagekit.urlEndpoint, folder: imagekit.folder, maxBytes: config.SCREENSHOT_MAX_BYTES, maxCount: config.SCREENSHOT_MAX_COUNT, authParams: () => imagekit.authParams() } : null,
   });
   registerPageRoutes(app, { dashboardKey: config.DASHBOARD_KEY, sessionSecret, sessionDays: config.DASHBOARD_SESSION_DAYS, keyLogin: config.DASHBOARD_KEY_LOGIN, users });

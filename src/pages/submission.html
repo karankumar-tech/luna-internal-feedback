@@ -450,7 +450,13 @@
     const meta = $('meta'); meta.replaceChildren();
     const m = (k, v) => { const s = el('span'); s.appendChild(el('span', null, k + ' ')); s.appendChild(el('b', null, v)); meta.appendChild(s); };
     m('occurred', shortDate(r.occurred_on)); m('submitted', istStamp(r.created_at));
-    if (r.origin === 'cx') { m('CX ticket', r.cx_ref || '—'); m('ring', r.device_serial || '—'); } else m('tester', String(r.user_id));
+    if (r.origin === 'cx') { m('CX ticket', r.cx_ref || '—'); m('ring', r.device_serial || '—'); }
+    else {
+      // Named when the email belongs to a dashboard account, else the part before @; the id itself is in the Reporter card.
+      const acct = (state.people || []).find((x) => x.email === (r.email || '').toLowerCase());
+      m('tester', (acct && acct.name) || (r.email ? r.email.split('@')[0] : String(r.user_id)));
+      meta.lastChild.title = 'Luna user ' + r.user_id + (r.email ? ' · ' + r.email : '');
+    }
     m('platform', r.platform === 'ios' ? 'iOS' : r.platform === 'android' ? 'Android' : '—'); m('app', r.app_version || '—'); m('fw', r.firmware_version || '—');
     const envWrap = el('span'); envWrap.appendChild(el('span', 'env ' + (r.environment || 'stage'), r.environment || 'stage')); meta.appendChild(envWrap);
     if (r.status_changed_at) { const s = el('span', 'tertiary'); s.textContent = `${(TRIAGE.find((t) => t[0] === r.status) || [, r.status])[1]} by ${r.status_changed_by || 'someone'} · ${istStamp(r.status_changed_at)}`; meta.appendChild(s); }
@@ -528,6 +534,8 @@
   async function loadAssignees() {
     try { state.people = (await api('/v1/admin/assignees')).items || []; } catch { state.people = []; }
     renderOwnerPriority();
+    // The header names the tester from these accounts, so it is drawn again once they are known.
+    if (state.sub) renderSubmission();
     if (state.activity && state.activity.length) renderTimeline();
   }
   function renderOwnerPriority() {

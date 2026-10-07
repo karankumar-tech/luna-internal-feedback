@@ -521,7 +521,8 @@
       tr.appendChild(refCell);
       tr.appendChild(el('td', 'code', r.occurred_on));
       tr.appendChild(el('td', null, r.feature_key));
-      const who = el('td', 'code', r.origin === 'cx' ? (r.user_id ? String(r.user_id) : r.device_serial) : String(r.user_id));
+      const who = r.origin === 'cx' ? el('td', 'code', r.user_id ? String(r.user_id) : r.device_serial) : el('td', null, r.tester_name || (r.email ? r.email.split('@')[0] : String(r.user_id)));
+      if (r.origin !== 'cx') who.title = 'Luna user ' + r.user_id + (r.email ? ' · ' + r.email : '');
       if (r.origin === 'cx') { who.appendChild(document.createTextNode(' ')); who.appendChild(el('span', 'chip cx', 'CX')); }
       tr.appendChild(who);
       tr.appendChild(el('td', 'code', r.environment || 'stage'));

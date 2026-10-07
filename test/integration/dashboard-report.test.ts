@@ -84,6 +84,22 @@ describe('posting a report from the dashboard', () => {
     expect(again.json().id).toBe(dto.id);
   });
 
+  it('lists name the tester: the dashboard account with that email, else the part before @', async () => {
+    // The reporter's Luna email is their dashboard email too, so the list can show "Business Person".
+    const named = await app.inject({ method: 'POST', url: '/v1/feedback/home', headers: asUser(), payload: body({ email: email('biz').toUpperCase(), user_id: 900778 }) });
+    expect(named.statusCode).toBe(201);
+    const list = await app.inject({ method: 'GET', url: `/v1/feedback?ref=${named.json().ref}`, headers: asUser() });
+    expect(list.json().items[0]).toMatchObject({ user_id: 900778, tester_name: 'Business Person' });
+    const home = await app.inject({ method: 'GET', url: '/v1/home/reports?view=all&data=test&user_id=900778', headers: asUser() });
+    expect(home.statusCode).toBe(200);
+    // The email is kept as sent; the account lookup ignores case.
+    expect(home.json().items[0]).toMatchObject({ user_id: 900778, email: email('biz').toUpperCase(), tester_name: 'Business Person' });
+
+    // No account for the email: the pages fall back to its local part, so the API only says there is no name.
+    const unnamed = await app.inject({ method: 'GET', url: '/v1/home/reports?view=all&data=test&user_id=900777', headers: asUser() });
+    expect(unnamed.json().items[0]).toMatchObject({ user_id: 900777, email: email('luna'), tester_name: null });
+  });
+
   it('validates per field, the same as for the app', async () => {
     const r = await app.inject({ method: 'POST', url: '/v1/feedback/sleep', headers: asUser(), payload: body({ issue_categories: [], details: { actual_start_time: '11:30 PM', actual_end_time: '11:30 PM' } }) });
     expect(r.statusCode).toBe(422);
