@@ -31,13 +31,39 @@ export function registerUserRoutes(app: FastifyInstance, deps: { service: UsersS
   app.get('/v1/me', async (req) => {
     const actor = req.actor;
     if (!actor) throw AppError.unauthorized('Not signed in');
-    const password = actor.id ? await service.passwordState(actor.id) : { must_change: false, reason: null, age_days: 0 };
+    const [password, reporter_profile] = actor.id
+      ? await Promise.all([service.passwordState(actor.id), service.reporterProfile(actor.id)])
+      : [{ must_change: false, reason: null, age_days: 0 }, {}];
     return {
       id: actor.id, email: actor.email, name: actor.name, role: actor.role, via: actor.via,
       password,
+      /** What they last entered about themselves on the Report page; the page prefills from it. */
+      reporter_profile,
       password_rules: service.passwordRules,
       permissions: permissionsOf(actor),
     };
+  });
+
+  /**
+   * Remembers what this person enters about themselves on the Report page (Luna user id, email,
+   * ring serial, phone and ring details), so it is prefilled next time on any browser. Keys sent
+   * are merged in; null removes one. The values stay editable on the page.
+   */
+  app.patch('/v1/me/reporter', async (req) => {
+    const actor = req.actor;
+    if (!actor?.id) throw AppError.forbidden('Only a signed-in account can save a reporter profile');
+    const str = (max: number) => z.string().trim().max(max).nullable().optional();
+    const parsed = z.object({
+      user_id: z.number().int().positive().nullable().optional(),
+      email: z.string().trim().email().max(254).nullable().optional(),
+      device_serial: str(64),
+      environment: z.enum(['stage', 'uat', 'production']).nullable().optional(),
+      platform: z.enum(['ios', 'android']).nullable().optional(),
+      app_version: str(200), build_number: str(200), firmware_version: str(200), os_version: str(200),
+    }).strict().safeParse(req.body);
+    if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
+    const patch = Object.fromEntries(Object.entries(parsed.data).map(([k, v]) => [k, v === '' ? null : v]));
+    return { reporter_profile: await service.saveReporterProfile(actor.id, patch) };
   });
 
   /** Changing your own password. Allowed even while must_change is set — that is the point. */

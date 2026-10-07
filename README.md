@@ -98,6 +98,9 @@ removed or disabled, so a deployment can never become unreachable. Two more ways
 The permission table lives in [`src/lib/actor.ts`](src/lib/actor.ts) and is enforced per
 route; the dashboard hides what a role cannot use, and the server refuses it either way.
 Filing a report from `/dashboard/report` needs no permission: every signed-in account can.
+What a person enters there about themselves (Luna user id, email, ring serial, phone and ring details) is
+saved on their account (`PATCH /v1/me/reporter`, returned by `GET /v1/me`) and prefilled next time, on any
+browser; the fields stay editable.
 
 Passwords are scrypt-hashed with their parameters stored alongside the hash, so the cost can
 be raised later without invalidating anyone. They must be at least 10 characters with a

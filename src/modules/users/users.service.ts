@@ -1,8 +1,7 @@
 import { AppError } from '../../lib/errors.js';
 import { ROLES, type Actor, type Role } from '../../lib/actor.js';
 import {
-  UsersRepo, toPublicUser, type PublicUser, type UserRow,
-} from './users.repo.js';
+  UsersRepo, toPublicUser, type PublicUser, type UserRow, type ReporterProfile } from './users.repo.js';
 import {
   PASSWORD_RULES, checkPasswordStrength, generatePassword, hashPassword, verifyPassword,
 } from './password.js';
@@ -134,6 +133,17 @@ export class UsersService {
       actor: { id: user.id, email: user.email, name: user.name, role: user.role, via: 'session' },
       passwordEpoch: new Date(user.password_set_at).getTime(),
     };
+  }
+
+  /** The Report page's prefill for this account. */
+  async reporterProfile(userId: string): Promise<ReporterProfile> {
+    return (await this.repo.byId(userId))?.reporter_profile ?? {};
+  }
+
+  async saveReporterProfile(userId: string, patch: ReporterProfile): Promise<ReporterProfile> {
+    const saved = await this.repo.mergeReporterProfile(userId, patch);
+    if (!saved) throw AppError.notFound('Account not found');
+    return saved;
   }
 
   /** Whether this user still has to rotate before they can do anything else. */

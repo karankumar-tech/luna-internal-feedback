@@ -100,6 +100,22 @@ describe('posting a report from the dashboard', () => {
     expect(unnamed.json().items[0]).toMatchObject({ user_id: 900777, email: email('luna'), tester_name: null });
   });
 
+  it('remembers who you are on the account, editable and merged key by key', async () => {
+    const first = await app.inject({ method: 'PATCH', url: '/v1/me/reporter', headers: asUser(), payload: { user_id: 900778, email: email('biz'), platform: 'ios' } });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().reporter_profile).toEqual({ user_id: 900778, email: email('biz'), platform: 'ios' });
+
+    // A later change touches only the keys sent; null removes one; '' counts as null.
+    const second = await app.inject({ method: 'PATCH', url: '/v1/me/reporter', headers: asUser(), payload: { user_id: 900779, platform: null, app_version: '' } });
+    expect(second.json().reporter_profile).toEqual({ user_id: 900779, email: email('biz') });
+
+    const me = await app.inject({ method: 'GET', url: '/v1/me', headers: asUser() });
+    expect(me.json().reporter_profile).toEqual({ user_id: 900779, email: email('biz') });
+
+    expect((await app.inject({ method: 'PATCH', url: '/v1/me/reporter', headers: asUser(), payload: { user_id: -1 } })).statusCode).toBe(422);
+    expect((await app.inject({ method: 'PATCH', url: '/v1/me/reporter', headers: asUser(), payload: { nickname: 'x' } })).statusCode).toBe(422);
+  });
+
   it('validates per field, the same as for the app', async () => {
     const r = await app.inject({ method: 'POST', url: '/v1/feedback/sleep', headers: asUser(), payload: body({ issue_categories: [], details: { actual_start_time: '11:30 PM', actual_end_time: '11:30 PM' } }) });
     expect(r.statusCode).toBe(422);

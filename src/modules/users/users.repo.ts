@@ -16,7 +16,12 @@ export interface UserRow {
   created_by: string | null;
   created_at: Date;
   updated_at: Date;
+  /** What they last entered about themselves on the Report page, to prefill it next time. */
+  reporter_profile: ReporterProfile;
 }
+
+/** The Report page's who-and-device fields; every key optional, the page owns the meaning. */
+export type ReporterProfile = Partial<Record<'user_id' | 'email' | 'device_serial' | 'environment' | 'platform' | 'app_version' | 'build_number' | 'firmware_version' | 'os_version', string | number | null>>;
 
 /** What leaves the API. The hash never does. */
 export type PublicUser = Omit<UserRow, 'password_hash' | 'password_set_at' | 'last_login_at' | 'locked_until' | 'created_at' | 'updated_at'> & {
@@ -29,7 +34,7 @@ export type PublicUser = Omit<UserRow, 'password_hash' | 'password_set_at' | 'la
 };
 
 const U_COLS = `id, email, name, role, password_hash, password_set_at, must_change, is_disabled,
-  last_login_at, failed_attempts, locked_until, created_by, created_at, updated_at`;
+  last_login_at, failed_attempts, locked_until, created_by, created_at, updated_at, reporter_profile`;
 
 export class UsersRepo {
   constructor(private readonly db: Db) {}
@@ -79,6 +84,17 @@ export class UsersRepo {
       [u.email.trim().toLowerCase(), u.name, u.role, u.passwordHash, u.mustChange, u.createdBy],
     );
     return r.rows[0]!;
+  }
+
+  /** Merges the given keys into the stored profile; a null value removes a key. */
+  async mergeReporterProfile(id: string, patch: ReporterProfile): Promise<ReporterProfile | undefined> {
+    const r = await this.db.query<{ reporter_profile: ReporterProfile }>(
+      `update luna_feedback.dashboard_users
+          set reporter_profile = jsonb_strip_nulls(reporter_profile || $2::jsonb), updated_at = now()
+        where id = $1 returning reporter_profile`,
+      [id, JSON.stringify(patch)],
+    );
+    return r.rows[0]?.reporter_profile;
   }
 
   async update(id: string, patch: Partial<Pick<UserRow, 'name' | 'role' | 'is_disabled'>>): Promise<UserRow | undefined> {

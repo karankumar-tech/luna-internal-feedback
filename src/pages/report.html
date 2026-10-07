@@ -137,7 +137,7 @@
         <h2>Who is reporting</h2>
         <p class="sub">Your Luna account, as the app would send it, so the logs can be found.</p>
         <div id="who"></div>
-        <label class="remember"><input type="checkbox" id="remember" checked> Remember these on this browser</label>
+        <label class="remember" title="Saved on your account and in this browser; you can change them any time."><input type="checkbox" id="remember" checked> Remember these for next time</label>
       </section>
 
       <section class="card">
@@ -519,19 +519,47 @@
     else if (unplaced.length && issues[0].path === 'feature') $('features').scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
-  function remember() {
+  // ---------- remembering who you are ----------
+  // Saved the moment a field changes: in this browser, and on the dashboard account so another
+  // browser prefills the same. Always editable; the last thing typed wins.
+  const PROFILE_KEYS = ['user_id', 'email', 'device_serial', 'environment', 'platform', 'app_version', 'build_number', 'firmware_version', 'os_version'];
+  const pathOf = (key) => (WHO.includes(key) ? key : 'client.' + key);
+  function profileNow() {
+    const out = {};
+    for (const key of PROFILE_KEYS) { const c = S.controls.get(pathOf(key)); if (c) { const v = c.get(); out[key] = v === undefined ? null : v; } }
+    return out;
+  }
+  let saveT = null;
+  function remember(now) {
     if (!$('remember').checked) { write(REMEMBER, null); return; }
-    const keep = {};
-    for (const path of ['user_id', 'email', 'device_serial', 'client.environment', 'client.platform', 'client.app_version', 'client.build_number', 'client.firmware_version', 'client.os_version']) {
-      const c = S.controls.get(path); if (c && c.get() !== undefined) keep[path] = c.get();
-    }
-    write(REMEMBER, keep);
+    const profile = profileNow();
+    write(REMEMBER, profile);
+    clearTimeout(saveT);
+    const push = () => {
+      if (!S.me || !S.me.id) return; // a master-key session has no account to save on
+      // Only well-formed values go to the account; a half-typed email stays local until it is one.
+      const body = {};
+      for (const [k, v] of Object.entries(profile)) {
+        if (k === 'email' && v && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) continue;
+        if (k === 'user_id' && v !== null && !(Number.isInteger(v) && v > 0)) continue;
+        body[k] = v;
+      }
+      api('/v1/me/reporter', { method: 'PATCH', body: JSON.stringify(body) }).then((r) => { if (S.me) S.me.reporter_profile = r.reporter_profile; }).catch(() => {});
+    };
+    if (now) push(); else saveT = setTimeout(push, 800);
   }
   function recall() {
-    const kept = read(REMEMBER);
-    if (kept) for (const [path, v] of Object.entries(kept)) { const c = S.controls.get(path); if (c) c.set(v); }
+    const account = (S.me && S.me.reporter_profile) || {};
+    const local = read(REMEMBER) || {};
+    for (const key of PROFILE_KEYS) {
+      const c = S.controls.get(pathOf(key)); if (!c) continue;
+      const v = account[key] !== undefined && account[key] !== null ? account[key] : local[key] !== undefined ? local[key] : local[pathOf(key)];
+      if (v !== undefined && v !== null && v !== '') c.set(v);
+    }
     const email = S.controls.get('email');
     if (email && email.get() === undefined && S.me && S.me.email) email.set(S.me.email);
+    for (const key of PROFILE_KEYS) { const c = S.controls.get(pathOf(key)); if (c) c.el.addEventListener('change', () => remember(false)); }
+    $('remember').addEventListener('change', () => remember(true));
   }
 
   $('form').addEventListener('submit', async (e) => {
@@ -552,7 +580,7 @@
       if (r.status === 422 && dto && dto.error && dto.error.issues) { showIssues(dto.error.issues); return; }
       if (r.status === 401) { location.replace('/dashboard?next=' + encodeURIComponent(HERE)); return; }
       if (!r.ok) { $('formErr').textContent = 'Could not post: ' + ((dto && dto.error && dto.error.message) || `HTTP ${r.status}`); return; }
-      remember(); newKey();
+      remember(true); newKey();
       $('form').hidden = true; $('done').hidden = false;
       $('doneRef').textContent = dto.ref;
       $('doneText').textContent = r.status === 200 ? 'This report had already been posted; here it is again.' : body.is_positive ? 'Thanks. Positive feedback is kept with the reports so the team sees what works.' : `Filed under ${featureOf(S.feature).label} as yours. ${dto.is_test ? 'It is marked as test data.' : 'It is on the Reports list now, and the diagnosis will run once the logs for that day are in.'}`;
