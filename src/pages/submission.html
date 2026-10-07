@@ -473,7 +473,7 @@
       ]);
       if (r.cx_transcript) { $('reporter').appendChild(el('dt', null, 'Customer\'s words')); $('reporter').appendChild(el('dd', 'quote', r.cx_transcript)); }
     } else {
-      dl($('reporter'), [['User ID', r.user_id, true], ['Email', r.email], ['Device serial', r.device_serial, true], ['Occurred on', r.occurred_on, true], ['Submitted (IST)', r.created_at_ist, true], ['Reference', r.ref, true], ['Record', r.id, true]]);
+      dl($('reporter'), [['User ID', r.user_id, true], ['Email', r.email], ['Device serial', r.device_serial, true], ['Occurred on', r.occurred_on, true], ['Submitted (IST)', r.created_at_ist, true], ['Filed from', r.submitted_via === 'dashboard' ? 'the dashboard' : 'the Luna app'], ['Reference', r.ref, true], ['Record', r.id, true]]);
     }
     const shots = r.screenshots || [];
     $('shotsCard').hidden = shots.length === 0;

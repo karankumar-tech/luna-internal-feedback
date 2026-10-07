@@ -16,6 +16,7 @@
 
   // lucide icons, 24px grid, stroked
   const P = {
+    report: '<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/>',
     reports: '<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
     attention: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
     problems: '<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>',
@@ -39,6 +40,7 @@
   const NAV = [
     { group: 'Overview', items: [
       { id: 'reports', label: 'Reports', href: '/dashboard', match: /^\/dashboard\/?$|^\/dashboard\/submissions\// },
+      { id: 'report', label: 'Report an issue', href: '/dashboard/report', match: /^\/dashboard\/report/ },
       { id: 'attention', label: 'Needs attention', href: '/dashboard/attention', match: /^\/dashboard\/attention/, badge: true },
       { id: 'problems', label: 'Problems', href: '/dashboard/kinds', match: /^\/dashboard\/kinds/ },
     ] },

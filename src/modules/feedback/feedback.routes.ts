@@ -156,7 +156,9 @@ export function registerFeedbackRoutes(
   app.post<{ Params: { feature: string } }>('/v1/feedback/:feature', async (req, reply) => {
     const rawKey = req.headers['idempotency-key'];
     const idempotencyKey = typeof rawKey === 'string' && rawKey.trim().length > 0 ? rawKey.trim().slice(0, 200) : null;
-    const { dto, created } = await service.submit(req.params.feature, req.body, idempotencyKey, req.log);
+    // The same contract serves the app and the dashboard's Report page; a signed-in person is recorded as the reporter.
+    const source = req.actor?.via === 'session' ? { via: 'dashboard' as const, by: actorOf(req) } : undefined;
+    const { dto, created } = await service.submit(req.params.feature, req.body, idempotencyKey, req.log, source);
     return reply.code(created ? 201 : 200).send(dto);
   });
 

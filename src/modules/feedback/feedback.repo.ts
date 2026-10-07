@@ -116,7 +116,8 @@ export interface NewSubmission {
   schema_version: number;
   is_test: boolean;
   origin: Origin;
-  submitted_via: 'app' | 'cx_tool' | 'admin';
+  /** Which credential sent it: the app, the CX tool, the admin key, or a signed-in person on the dashboard's Report page. */
+  submitted_via: 'app' | 'cx_tool' | 'admin' | 'dashboard';
   cx: { ref: string; url: string | null; channel: string | null; agent: string | null; transcript: string | null } | null;
 }
 

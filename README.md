@@ -11,6 +11,7 @@ anything in `public`. See [PLAN.md](PLAN.md) for the full design.
 |---|---|---|
 | API reference for front-end teams | `/docs` | public |
 | Home: issues today and over 7 days, issues by category, and the paginated report list (filters on demand) | `/dashboard` | signed-in account |
+| Report an issue: the app's form, rendered from the same schema, with screenshots. For what internal people see on production and UAT builds, which have no form of their own | `/dashboard/report` | signed-in account (any role) |
 | Settings: report categories, AI diagnosis queue, test data | `/dashboard/settings` | signed-in account (changes need admin or QC) |
 | Needs attention (untouched, stale, CX waiting, stuck diagnoses, getting worse, same ring) | `/dashboard/attention` | signed-in account |
 | Analytics (what kind of issues, where the fault sits) | `/dashboard/analytics` | signed-in account |
@@ -20,8 +21,10 @@ anything in `public`. See [PLAN.md](PLAN.md) for the full design.
 | People (accounts, roles, passwords) | `/dashboard/users` | admin |
 
 Reports are tagged `stage`, `uat` or `production`, defaulting to `stage`, and every screen
-filters by it. They also carry an origin: `internal` (testers, through the app) or `cx` (customer
-problems filed by CX from its own tool), with its own filter on every screen.
+filters by it. They also carry an origin: `internal` (testers, through the app or the dashboard's Report page) or `cx` (customer
+problems filed by CX from its own tool), with its own filter on every screen. A report filed from the dashboard
+posts to the same `POST /v1/feedback/{feature}` as the app, is stored with `submitted_via: dashboard`, and its
+history names the person who filed it.
 
 Every report has a readable reference, `LN-00042`, and every issue kind one of its own, `LNK-0007`.
 Existing rows were numbered oldest first; numbers are never reused. `/i/LN-00042` and `/k/LNK-0007`
@@ -94,6 +97,7 @@ removed or disabled, so a deployment can never become unreachable. Two more ways
 
 The permission table lives in [`src/lib/actor.ts`](src/lib/actor.ts) and is enforced per
 route; the dashboard hides what a role cannot use, and the server refuses it either way.
+Filing a report from `/dashboard/report` needs no permission: every signed-in account can.
 
 Passwords are scrypt-hashed with their parameters stored alongside the hash, so the cost can
 be raised later without invalidating anyone. They must be at least 10 characters with a

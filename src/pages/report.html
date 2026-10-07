@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Luna Pulse · Report an issue</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  * { box-sizing: border-box; }
+  html { color-scheme: light; }
+  body { margin: 0; background: var(--bg); color: var(--black); font-family: var(--sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  a { color: inherit; }
+  h1, h2, h3, p { margin: 0; }
+  [hidden] { display: none !important; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 24px 16px 64px; }
+  .card { padding: 20px 24px; }
+  .card h2 { margin-bottom: 2px; }
+  .card .sub { font-size: 13px; line-height: 20px; color: var(--muted-foreground); max-width: 64ch; }
+
+  .cols { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+  .cols > div > .card + .card { margin-top: 16px; }
+  @media (max-width: 960px) { .cols { grid-template-columns: 1fr; } }
+
+  .field { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
+  .field > span, .field > .lab { display: block; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--muted-foreground); }
+  .field > span .req { color: var(--destructive-ink); margin-left: 4px; }
+  .field > span .opt { font-weight: 400; margin-left: 6px; white-space: nowrap; }
+  .field input, .field select, .field textarea { width: 100%; }
+  .field textarea { min-height: 96px; resize: vertical; }
+  .field .help { font-size: 12px; line-height: 18px; color: var(--muted-foreground); margin: 0; }
+  .field .ferr { font-size: 12px; line-height: 18px; color: var(--destructive-ink); margin: 0; }
+  .field .ferr:empty { display: none; }
+  .field.bad input, .field.bad select, .field.bad textarea { border-color: var(--destructive); }
+  .field .count { font-family: var(--mono); font-size: 11px; color: var(--muted-foreground); align-self: flex-end; }
+  .with-unit { display: flex; align-items: center; gap: 8px; }
+  .with-unit input { flex: 1; }
+  .with-unit .unit { font-size: 12px; color: var(--muted-foreground); }
+  .card { container-type: inline-size; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+  @container (max-width: 400px) { .two { grid-template-columns: 1fr; } }
+
+  .seg.wrapable { flex-wrap: wrap; }
+  .seg button { height: 32px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chk { position: relative; display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--r-m); background: var(--card); box-shadow: var(--shadow-xs); cursor: pointer; user-select: none; transition: all .15s var(--ease); }
+  .chk:hover { background: var(--muted); }
+  .chk input { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; }
+  .chk .box { width: 16px; height: 16px; border: 1.5px solid var(--border-strong); border-radius: 4px; display: inline-grid; place-items: center; flex: none; transition: all .15s var(--ease); }
+  .chk .box svg { width: 12px; height: 12px; opacity: 0; color: #fff; }
+  .chk:has(input:checked) { border-color: var(--primary); background: var(--primary); color: #fff; }
+  .chk:has(input:checked) .box { border-color: #fff; }
+  .chk:has(input:checked) .box svg { opacity: 1; }
+  .chk:has(input:focus-visible) { box-shadow: 0 0 0 3px var(--ring); border-color: var(--primary); }
+  .field.bad .chk { border-color: oklch(57.7% .245 27.3 / .5); }
+
+  .drop { display: block; margin-top: 14px; border: 1.5px dashed var(--border-strong); border-radius: var(--r-l); padding: 22px 16px; text-align: center; color: var(--muted-foreground); cursor: pointer; transition: all .15s var(--ease); }
+  .drop:hover, .drop.over { border-color: var(--primary); color: var(--foreground); background: var(--muted); }
+  .drop b { color: var(--foreground); font-weight: 500; }
+  .drop input { display: none; }
+  .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; margin-top: 14px; }
+  .shot { position: relative; border: 1px solid var(--border); border-radius: var(--r-m); overflow: hidden; background: var(--muted); aspect-ratio: 9 / 16; }
+  .shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .shot .cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 4px 8px; font-size: 11px; line-height: 14px; color: #fff; background: linear-gradient(transparent, rgba(0,0,0,.65)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .shot .rm { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border: 0; border-radius: 50%; background: rgba(0,0,0,.65); color: #fff; font-size: 16px; line-height: 1; cursor: pointer; display: grid; place-items: center; }
+  .shot.busy::after { content: ''; position: absolute; inset: 0; background: rgba(255,255,255,.55); }
+  .shot .pct { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; font-weight: 500; color: var(--foreground); }
+
+  .submitbar { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .submitbar .btn { height: 44px; font-size: 15px; }
+  .submitbar .fine { font-size: 12px; line-height: 18px; color: var(--muted-foreground); }
+  .ferr.top { font-size: 13px; line-height: 20px; color: var(--destructive-ink); }
+  .ferr.top:empty { display: none; }
+  .ferr.top ul { margin: 4px 0 0; padding-left: 18px; }
+  .ferr.top a { color: inherit; }
+  .remember { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13px; color: var(--muted-foreground); cursor: pointer; }
+  .remember input { width: 16px; height: 16px; margin: 0; }
+
+  .done { text-align: center; padding: 40px 24px; max-width: 560px; margin: 0 auto; }
+  .done .ref { font-family: var(--mono); font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: -.01em; margin: 10px 0 6px; }
+  .done p { color: var(--muted-foreground); }
+  .done .acts { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+  .done .mark { width: 48px; height: 48px; border-radius: 50%; background: var(--accent); display: inline-grid; place-items: center; margin: 0 auto; }
+  .done .mark svg { width: 24px; height: 24px; }
+
+  .sk-form .card { min-height: 120px; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--black); color: var(--white); padding: 8px 14px; border-radius: var(--r-l); font-size: 13px; z-index: 40; display: none; }
+</style>
+<link rel="stylesheet" href="/dashboard/assets/app.css">
+</head>
+<body>
+<script src="/dashboard/assets/shell.js"></script>
+<main class="wrap">
+  <div class="page-head">
+    <div>
+      <nav class="crumbs" aria-label="Breadcrumb"><a href="/dashboard">Reports</a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg><span aria-current="page">Report an issue</span></nav>
+      <h1>Report an issue</h1>
+      <p class="page-sub">The same form the Luna app shows testers, for anyone signed in here. Use it for what you saw on a production or UAT build, with screenshots.</p>
+    </div>
+  </div>
+
+  <div class="banner crit" id="loadErr" hidden></div>
+
+  <form id="form" class="cols" novalidate hidden>
+    <div>
+      <section class="card">
+        <h2>What is it about?</h2>
+        <p class="sub">Pick the part of the app, then say whether it went wrong or went well.</p>
+        <div class="field" data-path="feature"><span class="lab">Feature <span class="req" aria-hidden="true">*</span></span><div class="seg wrapable" id="features" role="radiogroup" aria-label="Feature"></div><p class="ferr"></p></div>
+        <div class="field" data-path="is_positive"><span class="lab" id="kindLab"></span><div class="seg" id="kind" role="radiogroup" aria-labelledby="kindLab"></div><p class="ferr"></p></div>
+      </section>
+
+      <section class="card">
+        <h2>What happened?</h2>
+        <p class="sub" id="whatSub">Choose every category that fits, then describe it in your own words.</p>
+        <div id="common"></div>
+        <div id="details"></div>
+      </section>
+
+      <section class="card" id="shotsCard">
+        <h2>Screenshots</h2>
+        <p class="sub" id="shotsSub">Up to 5 images. They upload as you add them and are resized so the longest side is 1600 px.</p>
+        <label class="drop" id="drop"><input type="file" id="file" accept="image/*" multiple><b>Add screenshots</b> · drop images here, click to choose, or paste from the clipboard</label>
+        <div class="shots" id="shots"></div>
+        <p class="ferr" id="shotsErr"></p>
+      </section>
+    </div>
+
+    <div>
+      <section class="card">
+        <h2>Who is reporting</h2>
+        <p class="sub">Your Luna account, as the app would send it, so the logs can be found.</p>
+        <div id="who"></div>
+        <label class="remember"><input type="checkbox" id="remember" checked> Remember these on this browser</label>
+      </section>
+
+      <section class="card">
+        <h2>Phone and ring</h2>
+        <p class="sub">Find these under the app's settings. Fill in what you know.</p>
+        <div id="client"></div>
+        <label class="remember" title="Test reports carry a TEST tag and can be deleted in one go from Settings."><input type="checkbox" id="is_test"> This is a test report</label>
+      </section>
+
+      <div class="submitbar">
+        <button class="btn primary" id="submit" type="submit">Post the report</button>
+        <p class="ferr top" id="formErr" role="alert"></p>
+        <p class="fine">Posting as <b id="asWho">…</b>. It goes on the Reports list with your name in its history and, for an issue, into the same diagnosis queue as the app's reports.</p>
+      </div>
+    </div>
+  </form>
+
+  <section class="card done" id="done" hidden>
+    <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></div>
+    <div class="ref" id="doneRef"></div>
+    <p id="doneText"></p>
+    <div class="acts"><a class="btn primary" id="doneOpen" href="/dashboard">Open the report</a><button class="btn" type="button" id="again">Report another</button></div>
+  </section>
+</main>
+<div class="toast" id="toast" role="status"></div>
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+  let toastT; const toast = (m) => { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', 2800); };
+  const HERE = '/dashboard/report';
+  const REMEMBER = 'luna.report.v1';
+  const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+
+  async function api(path, opts = {}) {
+    const headers = Object.assign({ 'x-requested-with': 'dashboard' }, opts.headers || {});
+    if (opts.body) headers['content-type'] = 'application/json';
+    const r = await fetch(path, Object.assign({ credentials: 'same-origin' }, opts, { headers }));
+    const text = await r.text(); let body = null; try { body = text ? JSON.parse(text) : null; } catch {}
+    if (!r.ok) { const e = new Error((body && body.error && body.error.message) || `HTTP ${r.status}`); e.status = r.status; e.body = body; throw e; }
+    return body;
+  }
+  const read = (k) => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch { return null; } };
+  const write = (k, v) => { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+  const todayIst = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+  // Fields the person cannot know: the app fills them from its own process.
+  const HIDDEN_CLIENT = new Set(['device_id', 'session_id', 'build_channel']);
+  // Common fields that have their own place on the page rather than the generic list.
+  const WHO = ['user_id', 'email', 'device_serial'];
+  const KINDS = [['issue', 'Something went wrong'], ['positive', 'It went well']];
+
+  const S = { me: null, schema: null, feature: null, positive: false, shots: [], uploads: null, busy: false, key: null, controls: new Map() };
+  const newKey = () => { S.key = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)); };
+  newKey();
+
+  // ---------- rendering one schema field as a control ----------
+  // Every control registers { get(): value | undefined, set(v), el: wrapper } under its body path
+  // ("email", "details.steps", "client.app_version"), so collecting the body and placing the
+  // server's 422 issues are both a lookup.
+  function labelFor(f, required) {
+    const s = el('span', 'lab'); s.appendChild(document.createTextNode(f.label));
+    if (required) { const r = el('span', 'req', '*'); r.setAttribute('aria-hidden', 'true'); s.appendChild(r); }
+    else s.appendChild(el('span', 'opt', '· optional'));
+    if (f.unit && f.type !== 'number') s.appendChild(el('span', 'opt', f.unit));
+    return s;
+  }
+  const to12h = (v) => { if (!v) return undefined; const [h, m] = v.split(':').map(Number); const ap = h >= 12 ? 'PM' : 'AM'; const hh = h % 12 === 0 ? 12 : h % 12; return `${String(hh).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ap}`; };
+  const from12h = (v) => { const m = /^(\d{1,2}):(\d{2}) (AM|PM)$/i.exec(v || ''); if (!m) return ''; let h = Number(m[1]) % 12; if (m[3].toUpperCase() === 'PM') h += 12; return `${String(h).padStart(2, '0')}:${m[2]}`; };
+
+  function control(path, f, opts = {}) {
+    const required = opts.required !== undefined ? opts.required : f.required && !f.requiredIf;
+    const wrap = el(f.type === 'multi_select' || f.type === 'boolean' ? 'div' : 'label', 'field'); wrap.dataset.path = path;
+    wrap.appendChild(labelFor(f, required));
+    let get, set, input;
+    switch (f.type) {
+      case 'text': {
+        input = el('textarea'); input.maxLength = f.maxLength; input.rows = f.multiline ? 4 : 2; input.placeholder = opts.placeholder || '';
+        wrap.appendChild(input);
+        const count = el('small', 'count'); wrap.appendChild(count);
+        const tick = () => { count.textContent = `${input.value.length} / ${f.maxLength}`; }; input.addEventListener('input', tick); tick();
+        get = () => input.value.trim() || undefined; set = (v) => { input.value = v || ''; tick(); };
+        break;
+      }
+      case 'date': {
+        input = el('input'); input.type = 'date'; if (!f.allowFuture) input.max = todayIst();
+        wrap.appendChild(input);
+        get = () => input.value || undefined; set = (v) => { input.value = v || ''; };
+        break;
+      }
+      case 'number': {
+        const row = el('div', 'with-unit');
+        input = el('input'); input.type = 'number'; input.inputMode = f.integer ? 'numeric' : 'decimal'; input.step = f.integer ? '1' : 'any';
+        if (f.min !== undefined) input.min = String(f.min); if (f.max !== undefined) input.max = String(f.max);
+        input.placeholder = opts.placeholder || '';
+        row.appendChild(input); if (f.unit) row.appendChild(el('span', 'unit', f.unit)); wrap.appendChild(row);
+        get = () => { const v = input.value.trim(); if (v === '') return undefined; const n = Number(v); return Number.isFinite(n) ? n : v; };
+        set = (v) => { input.value = v == null ? '' : String(v); };
+        break;
+      }
+      case 'time_12h': {
+        input = el('input'); input.type = 'time'; wrap.appendChild(input);
+        get = () => to12h(input.value); set = (v) => { input.value = from12h(v); };
+        break;
+      }
+      case 'string': {
+        if (f.options && f.options.length) {
+          input = el('select');
+          const none = el('option', null, required ? 'Choose…' : 'Not sure'); none.value = ''; input.appendChild(none);
+          for (const o of f.options) { const op = el('option', null, opts.optionLabel ? opts.optionLabel(o) : o); op.value = o; input.appendChild(op); }
+          wrap.appendChild(input);
+          get = () => input.value || undefined; set = (v) => { input.value = v || ''; };
+        } else {
+          input = el('input'); input.type = f.format === 'email' ? 'email' : 'text'; if (f.maxLength) input.maxLength = f.maxLength;
+          input.placeholder = opts.placeholder || ''; input.autocomplete = f.format === 'email' ? 'email' : 'off'; input.spellcheck = false;
+          wrap.appendChild(input);
+          get = () => input.value.trim() || undefined; set = (v) => { input.value = v || ''; };
+        }
+        break;
+      }
+      case 'boolean': {
+        const lab = el('label', 'chk'); input = el('input'); input.type = 'checkbox'; const box = el('span', 'box'); box.innerHTML = CHECK;
+        lab.append(input, box, document.createTextNode('Yes')); wrap.appendChild(lab);
+        get = () => (required ? input.checked : input.checked ? true : undefined); set = (v) => { input.checked = v === true; };
+        break;
+      }
+      case 'multi_select': {
+        const chips = el('div', 'chips'); chips.setAttribute('role', 'group'); wrap.appendChild(chips);
+        const boxes = [];
+        for (const o of opts.options || []) {
+          const lab = el('label', 'chk'); const cb = el('input'); cb.type = 'checkbox'; cb.value = o.key; const box = el('span', 'box'); box.innerHTML = CHECK;
+          lab.append(cb, box, document.createTextNode(o.label)); chips.appendChild(lab); boxes.push(cb);
+        }
+        if (!boxes.length) chips.appendChild(el('span', 'muted', 'No categories are set up for this feature.'));
+        get = () => { const v = boxes.filter((b) => b.checked).map((b) => b.value); return v.length ? v : undefined; };
+        set = (v) => { const want = new Set(v || []); boxes.forEach((b) => { b.checked = want.has(b.value); }); };
+        input = boxes[0] || null;
+        break;
+      }
+    }
+    const help = 'help' in opts ? opts.help : f.help;
+    if (help) wrap.appendChild(el('p', 'help', help));
+    const err = el('p', 'ferr'); wrap.appendChild(err);
+    if (input && f.type !== 'multi_select') input.addEventListener('input', () => setError(path, ''));
+    else wrap.addEventListener('change', () => setError(path, ''));
+    const c = { get, set, el: wrap, field: f, focus: () => { const t = wrap.querySelector('input, select, textarea'); if (t) t.focus(); } };
+    S.controls.set(path, c);
+    return c;
+  }
+  function setError(path, msg) {
+    const c = S.controls.get(path); if (!c) return false;
+    c.el.classList.toggle('bad', !!msg); c.el.querySelector('.ferr').textContent = msg || '';
+    return true;
+  }
+  function clearErrors() { for (const [p] of S.controls) setError(p, ''); $('formErr').replaceChildren(); $('shotsErr').textContent = ''; }
+
+  // ---------- the form, from the schema ----------
+  const featureOf = (key) => S.schema.features.find((f) => f.key === key);
+  const common = (key) => S.schema.common_fields.find((f) => f.key === key);
+
+  function renderStatic() {
+    // Feature: a segmented control over the active features, in the schema's order.
+    const seg = $('features'); seg.replaceChildren();
+    for (const f of S.schema.features) {
+      const b = el('button', null, f.label); b.type = 'button'; b.setAttribute('role', 'radio'); b.dataset.key = f.key;
+      b.addEventListener('click', () => selectFeature(f.key));
+      seg.appendChild(b);
+    }
+    // Issue / positive, from the is_positive field.
+    const pos = common('is_positive');
+    $('kindLab').textContent = pos ? pos.label : 'Kind';
+    const kind = $('kind'); kind.replaceChildren();
+    for (const [k, label] of KINDS) {
+      const b = el('button', null, label); b.type = 'button'; b.setAttribute('role', 'radio'); b.dataset.kind = k;
+      b.addEventListener('click', () => { S.positive = k === 'positive'; paintKind(); renderCommon(); });
+      kind.appendChild(b);
+    }
+    paintKind();
+
+    // Who: user id, email, serial.
+    const who = $('who'); who.replaceChildren();
+    const hints = { user_id: 'Profile → account details in the app', email: 'The address you sign in to the Luna app with', device_serial: 'e.g. R2N08250600302, under the ring\'s settings. Lets the diagnosis fetch the ring\'s logs.' };
+    for (const key of WHO) {
+      const f = common(key); if (!f) continue;
+      const c = control(key, f, { help: hints[key] || f.help, placeholder: key === 'email' ? 'you@nexxbase.com' : '' });
+      who.appendChild(c.el);
+    }
+
+    // Phone and ring: the client context the app attaches on its own.
+    const client = $('client'); client.replaceChildren();
+    const grid = el('div', 'two'); client.appendChild(grid);
+    const envLabel = { stage: 'Stage', uat: 'UAT', production: 'Production' };
+    const platLabel = { ios: 'iPhone', android: 'Android' };
+    const help = { environment: 'Which build you were on. Reports from the stage app arrive on their own; this page is mostly for production and UAT.', app_version: 'e.g. 2.4.0', build_number: 'e.g. 512', firmware_version: 'e.g. 1.9.2', os_version: 'e.g. iOS 19.1' };
+    for (const f of S.schema.client_context_fields) {
+      if (HIDDEN_CLIENT.has(f.key)) continue;
+      const c = control('client.' + f.key, f, {
+        required: f.key === 'environment', help: help[f.key] || f.help, placeholder: (help[f.key] || '').replace(/^e\.g\. /, ''),
+        optionLabel: f.key === 'environment' ? (o) => envLabel[o] || o : f.key === 'platform' ? (o) => platLabel[o] || o : undefined,
+      });
+      if (f.key === 'environment' || f.key === 'platform') client.insertBefore(c.el, grid); else grid.appendChild(c.el);
+    }
+    S.controls.get('client.environment').set('production');
+  }
+  function paintKind() { for (const b of $('kind').children) { const on = (b.dataset.kind === 'positive') === S.positive; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); } }
+
+  /** Date, categories and the free text: their requiredness follows is_positive, as in the app. */
+  function renderCommon() {
+    const host = $('common');
+    const keep = {}; for (const key of ['occurred_on', 'issue_categories', 'feedback_text']) { const c = S.controls.get(key); if (c) keep[key] = c.get(); }
+    host.replaceChildren();
+    const feature = featureOf(S.feature);
+    for (const f of S.schema.common_fields) {
+      if (f.key === 'is_positive' || WHO.includes(f.key)) continue;
+      const required = f.required && !(S.positive && f.requiredIf);
+      const c = control(f.key, f, {
+        required,
+        options: f.type === 'multi_select' ? (feature ? feature.issue_categories : []) : undefined,
+        help: f.key === 'occurred_on' ? (S.positive ? 'Leave it for today.' : 'The day it happened, not the day you noticed. The logs for that day are what the diagnosis reads.')
+          : f.key === 'feedback_text' ? 'What you expected, what you saw instead, and anything you had just done.'
+          : f.key === 'issue_categories' ? (S.positive ? 'Optional for positive feedback.' : undefined) : f.help,
+        placeholder: f.key === 'feedback_text' ? 'Ring said 4h, I slept about 7h. Fell asleep around 11:30 PM…' : '',
+      });
+      if (f.key === 'occurred_on') c.set(keep[f.key] || todayIst()); else if (keep[f.key] !== undefined) c.set(keep[f.key]);
+      host.appendChild(c.el);
+    }
+    $('whatSub').textContent = S.positive ? 'Tell us what worked. Categories and the date are optional for positive feedback.' : 'Choose every category that fits, then describe it in your own words.';
+  }
+
+  /** The feature's own fields, under details. */
+  function renderDetails() {
+    const host = $('details'); host.replaceChildren();
+    for (const [p] of [...S.controls]) if (p.startsWith('details.')) S.controls.delete(p);
+    const feature = featureOf(S.feature); if (!feature || !feature.fields.length) return;
+    const h = el('h3', 'overline', `${feature.label} details`); h.style.marginTop = '24px'; host.appendChild(h);
+    const grid = el('div', 'two'); host.appendChild(grid);
+    for (const f of feature.fields) {
+      const c = control('details.' + f.key, f, { required: f.required });
+      if (f.type === 'text') host.appendChild(c.el); else grid.appendChild(c.el);
+    }
+  }
+
+  function selectFeature(key) {
+    S.feature = key;
+    for (const b of $('features').children) { const on = b.dataset.key === key; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); }
+    setError('feature', '');
+    renderCommon(); renderDetails();
+  }
+
+  // ---------- screenshots: straight to ImageKit, then referenced in the post ----------
+  const maxShots = () => (S.uploads && S.uploads.max_count) || 5;
+  function renderShots() {
+    const host = $('shots'); host.replaceChildren();
+    for (const sc of S.shots) {
+      const box = el('div', 'shot' + (sc.pending ? ' busy' : ''));
+      const img = el('img'); img.alt = sc.name || 'screenshot';
+      if (sc.preview) img.src = sc.preview; else { try { const u = new URL(sc.url); u.searchParams.set('tr', 'w-320,q-80'); img.src = u.toString(); } catch { img.src = sc.url; } }
+      box.appendChild(img);
+      if (sc.pending) box.appendChild(el('div', 'pct', 'Uploading…'));
+      box.appendChild(el('div', 'cap', sc.name || 'screenshot'));
+      const rm = el('button', 'rm', '×'); rm.type = 'button'; rm.setAttribute('aria-label', `Remove ${sc.name || 'screenshot'}`);
+      rm.addEventListener('click', () => { S.shots = S.shots.filter((x) => x !== sc); if (sc.preview) URL.revokeObjectURL(sc.preview); renderShots(); });
+      box.appendChild(rm);
+      host.appendChild(box);
+    }
+    const n = S.shots.length, max = maxShots();
+    $('shotsSub').textContent = S.uploads ? `${n} of ${max}. They upload as you add them and are resized so the longest side is 1600 px.` : 'Screenshot uploads are not set up on this server.';
+    $('drop').hidden = !S.uploads || n >= max;
+  }
+
+  /** Longest side at most 1600 px, as JPEG, as the app is told to do before it uploads. */
+  async function shrink(file) {
+    const r = (S.uploads && S.uploads.client_resize) || { max_dimension: 1600, jpeg_quality: 0.8 };
+    try {
+      const bmp = await createImageBitmap(file);
+      const k = Math.min(1, r.max_dimension / Math.max(bmp.width, bmp.height));
+      const original = { width: bmp.width, height: bmp.height };
+      if (k === 1 && file.size <= 600 * 1024) return { blob: file, original };
+      const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
+      const blob = await new Promise((done) => c.toBlob(done, 'image/jpeg', r.jpeg_quality || 0.8));
+      return { blob: blob || file, original };
+    } catch { return { blob: file, original: null }; } // A format this browser cannot draw (HEIC outside Safari) goes up as it is.
+  }
+
+  async function upload(file, entry) {
+    const auth = await api(S.uploads.auth_endpoint || '/v1/uploads/screenshot-auth');
+    const { blob, original } = await shrink(file);
+    if (blob.size > auth.max_bytes) throw new Error(`${file.name} is larger than ${Math.round(auth.max_bytes / 1048576)} MB even after resizing`);
+    const name = blob === file ? file.name : file.name.replace(/\.[^.]+$/, '') + '.jpg';
+    const fd = new FormData();
+    fd.append('file', blob, name); fd.append('fileName', name); fd.append('publicKey', auth.public_key);
+    fd.append('signature', auth.signature); fd.append('expire', String(auth.expire)); fd.append('token', auth.token);
+    fd.append('folder', auth.folder); fd.append('useUniqueFileName', 'true'); fd.append('tags', (auth.tags || ['luna-feedback']).join(','));
+    fd.append('transformation', JSON.stringify(auth.transformation));
+    const r = await fetch(auth.upload_url, { method: 'POST', body: fd });
+    const up = await r.json().catch(() => null);
+    if (!r.ok || !up || !up.fileId) throw new Error((up && up.message) || `upload failed (HTTP ${r.status})`);
+    Object.assign(entry, {
+      pending: false, file_id: up.fileId, url: up.url, thumbnail_url: up.thumbnailUrl || null, name: (up.name || name).slice(0, 200),
+      width: up.width || null, height: up.height || null, size: up.size || null,
+      upload_size: blob.size, original_width: original ? original.width : null, original_height: original ? original.height : null,
+    });
+  }
+
+  async function addShots(files) {
+    if (!S.uploads) { toast('Screenshot uploads are not set up on this server.'); return; }
+    $('shotsErr').textContent = '';
+    let list = [...files].filter((f) => /^image\//.test(f.type) || /\.(heic|jpe?g|png|webp)$/i.test(f.name));
+    if (!list.length) { toast('Only images can be added as screenshots.'); return; }
+    const room = maxShots() - S.shots.length;
+    if (room <= 0) { toast(`A report holds at most ${maxShots()} screenshots. Remove one to add another.`); return; }
+    if (list.length > room) { toast(`Only ${room} more fit: a report holds at most ${maxShots()}.`); list = list.slice(0, room); }
+    const entries = list.map((f) => ({ pending: true, name: f.name, preview: URL.createObjectURL(f) }));
+    S.shots.push(...entries); renderShots();
+    await Promise.all(list.map(async (f, i) => {
+      try { await upload(f, entries[i]); }
+      catch (err) { S.shots = S.shots.filter((x) => x !== entries[i]); $('shotsErr').textContent = 'Could not upload ' + f.name + ': ' + err.message; }
+      renderShots();
+    }));
+  }
+  $('file').addEventListener('change', () => { addShots($('file').files); $('file').value = ''; });
+  const drop = $('drop');
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); addShots(e.dataTransfer.files); });
+  document.addEventListener('paste', (e) => {
+    if ($('form').hidden) return;
+    const files = [...(e.clipboardData && e.clipboardData.files) || []].filter((f) => /^image\//.test(f.type));
+    if (files.length) { e.preventDefault(); addShots(files); }
+  });
+
+  // ---------- collecting and posting ----------
+  function collect() {
+    const body = { is_positive: S.positive, is_test: $('is_test').checked };
+    const details = {}, client = {};
+    for (const [path, c] of S.controls) {
+      const v = c.get(); if (v === undefined) continue;
+      if (path.startsWith('details.')) details[path.slice(8)] = v;
+      else if (path.startsWith('client.')) client[path.slice(7)] = v;
+      else if (path !== 'feature') body[path] = v;
+    }
+    if (Object.keys(details).length) body.details = details;
+    if (Object.keys(client).length) body.client = client;
+    if (S.shots.length) body.screenshots = S.shots.filter((s) => !s.pending).map(({ file_id, url, thumbnail_url, name, width, height, size, upload_size, original_width, original_height }) => ({ file_id, url, thumbnail_url, name, width, height, size, upload_size, original_width, original_height }));
+    return body;
+  }
+
+  /** What the server would say, said first, so the common slips never cost a round trip. */
+  function checkLocally(body) {
+    const issues = [];
+    if (!S.feature) issues.push({ path: 'feature', message: 'pick a feature' });
+    for (const [path, c] of S.controls) {
+      const f = c.field;
+      const required = path === 'client.environment' || (f.required && !(S.positive && f.requiredIf) && !path.startsWith('client.'));
+      if (required && c.get() === undefined) issues.push({ path, message: f.type === 'multi_select' ? 'select at least one' : 'is required' });
+    }
+    if (S.shots.some((s) => s.pending)) issues.push({ path: 'screenshots', message: 'a screenshot is still uploading' });
+    return issues;
+  }
+
+  function showIssues(issues) {
+    const unplaced = [];
+    for (const i of issues) {
+      const path = String(i.path || '').replace(/\.\d+(\.|$)/, '$1').replace(/\.$/, '');
+      if (path.startsWith('screenshots')) { $('shotsErr').textContent = i.message; continue; }
+      if (!setError(path, i.message)) unplaced.push(i);
+    }
+    const top = $('formErr'); top.replaceChildren();
+    const first = issues.find((i) => S.controls.has(String(i.path || '').replace(/\.\d+(\.|$)/, '$1')));
+    if (issues.length) {
+      top.appendChild(document.createTextNode(issues.length === 1 ? 'One thing to fix:' : `${issues.length} things to fix:`));
+      const ul = el('ul');
+      for (const i of issues) { const li = el('li'); const c = S.controls.get(String(i.path || '').replace(/\.\d+(\.|$)/, '$1')); const name = c ? c.field.label : i.path === 'feature' ? 'Feature' : i.path; li.textContent = `${name}: ${i.message}`; ul.appendChild(li); }
+      top.appendChild(ul);
+    }
+    if (first) { const c = S.controls.get(String(first.path).replace(/\.\d+(\.|$)/, '$1')); c.el.scrollIntoView({ behavior: 'smooth', block: 'center' }); c.focus(); }
+    else if (unplaced.length && issues[0].path === 'feature') $('features').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function remember() {
+    if (!$('remember').checked) { write(REMEMBER, null); return; }
+    const keep = {};
+    for (const path of ['user_id', 'email', 'device_serial', 'client.environment', 'client.platform', 'client.app_version', 'client.build_number', 'client.firmware_version', 'client.os_version']) {
+      const c = S.controls.get(path); if (c && c.get() !== undefined) keep[path] = c.get();
+    }
+    write(REMEMBER, keep);
+  }
+  function recall() {
+    const kept = read(REMEMBER);
+    if (kept) for (const [path, v] of Object.entries(kept)) { const c = S.controls.get(path); if (c) c.set(v); }
+    const email = S.controls.get('email');
+    if (email && email.get() === undefined && S.me && S.me.email) email.set(S.me.email);
+  }
+
+  $('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (S.busy) return;
+    clearErrors();
+    const body = collect();
+    const local = checkLocally(body);
+    if (local.length) { showIssues(local); return; }
+    S.busy = true; const btn = $('submit'); btn.disabled = true; btn.textContent = 'Posting…';
+    try {
+      const r = await fetch(`/v1/feedback/${encodeURIComponent(S.feature)}`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'x-requested-with': 'dashboard', 'content-type': 'application/json', 'idempotency-key': S.key },
+        body: JSON.stringify(body),
+      });
+      const text = await r.text(); let dto = null; try { dto = text ? JSON.parse(text) : null; } catch {}
+      if (r.status === 422 && dto && dto.error && dto.error.issues) { showIssues(dto.error.issues); return; }
+      if (r.status === 401) { location.replace('/dashboard?next=' + encodeURIComponent(HERE)); return; }
+      if (!r.ok) { $('formErr').textContent = 'Could not post: ' + ((dto && dto.error && dto.error.message) || `HTTP ${r.status}`); return; }
+      remember(); newKey();
+      $('form').hidden = true; $('done').hidden = false;
+      $('doneRef').textContent = dto.ref;
+      $('doneText').textContent = r.status === 200 ? 'This report had already been posted; here it is again.' : body.is_positive ? 'Thanks. Positive feedback is kept with the reports so the team sees what works.' : `Filed under ${featureOf(S.feature).label} as yours. ${dto.is_test ? 'It is marked as test data.' : 'It is on the Reports list now, and the diagnosis will run once the logs for that day are in.'}`;
+      $('doneOpen').href = '/dashboard/submissions/' + encodeURIComponent(dto.id);
+      try { localStorage.removeItem('luna.home.v1'); } catch {}
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) { $('formErr').textContent = 'Could not post: ' + err.message; }
+    finally { S.busy = false; btn.disabled = false; btn.textContent = 'Post the report'; }
+  });
+
+  $('again').addEventListener('click', () => {
+    // The who and device fields stay; what happened is cleared for the next report.
+    for (const sc of S.shots) if (sc.preview) URL.revokeObjectURL(sc.preview);
+    S.shots = []; S.positive = false; paintKind(); renderCommon(); renderDetails(); renderShots(); clearErrors();
+    $('is_test').checked = false;
+    $('done').hidden = true; $('form').hidden = false;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  // ---------- start ----------
+  (async () => {
+    const s = await api('/dashboard/session').catch(() => ({ authenticated: false }));
+    if (!s.authenticated) { location.replace('/dashboard?next=' + encodeURIComponent(HERE)); return; }
+    S.me = await LunaShell.me().catch(() => null);
+    if (!S.me) { location.replace('/dashboard?next=' + encodeURIComponent(HERE)); return; }
+    $('asWho').textContent = S.me.name || S.me.email || S.me.role;
+    try { S.schema = await api('/v1/feedback/schema'); }
+    catch (err) { const b = $('loadErr'); b.hidden = false; b.textContent = 'Could not load the form: ' + err.message; return; }
+    S.uploads = S.schema.uploads && S.schema.uploads.screenshots && S.schema.uploads.screenshots.enabled ? S.schema.uploads.screenshots : null;
+    renderStatic();
+    const wanted = new URLSearchParams(location.search).get('feature');
+    selectFeature(featureOf(wanted) ? wanted : (S.schema.features[0] || {}).key);
+    recall(); renderShots();
+    $('form').hidden = false;
+  })().catch((err) => { const b = $('loadErr'); b.hidden = false; b.textContent = 'Could not start: ' + err.message; });
+})();
+</script>
+</body>
+</html>

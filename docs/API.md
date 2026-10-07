@@ -16,7 +16,7 @@
 The API does three things for the client:
 
 1. **Describes the form.** `GET /v1/feedback/schema` returns every feature (Home, Sleep, Activity, Workout, Other), its issue categories, and the extra fields to render. The client builds the form from this response rather than hard-coding it, so categories can be added or renamed on the server without an app release.
-2. **Accepts submissions.** `POST /v1/feedback/{feature}` validates the payload against the same schema and stores it.
+2. **Accepts submissions.** `POST /v1/feedback/{feature}` validates the payload against the same schema and stores it. The dashboard's own *Report an issue* page (`/dashboard/report`, for anyone with a dashboard account, meant for production and UAT builds) renders the same schema and posts to the same endpoint with its session cookie; those reports carry `submitted_via: "dashboard"` instead of `"app"`.
 3. **Reads submissions back.** `GET /v1/feedback`, `GET /v1/feedback/{id}`, and `GET /v1/feedback/stats` power the dashboard at `/dashboard`; the app does not need them.
 
 ### Environments

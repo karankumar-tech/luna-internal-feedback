@@ -72,6 +72,7 @@ export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
 
   app.get('/docs', html(PAGES.docs));
   app.get('/dashboard', html(PAGES.dashboard));
+  app.get('/dashboard/report', html(PAGES.report));
   app.get('/dashboard/submissions/:id', html(PAGES.submission));
   app.get('/dashboard/diagnosis', html(PAGES.diagnosis));
   app.get('/dashboard/analytics', html(PAGES.analytics));

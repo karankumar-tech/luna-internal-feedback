@@ -69,8 +69,11 @@ export class FeedbackService {
     };
   }
 
-  /** A report from the Luna app (internal testers). */
-  async submit(featureKey: string, body: unknown, idempotencyKey: string | null, log?: FastifyBaseLogger) {
+  /**
+   * A report from an internal tester: through the Luna app, or filed by a signed-in person from the
+   * dashboard's Report page (`source.via = 'dashboard'`, with `by` naming them in the history).
+   */
+  async submit(featureKey: string, body: unknown, idempotencyKey: string | null, log?: FastifyBaseLogger, source: { via: 'app' | 'dashboard'; by: string | null } = { via: 'app', by: null }) {
     const { feature, ctx } = await this.prepare(featureKey);
     const parsed = buildSubmissionValidator(feature, ctx).safeParse(body);
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
@@ -85,9 +88,9 @@ export class FeedbackService {
       client: this.clientFields(v.client),
       idempotency_key: idempotencyKey,
       origin: 'internal',
-      submitted_via: 'app',
+      submitted_via: source.via,
       cx: null,
-    }, log, false);
+    }, log, false, source.by);
   }
 
   /**
@@ -171,9 +174,10 @@ export class FeedbackService {
     return client;
   }
 
-  private async store(input: NewSubmission, log: FastifyBaseLogger | undefined, waitForSuggestion: boolean) {
+  /** `by`: the person who filed it, when one did; otherwise the history names the credential. */
+  private async store(input: NewSubmission, log: FastifyBaseLogger | undefined, waitForSuggestion: boolean, by: string | null = null) {
     const { row, created } = await this.feedback.insert(input);
-    if (created && this.activity) await this.activity.record({ submissionId: row.id, actor: input.submitted_via, action: 'created', to: row.origin, touch: false });
+    if (created && this.activity) await this.activity.record({ submissionId: row.id, actor: by ?? input.submitted_via, action: 'created', to: row.origin, touch: false });
     if (created && !row.is_positive && this.diagnosis && log) {
       // Queue + start after the response; never let diagnosis problems break the submit.
       try { await this.diagnosis.onNegativeSubmission(row.id, log); } catch (err) { log.error({ err }, 'could not queue diagnosis'); }

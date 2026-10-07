@@ -294,6 +294,7 @@
         <h1>Reports</h1>
         <p class="page-sub">Every report from the Luna app and from CX, newest first.</p>
       </div>
+      <div class="page-actions"><a class="btn primary" href="/dashboard/report"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Report an issue</a></div>
     </div>
     <section class="today card" aria-label="Issues received">
       <div class="counts">
@@ -966,7 +967,7 @@
     if (isDefault()) { S.list = home.reports; renderList(); } else if (S.list) renderList();
     // Back from a sign-in: detail pages send people here with ?next=. Only our own pages.
     const next = new URLSearchParams(location.search).get('next');
-    if (next && /^\/dashboard\/(?:(?:submissions|kinds)\/[A-Za-z0-9-]{1,40}|diagnosis|analytics|kinds|users|attention|settings)$/.test(next)) location.replace(next);
+    if (next && /^\/dashboard\/(?:(?:submissions|kinds)\/[A-Za-z0-9-]{1,40}|report|diagnosis|analytics|kinds|users|attention|settings)$/.test(next)) location.replace(next);
   }
   if (!readCache()) { $('app').hidden = false; skeletonList(); }
   start().catch((err) => showGate('Could not reach the API: ' + err.message));
