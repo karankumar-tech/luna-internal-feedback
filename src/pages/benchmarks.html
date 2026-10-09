@@ -104,7 +104,7 @@
       <h1>Benchmarks</h1>
       <p class="page-sub">Luna against Polar, Garmin and others, from Apple Health exports. <span id="totals"></span></p>
     </div>
-    <div class="page-actions"><button class="btn primary" id="btnImport" type="button" hidden>Import a health export</button></div>
+    <div class="page-actions"><button class="btn" id="btnExport" type="button" title="Every session the filters show, with their comparisons, in one workbook"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>Export to Excel</button><button class="btn primary" id="btnImport" type="button" hidden>Import a health export</button></div>
   </div>
   <section class="card" id="importCard" style="margin-top:20px" hidden>
     <div class="card-head">
@@ -334,15 +334,21 @@
     sel.value = values.includes(cur) ? cur : '';
   }
 
-  let inflight = 0;
-  async function load() {
-    const my = ++inflight; $('listCard').classList.add('loading');
-    const q = new URLSearchParams({ limit: String(PAGE), offset: String(state.offset) });
+  /** The filters as they stand, as query parameters. */
+  function filterQuery() {
+    const q = new URLSearchParams();
     if (state.kind) q.set('kind', state.kind);
     if ($('fDevice').value) q.set('device', $('fDevice').value);
     if ($('fTester').value) q.set('tester', $('fTester').value);
     if ($('fTest').value) q.set('is_test', $('fTest').value);
     if ($('fComparable').value) q.set('comparable', $('fComparable').value);
+    return q;
+  }
+
+  let inflight = 0;
+  async function load() {
+    const my = ++inflight; $('listCard').classList.add('loading');
+    const q = filterQuery(); q.set('limit', String(PAGE)); q.set('offset', String(state.offset));
     try {
       const data = await api('/v1/admin/benchmarks?' + q);
       if (my !== inflight) return;
@@ -354,6 +360,14 @@
   }
   $('kindSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; state.kind = b.dataset.kind; state.offset = 0; for (const x of $('kindSeg').querySelectorAll('button')) x.classList.toggle('on', x === b); load(); });
   for (const id of ['fDevice', 'fTester', 'fTest', 'fComparable']) $(id).addEventListener('change', () => { state.offset = 0; load(); });
+  // Every session the filters match, not just this page of them.
+  $('btnExport').addEventListener('click', async () => {
+    if (!state.total) { toast('No sessions to export with these filters.'); return; }
+    const b = $('btnExport'); b.disabled = true;
+    try { await LunaShell.download('/v1/admin/benchmarks/export?' + filterQuery(), 'luna-benchmarks.xlsx'); }
+    catch (err) { toast('Could not export: ' + err.message); }
+    finally { b.disabled = false; }
+  });
   $('btnPrev').addEventListener('click', () => { state.offset = Math.max(0, state.offset - PAGE); load(); });
   $('btnNext').addEventListener('click', () => { state.offset += PAGE; load(); });
 

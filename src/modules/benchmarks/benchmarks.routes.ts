@@ -1,10 +1,11 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { AppError } from '../../lib/errors.js';
 import { actorOf } from '../../lib/actor.js';
 import { requirePermission } from '../../plugins/auth.js';
 import { zodIssues } from '../../schema/buildValidator.js';
-import { DEVICE_TAGS } from './metrics.js';
+import { DEVICE_TAGS, tagLabel } from './metrics.js';
+import { XLSX_TYPE, type ExportFile } from './export.js';
 import { SCREENSHOT_PRE_TRANSFORMATION, SCREENSHOT_TYPES, type ScreenshotUploads } from '../feedback/feedback.routes.js';
 import { BENCHMARK_MAX_SCREENSHOTS, type BenchmarksService } from './benchmarks.service.js';
 
@@ -32,6 +33,28 @@ const ListQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(30),
   offset: z.coerce.number().int().min(0).default(0),
 });
+
+/** The list's filters, without paging: an export holds every session they match. */
+const ExportQuery = ListQuery.omit({ limit: true, offset: true });
+
+/** The filters an export was made with, in words, for its About sheet. */
+function filtersInWords(f: z.infer<typeof ExportQuery>): [string, string][] {
+  const out: [string, string][] = [];
+  if (f.kind) out.push(['Kind', f.kind === 'sleep' ? 'Sleep' : 'Workouts']);
+  if (f.device) out.push(['Device', tagLabel(f.device)]);
+  if (f.tester) out.push(['Tester', f.tester]);
+  if (f.comparable !== undefined) out.push(['Comparison', f.comparable ? 'Two or more devices compared' : 'Nothing to compare']);
+  out.push(['Data', f.is_test === undefined ? 'Real and test' : f.is_test ? 'Test only' : 'Real only']);
+  return out;
+}
+
+function sendFile(reply: FastifyReply, file: ExportFile) {
+  return reply
+    .header('content-type', XLSX_TYPE)
+    .header('content-disposition', `attachment; filename="${file.filename.replace(/[^\w.-]/g, '_')}"`)
+    .header('cache-control', 'no-store')
+    .send(Buffer.from(file.body));
+}
 
 const CheckBody = z.object({
   tester: z.string().trim().max(80).default(''),
@@ -134,16 +157,25 @@ const ScreenshotBody = z.object({
  * Device benchmarks. All under /v1/admin, so only a signed-in dashboard user or the admin key gets
  * in: this is testers' health data, and the app's key must not read it.
  */
-export function registerBenchmarkRoutes(app: FastifyInstance, deps: { service: BenchmarksService; uploads?: ScreenshotUploads | null }) {
+export function registerBenchmarkRoutes(app: FastifyInstance, deps: { service: BenchmarksService; uploads?: ScreenshotUploads | null; exports: { baseUrl: string; timeZone: string } }) {
   const { service, uploads } = deps;
   const manage = { onRequest: requirePermission('manage_benchmarks') };
 
   app.get('/v1/admin/benchmarks', async (req) => service.list(parse(ListQuery, req.query ?? {})));
 
+  /** Every session the filters match, as an Excel workbook: one line each, every side-by-side number, agreement and findings. */
+  app.get('/v1/admin/benchmarks/export', async (req, reply) => {
+    const filters = parse(ExportQuery, req.query ?? {});
+    return sendFile(reply, await service.exportList(filters, { ...deps.exports, filters: filtersInWords(filters) }));
+  });
+
   /** The brands a device can be tagged as. Any other tag (a-z, 0-9, _) is accepted too. */
   app.get('/v1/admin/benchmarks/device-tags', async () => ({ items: DEVICE_TAGS.map(({ tag, label }) => ({ tag, label })) }));
 
   app.get<{ Params: { id: string } }>('/v1/admin/benchmarks/:id', async (req) => service.get(req.params.id));
+
+  /** One session as an Excel workbook, with every reading. */
+  app.get<{ Params: { id: string } }>('/v1/admin/benchmarks/:id/export', async (req, reply) => sendFile(reply, await service.exportSession(req.params.id, deps.exports)));
 
   /** Before importing: which workouts and nights in an export are one session, and which are already stored. */
   app.post('/v1/admin/benchmarks/check', { ...manage, bodyLimit: 1024 * 1024 }, async (req) => {

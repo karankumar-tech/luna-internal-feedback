@@ -25,6 +25,7 @@
   .mono { font-family: var(--mono); font-size: 12px; }
   .wrap { max-width: 1240px; margin: 0 auto; padding: 20px 16px 64px; }
   .meta { font-size: 12px; color: var(--gray-dark); text-align: right; line-height: 18px; }
+  .page-actions.head-side { gap: 12px 20px; justify-content: flex-end; }
   .btn { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-l); padding: 7px 12px; line-height: 18px; cursor: pointer; font-weight: 500; text-decoration: none; display: inline-block; }
   .btn:hover { border-color: var(--gray-mid); }
   .btn.primary { background: var(--black); border-color: var(--black); color: var(--white); }
@@ -140,7 +141,10 @@
       <h1 id="title">…</h1>
       <p class="page-sub" id="over"></p>
     </div>
-    <div class="meta" id="meta"></div>
+    <div class="page-actions head-side">
+      <div class="meta" id="meta"></div>
+      <button class="btn" id="btnExport" type="button" hidden title="The comparison, each device's numbers and every reading, one sheet each"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>Export to Excel</button>
+    </div>
   </div>
   <div class="banner" id="banner" hidden></div>
   <section class="tiles" id="tiles" aria-label="Headline numbers"></section>
@@ -1204,6 +1208,12 @@
     if (!confirm(`Delete ${state.s.ref} and everything the devices recorded in it? This cannot be undone here; importing the export again recreates it.`)) return;
     try { await api(`/v1/admin/benchmarks/${state.s.id}`, { method: 'DELETE' }); location.href = '/dashboard/benchmarks'; } catch (err) { toast('Could not delete: ' + err.message); }
   });
+  $('btnExport').addEventListener('click', async () => {
+    const b = $('btnExport'); b.disabled = true;
+    try { await LunaShell.download(`/v1/admin/benchmarks/${encodeURIComponent(state.s.id)}/export`, `luna-benchmark-${state.s.ref}.xlsx`); }
+    catch (err) { toast('Could not export: ' + err.message); }
+    finally { b.disabled = false; }
+  });
   $('btnShots').addEventListener('click', () => $('shotsFile').click());
   $('shotsFile').addEventListener('change', (e) => { const files = [...e.target.files]; e.target.value = ''; addShots(files); });
   const hasFiles = (e) => state.canManage && e.dataTransfer && [...e.dataTransfer.types].includes('Files');
@@ -1225,6 +1235,7 @@
     state.canManage = Boolean(me && me.permissions && me.permissions.manage_benchmarks);
     state.tags = tags.items; state.s = session; state.pair = session.summary.primary ?? 0;
     render();
+    $('btnExport').hidden = false;
   }
   boot().catch((err) => {
     if (err.status === 401) { location.replace('/dashboard?next=' + encodeURIComponent(HERE)); return; }

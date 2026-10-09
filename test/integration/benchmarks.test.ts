@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { strFromU8, unzipSync } from 'fflate';
 import { buildApp, type App } from '../../src/build-app.js';
 import { loadConfig } from '../../src/config.js';
 import { BenchmarksRepo } from '../../src/modules/benchmarks/benchmarks.repo.js';
@@ -153,6 +154,35 @@ describe('importing a session', () => {
     expect((await list('is_test=true&comparable=false')).total).toBe(0);
     expect((await app.inject({ method: 'GET', url: '/v1/admin/benchmarks?comparable=maybe', headers: admin })).statusCode).toBe(422);
     expect((await list('is_test=false')).total).toBe(0);
+  });
+
+  it('exports the session, and every session the filters match, as Excel workbooks any signed-in role can download', async () => {
+    const one = await app.inject({ method: 'GET', url: `/v1/admin/benchmarks/${ref}/export`, headers: as('biz') });
+    expect(one.statusCode).toBe(200);
+    expect(one.headers['content-type']).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    expect(one.headers['content-disposition']).toMatch(new RegExp(`^attachment; filename="luna-benchmark-${ref}-\\d{4}-\\d{2}-\\d{2}\\.xlsx"$`));
+    const files = unzipSync(one.rawPayload);
+    const names = [...strFromU8(files['xl/workbook.xml']!).matchAll(/<sheet name="([^"]+)"/g)].map((m) => m[1]);
+    // No held values or gaps in this heart rate, so no sheet for them: an empty sheet is left out.
+    expect(names).toEqual(['Summary', 'Comparison', 'Agreement', 'Measures', 'Devices', 'Heart rate', 'Heart rate readings', 'Heart rate ranges', 'Other readings']);
+    expect(strFromU8(files['xl/worksheets/sheet1.xml']!)).toContain(`Luna benchmark ${ref}`);
+    // By id as well as by reference; a session that is not there is a 404 like any other.
+    const { id } = await get(ref);
+    expect((await app.inject({ method: 'GET', url: `/v1/admin/benchmarks/${id}/export`, headers: admin })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/v1/admin/benchmarks/BM-999999/export', headers: admin })).statusCode).toBe(404);
+
+    const list = await app.inject({ method: 'GET', url: `/v1/admin/benchmarks/export?tester=${encodeURIComponent(TESTER)}&is_test=true&device=luna`, headers: as('biz') });
+    expect(list.statusCode).toBe(200);
+    expect(list.headers['content-disposition']).toMatch(/^attachment; filename="luna-benchmarks-\d{4}-\d{2}-\d{2}\.xlsx"$/);
+    const sheets = unzipSync(list.rawPayload);
+    expect(strFromU8(sheets['xl/worksheets/sheet1.xml']!)).toContain(`<t>${ref}</t>`);
+    const about = strFromU8(sheets['xl/worksheets/sheet5.xml']!);
+    expect(about).toContain('Device: Luna');
+    expect(about).toContain('Data: Test only');
+    // A filter that matches nothing still gives a workbook, with only the headers.
+    const none = await app.inject({ method: 'GET', url: `/v1/admin/benchmarks/export?tester=${encodeURIComponent(TESTER)}&is_test=true&kind=sleep`, headers: admin });
+    expect(strFromU8(unzipSync(none.rawPayload)['xl/worksheets/sheet1.xml']!)).not.toContain(ref);
+    expect((await app.inject({ method: 'GET', url: '/v1/admin/benchmarks/export?kind=nap', headers: admin })).statusCode).toBe(422);
   });
 
   it('re-tags a device, which changes who is tested against whom, and remembers the tag', async () => {
@@ -358,6 +388,10 @@ describe('who may do what', () => {
   it('keeps testers’ health data away from the app key and from anyone not signed in', async () => {
     expect((await app.inject({ method: 'GET', url: '/v1/admin/benchmarks', headers: appKey })).statusCode).toBe(401);
     expect((await app.inject({ method: 'GET', url: '/v1/admin/benchmarks', headers: dash })).statusCode).toBe(401);
+    for (const url of ['/v1/admin/benchmarks/export', '/v1/admin/benchmarks/BM-0001/export']) {
+      expect((await app.inject({ method: 'GET', url, headers: appKey })).statusCode).toBe(401);
+      expect((await app.inject({ method: 'GET', url, headers: dash })).statusCode).toBe(401);
+    }
   });
 
   it('serves the pages and the export reader without a session: they hold no data', async () => {

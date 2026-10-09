@@ -424,6 +424,20 @@ measured against it.
 Stored sessions carry the version of the analysis that produced them (`ANALYSIS_VERSION`); when it
 changes they are redone the next time they are listed or opened.
 
+**Export to Excel.** Both pages have an Export to Excel button
+([`export.ts`](src/modules/benchmarks/export.ts), written with a small `.xlsx` writer in
+[`src/lib/xlsx.ts`](src/lib/xlsx.ts) on `fflate`; no new dependency). A session's workbook holds a
+summary (what it is, the headline, what stands out, a guide to the other sheets), the side by side
+comparison, the agreement numbers with what each means, the stage table for a night, every device's
+own numbers, the devices and their roles, heart rate on one clock (averaged as the page draws it),
+every heart rate reading, held values and gaps, time in heart rate ranges, sleep stages, every other
+reading and the GPS route; a sheet with nothing in it is left out. The list's workbook covers every
+session its filters match (up to 2,000): one line per session, every comparison row, the agreement
+per pair and the findings, without readings. Times are the wearer's own clock. Units sit in the
+number formats (`142.0 bpm` is the number 142), so columns still sort, filter and sum; percentages
+are kept as Excel percentages and lengths as Excel times, because Apple's Quick Look preview
+misreads a `%` or a time with text added.
+
 On the charts Luna is orange, the phone grey, and whatever Luna is compared with takes blue, then
 green, then ink: the hues that stay apart from orange as thin lines.
 
@@ -433,7 +447,9 @@ to half an hour, 10 s beyond), on round clock times; "Every reading" shows the r
 | endpoint | does |
 |---|---|
 | `GET /v1/admin/benchmarks?kind=&device=&tester=&is_test=&comparable=&limit=&offset=` | sessions, newest first, with each one's comparison summary and the filter values in use. `comparable=true` keeps only sessions where two devices have something to compare |
+| `GET /v1/admin/benchmarks/export?kind=&device=&tester=&is_test=&comparable=` | every session the filters match, as an Excel workbook |
 | `GET /v1/admin/benchmarks/{id or BM-ref}` | one session with every recording's metrics, series, stages and route, and `nearby` sessions it could be merged with |
+| `GET /v1/admin/benchmarks/{id or BM-ref}/export` | one session as an Excel workbook, with every reading |
 | `POST /v1/admin/benchmarks/check` | which workouts and nights from an export are one session, and which are stored |
 | `POST /v1/admin/benchmarks/import` | one session's recordings (201 created, 200 updated or unchanged) |
 | `PATCH /v1/admin/benchmarks/{id}` | title, notes, tester, test flag |

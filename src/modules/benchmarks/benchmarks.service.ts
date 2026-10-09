@@ -5,10 +5,14 @@ import {
   type Candidate, type IncomingRecording, type Kind,
 } from './analyze.js';
 import { guessTag, tagLabel } from './metrics.js';
+import { listWorkbook, sessionWorkbook, type ExportFile, type ExportOptions } from './export.js';
 import { toRec, type BenchmarkScreenshot, type BenchmarksRepo, type ListFilters, type RecordingHead, type RecordingRow, type SessionRow } from './benchmarks.repo.js';
 
 /** How far apart two sessions may sit and still be offered as "possibly the same one". */
 const NEARBY_S = 30 * 60;
+
+/** The most sessions one list export holds. */
+export const BENCHMARK_EXPORT_MAX = 2000;
 
 /** How many screenshots one session may hold. */
 export const BENCHMARK_MAX_SCREENSHOTS = 6;
@@ -91,6 +95,23 @@ export class BenchmarksService {
     const recordings = await this.repo.recordings(session.id);
     const ordered = displayOrder(recordings.map((r) => ({ tag: r.device_tag, logged: r.logged, row: r }))).map((x) => x.row);
     return { ...sessionDto(session), recordings: ordered.map(recordingDto), nearby: await this.nearby(session, recordings) };
+  }
+
+  /** One session as an Excel workbook: the comparison, each device's numbers and every reading. */
+  async exportSession(idOrRef: string, opts: ExportOptions): Promise<ExportFile> {
+    let session = await this.repo.session(idOrRef);
+    if (!session) throw AppError.notFound('No benchmark session with that id or reference');
+    if (await this.refresh([session])) session = (await this.repo.session(session.id))!;
+    const recordings = await this.repo.recordings(session.id);
+    return sessionWorkbook(session, displayOrder(recordings.map((r) => ({ tag: r.device_tag, logged: r.logged, row: r }))).map((x) => x.row), opts);
+  }
+
+  /** Every session the list's filters match, newest first, as an Excel workbook of their comparisons. */
+  async exportList(filters: Omit<ListFilters, 'limit' | 'offset'>, opts: ExportOptions & { filters: [string, string][] }): Promise<ExportFile> {
+    const all = { ...filters, limit: BENCHMARK_EXPORT_MAX, offset: 0 };
+    let page = await this.repo.list(all);
+    if (await this.refresh(page.items)) page = await this.repo.list(all);
+    return listWorkbook(page.items, opts);
   }
 
   /**

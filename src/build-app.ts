@@ -220,6 +220,7 @@ export function buildApp(opts: BuildOptions = {}): App {
   registerBenchmarkRoutes(app, {
     service: benchmarks,
     uploads: imagekit ? { publicKey: imagekit.publicKey, urlEndpoint: imagekit.urlEndpoint, folder: imagekit.folder, maxBytes: config.SCREENSHOT_MAX_BYTES, maxCount: config.SCREENSHOT_MAX_COUNT, authParams: () => imagekit.authParams() } : null,
+    exports: { baseUrl: config.PUBLIC_BASE_URL, timeZone: config.APP_TIMEZONE },
   });
 
   app.addHook('onClose', async () => {

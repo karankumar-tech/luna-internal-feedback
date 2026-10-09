@@ -159,6 +159,17 @@
       }
       return mePromise;
     },
+    /** Fetches a file as the dashboard does (with its header) and hands it to the browser to save. Rejects like the pages' api(). */
+    async download(path, fallbackName) {
+      const r = await fetch(path, { credentials: 'same-origin', headers: { 'x-requested-with': 'dashboard' } });
+      if (!r.ok) { const b = await r.json().catch(() => null); const e = new Error((b && b.error && b.error.message) || `HTTP ${r.status}`); e.status = r.status; throw e; }
+      const name = (/filename="([^"]+)"/.exec(r.headers.get('content-disposition') || '') || [])[1] || fallbackName;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(await r.blob()); a.download = name;
+      body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+      return name;
+    },
     setAttention(n) { state.attention = Math.max(0, Number(n) || 0); save(); paintAttention(); },
     /** The sign-in screen has no frame around it. */
     off() { body.classList.add('shell-off'); },
