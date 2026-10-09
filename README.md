@@ -347,6 +347,10 @@ list so any two numbers can be compared: reports per day, issue kinds by share, 
 catalog events seen in logs, where the fault sits, environment split, triage state, who is
 reporting, and firmware and app versions. Served by `GET /v1/analytics/overview`.
 
+The page ends with model usage: input and output tokens per day for the last 30 days, by model,
+with the model currently in use. Every OpenRouter call adds to `model_usage_daily` and rows older
+than 30 days are dropped as new ones land. Served by `GET /v1/analytics/model-usage`, unfiltered.
+
 ## Benchmarks
 
 `/dashboard/benchmarks` compares what Luna recorded with what another device (Polar, Garmin,

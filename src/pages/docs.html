@@ -692,6 +692,7 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
     <tr><td><span class="method get">GET</span></td><td><code>/v1/home/reports</code></td><td>one page of the home list: filters plus <code>view</code>, <code>data</code>, <code>received</code>, <code>page</code>, <code>page_size</code> → <code>{ items, total, page, page_size }</code></td></tr>
     <tr><td><span class="method get">GET</span></td><td><code>/v1/attention/counts</code></td><td>just the badge and My queue numbers, from one query</td></tr>
     <tr><td><span class="method get">GET</span></td><td><code>/v1/analytics/overview</code></td><td>adds <code>caught_first</code>: how many problems customers hit that internal testing reported first, and by how long</td></tr>
+    <tr><td><span class="method get">GET</span></td><td><code>/v1/analytics/model-usage</code></td><td>rough token use per day for the last 30 days, split into input and output, by model; with <code>current_model</code> and <code>chat_model</code>. Not filtered</td></tr>
     <tr><td><span class="method get">GET</span></td><td><code>/v1/admin/test-data</code></td><td>→ <code>{ "count" }</code> of rows flagged <code>is_test</code></td></tr>
     <tr><td><span class="method" style="background:var(--crit)">DELETE</span></td><td><code>/v1/admin/test-data?confirm=delete</code></td><td>deletes only <code>is_test</code> rows → <code>{ "deleted" }</code>; <code>422</code> without the confirm parameter</td></tr>
   </table></div>

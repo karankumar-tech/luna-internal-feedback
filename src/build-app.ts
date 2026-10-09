@@ -28,6 +28,7 @@ import { ChatService } from './modules/chat/chat.service.js';
 import { registerChatRoutes } from './modules/chat/chat.routes.js';
 import { AnalyticsRepo } from './modules/analytics/analytics.repo.js';
 import { registerAnalyticsRoutes } from './modules/analytics/analytics.routes.js';
+import { ModelUsageRepo } from './modules/analytics/model-usage.repo.js';
 import { UsersRepo } from './modules/users/users.repo.js';
 import { UsersService } from './modules/users/users.service.js';
 import { registerUserRoutes } from './modules/users/users.routes.js';
@@ -128,6 +129,9 @@ export function buildApp(opts: BuildOptions = {}): App {
   });
   const aiClient = opts.diagnosis && 'ai' in opts.diagnosis ? opts.diagnosis.ai ?? null
     : config.OPEN_ROUTER_KEY ? new OpenRouterClient({ apiKey: config.OPEN_ROUTER_KEY, model: config.OPENROUTER_MODEL }) : null;
+  // Every model call, whatever it was for, adds to the day's token count on the analytics page.
+  const modelUsage = new ModelUsageRepo(db, config.APP_TIMEZONE);
+  aiClient?.setUsageSink((u) => { modelUsage.record(u).catch((err) => app.log.warn({ err, model: u.model }, 'model usage not recorded')); });
   const diagnosis = new DiagnosisService({
     repo: diagnosisRepo, feedback: feedbackRepo, categories, logs: logsClient, logsByEnv, ai: aiClient, kinds,
     config: { model: config.OPENROUTER_MODEL, auto: config.DIAGNOSIS_AUTO, dailyBudgetUsd: config.DIAGNOSIS_DAILY_BUDGET_USD, timeZone: config.APP_TIMEZONE, maxAttempts: 6, syncHourIst: config.DIAGNOSIS_SYNC_HOUR_IST },
@@ -209,7 +213,10 @@ export function buildApp(opts: BuildOptions = {}): App {
   registerActivityRoutes(app, { feedback: service, activity, kinds, assignable: () => users.assignable() });
   registerJiraRoutes(app, { service: jira });
   registerChatRoutes(app, { service: chat });
-  registerAnalyticsRoutes(app, { repo: new AnalyticsRepo(db), timeZone: config.APP_TIMEZONE });
+  registerAnalyticsRoutes(app, {
+    repo: new AnalyticsRepo(db), timeZone: config.APP_TIMEZONE, usage: modelUsage,
+    models: { current: config.OPENROUTER_MODEL, chat: config.DIAGNOSIS_CHAT_MODEL ?? config.OPENROUTER_MODEL, enabled: aiClient !== null },
+  });
   registerCxRoutes(app, { feedback: service, kinds, activity, publicBaseUrl: config.PUBLIC_BASE_URL });
   const attention = new AttentionService(new AttentionRepo(db), config.APP_TIMEZONE);
   registerAttentionRoutes(app, { service: attention, feedback: service });

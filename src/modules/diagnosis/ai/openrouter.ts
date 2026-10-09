@@ -21,6 +21,9 @@ export interface OpenRouterOptions {
   title?: string;
 }
 
+/** Told about every successful call. Errors are the sink's to handle: a failed count never fails the call. */
+export type UsageSink = (u: { model: string; promptTokens: number; completionTokens: number; at: Date }) => void;
+
 export class OpenRouterError extends Error {
   constructor(message: string, public readonly status?: number, public readonly body?: unknown) { super(message); this.name = 'OpenRouterError'; }
 }
@@ -28,9 +31,13 @@ export class OpenRouterError extends Error {
 /** Minimal chat-completions client. One call per diagnosis, or per chat follow-up. */
 export class OpenRouterClient {
   private readonly fetchImpl: typeof fetch;
+  private usageSink: UsageSink | null = null;
   constructor(private readonly opts: OpenRouterOptions) { this.fetchImpl = opts.fetchImpl ?? fetch; }
 
   get model(): string { return this.opts.model; }
+
+  /** Where token counts go after each call (the daily usage table). One sink; the last set wins. */
+  setUsageSink(sink: UsageSink | null): void { this.usageSink = sink; }
 
   /** Structured output against a JSON schema: how a diagnosis verdict is produced. */
   completeJson(messages: ChatMessage[], jsonSchema: unknown, params: { maxTokens?: number; temperature?: number; model?: string } = {}): Promise<CompletionResult> {
@@ -77,7 +84,7 @@ export class OpenRouterClient {
       const text = typeof content === 'string' ? content : Array.isArray(content) ? content.map((c) => (c as { text?: string }).text ?? '').join('') : '';
       if (!text) throw new OpenRouterError('OpenRouter returned no content', res.status, body);
       const usage = (body.usage ?? {}) as { prompt_tokens?: number; completion_tokens?: number; cost?: number };
-      return {
+      const result: CompletionResult = {
         text,
         model: typeof body.model === 'string' ? body.model : model,
         promptTokens: usage.prompt_tokens ?? 0,
@@ -86,6 +93,11 @@ export class OpenRouterClient {
         durationMs: Date.now() - started,
         raw: body,
       };
+      if (this.usageSink) {
+        try { this.usageSink({ model: result.model, promptTokens: result.promptTokens, completionTokens: result.completionTokens, at: new Date() }); }
+        catch { /* counting is best effort */ }
+      }
+      return result;
     } finally {
       clearTimeout(timer);
     }

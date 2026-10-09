@@ -63,6 +63,10 @@
   .caught td a { color: inherit; }
   @media (max-width: 980px) { .caught { grid-template-columns: 1fr; } }
   .grid1 { display: grid; gap: 12px; margin-bottom: 12px; }
+  .stats { display: flex; gap: 28px; flex-wrap: wrap; margin: 2px 0 14px; }
+  .stat .v { font-family: var(--mono); font-size: 22px; line-height: 26px; letter-spacing: -0.01em; }
+  .stat .v.code { font-size: 13px; line-height: 26px; }
+  .stat .l { font-size: 11px; line-height: 16px; color: var(--gray-dark); }
   .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--gray-dark); }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: var(--r-xs); margin-right: 6px; vertical-align: -1px; }
   .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
@@ -236,6 +240,18 @@
         <div id="tApp"></div>
       </div>
     </div>
+
+    <div class="grid1">
+      <div class="card">
+        <div class="card-head">
+          <div><h2>Model usage</h2><div class="sub">Tokens sent to and received from the model per day, last 30 days. Rough count over every call (diagnosis, matching, chat); ignores the filters above.</div></div>
+          <div class="legend"><span><i style="background:#0A0A0A"></i>Input</span><span><i style="background:#A1A1AA"></i>Output</span></div>
+        </div>
+        <div class="stats" id="usageStats"></div>
+        <div class="chart" id="cUsage"></div>
+        <div id="tUsage" style="margin-top:12px"></div>
+      </div>
+    </div>
   </div>
 </main>
 <div class="toast" id="toast" role="status"></div>
@@ -396,6 +412,65 @@
     host.appendChild(svg);
   }
 
+  // ---------- model usage ----------
+  /** "840", "12k", "1.3M" for axis labels; the full number goes in the tooltip. */
+  const fmtC = (n) => n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(n);
+  function renderUsage(u) {
+    const stats = $('usageStats'); stats.replaceChildren();
+    const stat = (v, l, code) => { const d = el('div', 'stat'); d.appendChild(el('div', 'v' + (code ? ' code' : ''), v)); d.appendChild(el('div', 'l', l)); stats.appendChild(d); };
+    stat(fmtN(u.totals.input_tokens), 'input tokens');
+    stat(fmtN(u.totals.output_tokens), 'output tokens');
+    stat(fmtN(u.totals.calls), 'model calls');
+    stat(u.enabled ? u.current_model : 'disabled', u.enabled ? (u.chat_model !== u.current_model ? `current model · chat uses ${u.chat_model}` : 'current model') : 'no model key set', true);
+
+    const host = $('cUsage'); host.replaceChildren();
+    const days = u.by_day;
+    if (!u.totals.calls) { host.appendChild(el('div', 'empty', 'No model calls in the last 30 days.')); }
+    else {
+      const W = 1100, H = 200, padL = 48, padR = 12, padT = 12, padB = 28;
+      const plotW = W - padL - padR, plotH = H - padT - padB, ticks = 4;
+      const scale = niceScale(Math.max(...days.map((d) => d.input_tokens + d.output_tokens)), ticks);
+      const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Tokens per day' });
+      const grid = svgEl('g', { class: 'grid' });
+      for (let i = 0; i <= ticks; i++) {
+        const y = padT + plotH - (plotH * i) / ticks;
+        grid.appendChild(svgEl('line', { x1: padL, x2: W - padR, y1: y, y2: y }));
+        const t = svgEl('text', { x: padL - 8, y: y + 4, 'text-anchor': 'end' }); t.textContent = fmtC(scale.step * i); grid.appendChild(t);
+      }
+      svg.appendChild(grid);
+      const band = plotW / days.length, bw = Math.max(2, Math.min(band - 3, 26));
+      days.forEach((d, i) => {
+        const g = svgEl('g', { class: 'bar' });
+        const x = padL + band * i + (band - bw) / 2;
+        let y = padT + plotH;
+        const hIn = (d.input_tokens / scale.top) * plotH, hOut = (d.output_tokens / scale.top) * plotH;
+        if (d.input_tokens) { y -= hIn; g.appendChild(svgEl('rect', { class: 'mark', x, y, width: bw, height: Math.max(0, hIn - (d.output_tokens ? 1 : 0)), fill: CRIT, rx: d.output_tokens ? 0 : 4 })); }
+        if (d.output_tokens) { y -= hOut; g.appendChild(svgEl('rect', { class: 'mark', x, y, width: bw, height: Math.max(1, hOut), fill: '#A1A1AA', rx: 4 })); }
+        g.appendChild(svgEl('rect', { class: 'hit', x: padL + band * i, y: padT, width: band, height: plotH }));
+        const ti = svgEl('title'); ti.textContent = `${d.date}: ${fmtN(d.input_tokens)} in, ${fmtN(d.output_tokens)} out, ${d.calls} call${d.calls === 1 ? '' : 's'}`; g.appendChild(ti);
+        svg.appendChild(g);
+      });
+      const axis = svgEl('g', { class: 'axis' });
+      axis.appendChild(svgEl('line', { x1: padL, x2: W - padR, y1: padT + plotH, y2: padT + plotH }));
+      svg.appendChild(axis);
+      const step = Math.max(1, Math.ceil(days.length / 12));
+      days.forEach((d, i) => { if (i % step === 0 || i === days.length - 1) { const t = svgEl('text', { x: padL + band * i + band / 2, y: H - 8, 'text-anchor': 'middle' }); t.textContent = shortDate(d.date); svg.appendChild(t); } });
+      host.appendChild(svg);
+    }
+
+    table($('tUsage'), [
+      { label: 'Model', cls: 'code', render: (r) => { const w = el('span', null, r.model + ' '); if (r.model === u.current_model) w.appendChild(el('span', 'chip', 'current')); else if (r.model === u.chat_model) w.appendChild(el('span', 'chip', 'chat')); return w; } },
+      { label: 'Input', cls: 'num', render: (r) => fmtN(r.input_tokens) },
+      { label: 'Output', cls: 'num', render: (r) => fmtN(r.output_tokens) },
+      { label: 'Calls', cls: 'num', render: (r) => fmtN(r.calls) },
+      { label: 'Last used', cls: 'code', render: (r) => r.last_used },
+    ], u.by_model, { empty: 'No model calls in the last 30 days.' });
+  }
+  async function loadUsage() {
+    try { renderUsage(await api('/v1/analytics/model-usage')); }
+    catch (err) { $('cUsage').replaceChildren(el('div', 'empty', 'Could not load model usage: ' + err.message)); }
+  }
+
   // ---------- tables ----------
   function table(host, cols, rows, opts = {}) {
     host.replaceChildren();
@@ -538,7 +613,7 @@
       for (const f of schema.features) { const o = el('option', null, f.label); o.value = f.key; sel.appendChild(o); }
     } catch { /* the feature filter stays on "all" */ }
     applyPreset(30);
-    await refresh();
+    await Promise.all([refresh(), loadUsage()]);
   }
   boot().catch((err) => toast('Could not start: ' + err.message));
 })();
