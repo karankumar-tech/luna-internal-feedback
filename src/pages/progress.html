@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Luna Pulse · Progress</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&display=swap">
+<style>
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { color-scheme: light; }
+  body { margin: 0; background: var(--bg); color: var(--black); font-family: var(--sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; } button, input, select { font: inherit; color: inherit; }
+  h1 { font-size: 24px; line-height: 28px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 16px; line-height: 20px; font-weight: 600; margin: 0; }
+  p { margin: 0; }
+  .tertiary { color: var(--gray-mid); } .muted { color: var(--gray-dark); }
+  .mono { font-family: var(--mono); font-size: 12px; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px 64px; }
+  .card { background: var(--white); border: 1px solid var(--gray-light); border-radius: var(--r-xl); padding: 16px 20px; min-width: 0; }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .card-head .sub { font-size: 12px; line-height: 18px; color: var(--gray-dark); max-width: 70ch; }
+  .card-head > div:first-child { flex: 1 1 0; min-width: 0; }
+  .empty { padding: 24px 0; text-align: center; color: var(--gray-dark); font-size: 13px; }
+  .loading { opacity: .45; pointer-events: none; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--black); color: var(--white); padding: 8px 14px; border-radius: var(--r-l); font-size: 13px; z-index: 40; display: none; }
+  select { border: 1px solid var(--gray-light); background: var(--white); border-radius: var(--r-m); padding: 7px 10px; line-height: 18px; min-width: 0; }
+
+  /* Luna is orange on every benchmark chart; here it is the colour of effort. Sleep takes blues. */
+  :root { --effort: #E8642A; --effort-soft: #FDE7DC; --deep: #1F4FD8; --core: #7FA3F2; --rem: #BFD1F9; --awake: #E6E6E1; }
+
+  /* the nudge: the one line that says what to do next */
+  .nudge { display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; margin: 0 0 16px; background: var(--yellow-50); border: 1px solid var(--yellow); border-radius: var(--r-xl); font-size: 14px; line-height: 20px; }
+  .nudge svg { width: 18px; height: 18px; flex: none; margin-top: 1px; color: var(--yellow-700); }
+  .nudge p + p { margin-top: 2px; color: var(--gray-dark); }
+
+  /* KPIs */
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .kpi { display: flex; flex-direction: column; gap: 4px; min-width: 0; min-height: 132px; }
+  .kpi .v { font-size: 32px; line-height: 36px; white-space: nowrap; }
+  .kpi .v small { font-size: 14px; font-weight: 500; color: var(--gray-dark); margin-left: 4px; }
+  .kpi.hero .v small { color: oklch(78% .01 230); }
+  .kpi .row { display: flex; align-items: center; gap: 14px; }
+  .kpi .row > div { min-width: 0; }
+  .kpi .d { margin-top: auto; }
+  .kpi.hero .flame { color: var(--yellow); }
+  .kpi .l { display: flex; align-items: center; gap: 6px; }
+  .kpi .l svg { width: 14px; height: 14px; }
+  .ring { width: 68px; height: 68px; flex: none; }
+  .ring circle { fill: none; stroke-width: 7; }
+  .ring .track { stroke: var(--brief); }
+  .ring .bar { stroke: var(--effort); stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%; transition: stroke-dashoffset .9s cubic-bezier(.2, .7, .2, 1); }
+  .ring .bar.done { stroke: var(--black); }
+  .ring text { font-family: var(--sans); font-size: 15px; font-weight: 700; fill: var(--black); text-anchor: middle; dominant-baseline: central; }
+  .goal { font-size: 12px; color: var(--gray-dark); }
+  .goal b { color: var(--black); font-weight: 600; }
+  .trend { font-family: var(--mono); font-size: 11px; padding: 1px 6px; border-radius: var(--r-xs); background: var(--brief); color: var(--gray-dark); white-space: nowrap; }
+  .trend.up { background: var(--effort-soft); color: #A03600; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .grid2 > .card { margin: 0; }
+
+  /* charts */
+  .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .chart text { font-family: var(--mono); font-size: 10px; fill: var(--gray-dark); }
+  .chart .goal-line { stroke: var(--black); stroke-width: 1; stroke-dasharray: 3 3; }
+  .chart .bar-bg { fill: var(--brief); }
+  .chart rect.wk { fill: var(--effort); opacity: .55; }
+  .chart rect.wk.hit { opacity: 1; }
+  .chart rect.wk.now { stroke: var(--black); stroke-width: 1.5; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--gray-dark); margin-top: 8px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: var(--r-xs); margin-right: 6px; vertical-align: -1px; }
+
+  /* the calendar: weeks as columns, Monday at the top */
+  .heat { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 14px); gap: 3px; margin-top: 14px; }
+  .heat i { display: block; width: 14px; height: 14px; border-radius: 3px; background: var(--brief); }
+  .heat i.l1 { background: #FBD5C2; } .heat i.l2 { background: #F5A47C; } .heat i.l3 { background: var(--effort); } .heat i.l4 { background: #A33E12; }
+  .heat i.today { box-shadow: inset 0 0 0 1.5px var(--black); }
+  .heat-foot { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10px; color: var(--gray-dark); margin-top: 6px; }
+
+  /* lists */
+  .rows { display: flex; flex-direction: column; }
+  .rowi { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--border-ghost); font-size: 13px; line-height: 18px; text-decoration: none; }
+  .rowi:last-child { border-bottom: 0; }
+  a.rowi:hover .what b { text-decoration: underline; }
+  .rowi .what { flex: 1 1 auto; min-width: 0; } .rowi .what b { font-weight: 600; display: block; } .rowi .what small { display: block; color: var(--gray-dark); font-size: 12px; }
+  .rowi .num { font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+  .rowi .num small { display: block; color: var(--gray-dark); font-size: 11px; }
+  .pill { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 6px; border-radius: var(--r-s); display: inline-block; line-height: 14px; white-space: nowrap; }
+  .pill.new { background: var(--yellow); color: #000; }
+  .pill.two { background: var(--effort-soft); color: #A03600; }
+  .rank { width: 22px; font-family: var(--mono); font-size: 12px; color: var(--gray-dark); text-align: center; flex: none; }
+  .rank.one { color: var(--black); font-weight: 600; }
+  .rowi.me { background: var(--yellow-50); margin: 0 -12px; padding-left: 12px; padding-right: 12px; border-radius: var(--r-m); }
+  .bar { height: 6px; border-radius: 3px; background: var(--brief); overflow: hidden; margin-top: 4px; }
+  .bar i { display: block; height: 100%; background: var(--effort); border-radius: 3px; }
+  .bar i.done { background: var(--black); }
+
+  /* badges */
+  .badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 12px 8px; }
+  .badge { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 8px 4px; border-radius: var(--r-l); }
+  .badge .disc { position: relative; width: 56px; height: 56px; }
+  .badge .disc svg.ringb { position: absolute; inset: 0; width: 56px; height: 56px; }
+  .badge .disc svg.ringb circle { fill: none; stroke-width: 3; }
+  .badge .disc .t { stroke: var(--brief); } .badge .disc .p { stroke: var(--effort); stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%; }
+  .badge .disc .ic { position: absolute; inset: 7px; border-radius: 50%; display: grid; place-items: center; background: var(--brief); color: var(--gray-mid); }
+  .badge .disc .ic svg { width: 20px; height: 20px; }
+  .badge.on .disc .ic { background: var(--black); color: var(--yellow); }
+  .badge.on .disc .p { stroke: var(--black); }
+  .badge b { font-size: 12px; line-height: 16px; font-weight: 600; }
+  .badge small { font-size: 11px; line-height: 14px; color: var(--gray-dark); }
+  .badge:not(.on) b { color: var(--gray-dark); }
+
+  /* The sidebar takes 260px of the window: two columns of cards from a small laptop down, one on a phone. */
+  @media (max-width: 1180px) { .kpis { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 1100px) { .grid2 { grid-template-columns: 1fr; } }
+  @media (max-width: 480px) {
+    .kpis { grid-template-columns: 1fr; } .kpi { min-height: 0; } .kpi .v { font-size: 28px; line-height: 32px; }
+    .card-head { flex-direction: column; align-items: flex-start; gap: 4px; }
+    .heat-foot span:nth-child(2) { display: none; }
+  }
+  @media (max-width: 420px) { .heat { grid-template-rows: repeat(7, 11px); gap: 2px; } .heat i { width: 11px; height: 11px; } }
+  @media (prefers-reduced-motion: reduce) { .ring .bar { transition: none; } }
+</style>
+<link rel="stylesheet" href="/dashboard/assets/app.css">
+</head>
+<body>
+<script src="/dashboard/assets/shell.js"></script>
+
+<main class="wrap">
+  <div class="page-head">
+    <div>
+      <nav class="crumbs" aria-label="Breadcrumb"><a href="/dashboard">Reports</a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg><a href="/dashboard/benchmarks">Benchmarks</a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg><span aria-current="page">Progress</span></nav>
+      <h1 id="title">Progress</h1>
+      <p class="page-sub" id="sub">Streaks, weekly goals, bests and badges from the sessions you import.</p>
+    </div>
+    <div class="page-actions">
+      <label class="field"><span>Tester</span><select id="who" aria-label="Whose progress"></select></label>
+      <a class="btn" id="btnSessions" href="/dashboard/benchmarks">Sessions</a>
+    </div>
+  </div>
+
+  <div id="body" hidden>
+    <div class="nudge" id="nudge" hidden></div>
+    <section class="kpis" id="kpis" aria-label="This week"></section>
+    <section class="grid2">
+      <div class="card">
+        <div class="card-head"><div><h2>Effort, week by week</h2><div class="sub">Minutes at 120–139 bpm count once, 140 and above twice. The dashed line is the weekly goal.</div></div><span class="mono" id="weeksLabel"></span></div>
+        <div class="chart" id="weeksChart"></div>
+        <div class="heat" id="heat" aria-label="Active days, last 12 weeks"></div>
+        <div class="heat-foot"><span id="heatFrom"></span><span>Darker is harder; the outlined day is today</span><span id="heatTo"></span></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div><h2>Sleep, last 14 nights</h2><div class="sub" id="sleepSub"></div></div></div>
+        <div class="chart" id="sleepChart"></div>
+        <div class="legend"><span><i style="background:var(--deep)"></i>Deep</span><span><i style="background:var(--core)"></i>Light</span><span><i style="background:var(--rem)"></i>REM</span><span><i style="background:var(--awake)"></i>Awake in bed</span></div>
+      </div>
+    </section>
+    <section class="grid2">
+      <div class="card">
+        <div class="card-head"><div><h2>Personal bests</h2><div class="sub">All time. A yellow mark is a record set this week.</div></div></div>
+        <div class="rows" id="bests"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div><h2>Badges</h2><div class="sub" id="badgesSub"></div></div></div>
+        <div class="badges" id="badges"></div>
+      </div>
+    </section>
+    <section class="grid2">
+      <div class="card">
+        <div class="card-head"><div><h2>This week, everyone</h2><div class="sub">Effort minutes this week; the bar is the way to the goal.</div></div></div>
+        <div class="rows" id="board"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div><h2>Latest sessions</h2><div class="sub">What each one counted for. Open one for the full comparison.</div></div></div>
+        <div class="rows" id="recent"></div>
+      </div>
+    </section>
+  </div>
+  <div class="card" id="none" hidden><div class="empty" id="noneText"></div></div>
+</main>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; };
+  const svgEl = (tag, attrs) => { const e = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+  const HERE = '/dashboard/benchmarks/progress';
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const ACTIVITY = { traditional_strength_training: 'Strength training', functional_strength_training: 'Functional strength', high_intensity_interval_training: 'HIIT', other: 'Other workout' };
+  const pad = (n) => String(n).padStart(2, '0');
+  const dayOf = (key) => new Date(key + 'T00:00:00Z');
+  const fmtDay = (key) => { const d = dayOf(key); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; };
+  const fmtDayLong = (key) => { const d = dayOf(key); return `${DAYS[(d.getUTCDay() + 6) % 7]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; };
+  const fmtH = (s) => { const m = Math.round(s / 60); return `${Math.floor(m / 60)} h ${pad(m % 60)}`; };
+  const fmtDur = (s) => { const m = Math.round(s / 60); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${pad(m % 60)} min`; };
+  const fmtPace = (s) => `${Math.floor(s / 60)}:${pad(Math.round(s % 60))} /km`;
+  const fmtClock = (min) => { const m = ((min % 1440) + 1440) % 1440; return `${pad(Math.floor(m / 60))}:${pad(m % 60)}`; };
+  const activityLabel = (key) => { if (!key) return 'Workout'; if (ACTIVITY[key]) return ACTIVITY[key]; const s = key.replace(/_/g, ' '); return s.charAt(0).toUpperCase() + s.slice(1); };
+  const signed = (n) => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n);
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let toastT; const toast = (m) => { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', 3200); };
+
+  async function api(path) {
+    const r = await fetch(path, { credentials: 'same-origin', headers: { 'x-requested-with': 'dashboard' } });
+    const b = await r.json().catch(() => null);
+    if (!r.ok) { const e = new Error((b && b.error && b.error.message) || `HTTP ${r.status}`); e.status = r.status; throw e; }
+    return b;
+  }
+
+  /** Numbers run up to their value as the page lands; a quiet count, not a slot machine. */
+  function countUp(node, value, fmt) {
+    if (reduced || value === 0) { node.textContent = fmt(value); return; }
+    const t0 = performance.now(), ms = 700;
+    const tick = (t) => { const k = Math.min(1, (t - t0) / ms); const e = 1 - Math.pow(1 - k, 3); node.textContent = fmt(value * e); if (k < 1) requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  }
+
+  const I = {
+    flame: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
+    foot: '<path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z"/><path d="M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z"/><path d="M16 17h4"/><path d="M4 13h4"/>',
+    moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+    route: '<circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/>',
+    medal: '<path d="M7.21 15 2.66 7.14a2 2 0 0 1 .13-2.2L4.4 2.8A2 2 0 0 1 6 2h12a2 2 0 0 1 1.6.8l1.6 2.14a2 2 0 0 1 .14 2.2L16.79 15"/><path d="M11 12 5.12 2.2"/><path d="m13 12 5.88-9.8"/><path d="M8 7h8"/><circle cx="12" cy="17" r="5"/><path d="M12 18v-2h-.5"/>',
+    calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/>',
+    sunrise: '<path d="M12 2v8"/><path d="m4.93 10.93 1.41 1.41"/><path d="M2 18h2"/><path d="M20 18h2"/><path d="m19.07 10.93-1.41 1.41"/><path d="M22 22H2"/><path d="m8 6 4-4 4 4"/><path d="M16 18a4 4 0 0 0-8 0"/>',
+    watch: '<circle cx="12" cy="12" r="6"/><polyline points="12 10 12 12 13 13"/><path d="m16.13 7.66-.81-4.05a2 2 0 0 0-2-1.61h-2.68a2 2 0 0 0-2 1.61l-.78 4.05"/><path d="m7.88 16.36.8 4a2 2 0 0 0 2 1.61h2.72a2 2 0 0 0 2-1.61l.81-4.05"/>',
+    upload: '<path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>',
+    zap: '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
+    bed: '<path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/>',
+    milestone: '<path d="M12 13v8"/><path d="M12 3v3"/><path d="M4 6a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h13a2 2 0 0 0 1.4-.6l2-2a1 1 0 0 0 0-1.4l-2-2A2 2 0 0 0 17 6z"/>',
+    fire: '<path d="M12 2c1 3 2.5 3.5 3.5 4.5A5 5 0 0 1 17 10a5 5 0 1 1-10 0c0-.3 0-.6.1-.9a2 2 0 1 0 3.3-2C8 4.5 11 3 12 2Z"/><path d="m5 22 14-4"/><path d="m5 18 14 4"/>',
+    trophy: '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>',
+    heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
+  };
+  const BADGE_ICON = { first: 'foot', ten_k: 'route', century: 'milestone', streak_7: 'flame', weeks_4: 'calendar', early_bird: 'sunrise', night_owl: 'moon', furnace: 'fire', two_wrists: 'watch', data_hero: 'upload', fresh: 'zap', well_rested: 'bed', marathon_month: 'medal' };
+  const icon = (name, cls) => { const s = svgEl('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' }); if (cls) s.setAttribute('class', cls); s.innerHTML = I[name] || ''; return s; };
+
+  // ---------------------------------------------------------------------------------------------
+  // The four numbers
+  // ---------------------------------------------------------------------------------------------
+  function ring(pct, text, done) {
+    const r = 26, c = 2 * Math.PI * r;
+    const s = svgEl('svg', { class: 'ring', viewBox: '0 0 68 68', role: 'img', 'aria-label': `${pct}% of the goal` });
+    s.appendChild(svgEl('circle', { class: 'track', cx: 34, cy: 34, r }));
+    const bar = svgEl('circle', { class: 'bar' + (done ? ' done' : ''), cx: 34, cy: 34, r, 'stroke-dasharray': c.toFixed(1), 'stroke-dashoffset': c.toFixed(1) });
+    s.appendChild(bar);
+    const t = svgEl('text', { x: 34, y: 34 }); t.textContent = text; s.appendChild(t);
+    requestAnimationFrame(() => requestAnimationFrame(() => bar.setAttribute('stroke-dashoffset', (c * (1 - Math.min(100, pct) / 100)).toFixed(1))));
+    return s;
+  }
+  function kpi(cls) { const k = el('div', 'kpi' + (cls ? ' ' + cls : '')); return k; }
+  function label(text, iconName) { const l = el('div', 'l'); if (iconName) l.appendChild(icon(iconName)); l.appendChild(document.createTextNode(text)); return l; }
+  function trend(delta, unit) { const t = el('span', 'trend' + (delta > 0 ? ' up' : ''), `${signed(delta)} ${unit} vs last week`); return t; }
+
+  function renderKpis(r) {
+    const host = $('kpis'); host.replaceChildren();
+    // 1. the streak, on black
+    const streak = kpi('hero');
+    streak.appendChild(label(`${r.streaks.days.alive_today ? 'Day streak, kept today' : r.streaks.days.current ? 'Day streak, today still open' : 'Day streak'}`, 'flame'));
+    const v = el('div', 'v'); const n = el('span'); v.appendChild(n); const sm = el('small', null, r.streaks.days.current === 1 ? 'day' : 'days'); v.appendChild(sm); streak.appendChild(v);
+    countUp(n, r.streaks.days.current, (x) => String(Math.round(x)));
+    streak.appendChild(el('div', 'd', `Best ${r.streaks.days.best} · ${r.streaks.weeks.current ? `${r.streaks.weeks.current} week${r.streaks.weeks.current === 1 ? '' : 's'} on target in a row` : 'no week on target yet'}`));
+    host.appendChild(streak);
+    // 2. effort against the goal
+    const effort = kpi();
+    effort.appendChild(label('Effort this week', 'heart'));
+    const row = el('div', 'row');
+    row.appendChild(ring(r.week.pct.effort, `${r.week.pct.effort}%`, r.week.on_target));
+    const side = el('div');
+    const ev = el('div', 'v'); const en = el('span'); ev.appendChild(en); ev.appendChild(el('small', null, 'min')); side.appendChild(ev);
+    countUp(en, r.week.effort_min, (x) => String(Math.round(x)));
+    const goal = el('div', 'goal'); goal.appendChild(document.createTextNode(`of ${r.goals.effort_min} · `)); goal.appendChild(trend(r.week.effort_min - r.last_week.effort_min, 'min')); side.appendChild(goal);
+    row.appendChild(side); effort.appendChild(row);
+    effort.appendChild(el('div', 'd', `${r.week.workouts} workout${r.week.workouts === 1 ? '' : 's'}, ${r.week.minutes} min moving · ${r.week.kcal ? `${r.week.kcal} kcal` : 'no calories logged'}`));
+    host.appendChild(effort);
+    // 3. on foot
+    const foot = kpi();
+    foot.appendChild(label('On foot this week', 'foot'));
+    const fv = el('div', 'v'); const fn = el('span'); fv.appendChild(fn); fv.appendChild(el('small', null, 'km')); foot.appendChild(fv);
+    countUp(fn, r.week.km_on_foot, (x) => x.toFixed(1));
+    const fg = el('div', 'goal'); fg.appendChild(document.createTextNode(`of ${r.goals.km_on_foot} · `)); fg.appendChild(trend(Math.round((r.week.km_on_foot - r.last_week.km_on_foot) * 10) / 10, 'km')); foot.appendChild(fg);
+    const fast = r.bests.find((b) => b.key === 'fastest_km'), far = r.bests.find((b) => b.key === 'longest_on_foot');
+    foot.appendChild(el('div', 'd', fast ? `Fastest ever ${fmtPace(fast.value)}${far ? `, longest ${far.value.toFixed(1)} km` : ''}` : far ? `Longest ever ${far.value.toFixed(1)} km` : 'No runs or walks yet.'));
+    host.appendChild(foot);
+    // 4. sleep
+    const sleep = kpi();
+    sleep.appendChild(label('Sleep, last 7 nights', 'moon'));
+    const sv = el('div', 'v');
+    if (r.sleep.avg_7_s === null) { sv.appendChild(el('span', null, '—')); sv.appendChild(el('small', null, 'no nights yet')); }
+    else { const sn = el('span'); sv.appendChild(sn); sv.appendChild(el('small', null, 'a night')); countUp(sn, r.sleep.avg_7_s, (x) => fmtH(x)); }
+    sleep.appendChild(sv);
+    if (r.sleep.avg_7_s !== null) { const sg = el('div', 'goal'); sg.appendChild(document.createTextNode(`goal ${fmtH(r.goals.sleep_s)} · `)); sg.appendChild(el('b', null, `${r.week.pct.sleep}%`)); sleep.appendChild(sg); }
+    sleep.appendChild(el('div', 'd', r.nights.length ? `${r.sleep.nights_7h_of_14} of the last ${r.nights.length} night${r.nights.length === 1 ? '' : 's'} over 7 h${r.sleep.bedtime_spread_min !== null ? ` · bedtime varies ±${r.sleep.bedtime_spread_min} min` : ''}` : 'Wear the band to bed and let it sync.'));
+    host.appendChild(sleep);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Weeks, days
+  // ---------------------------------------------------------------------------------------------
+  function renderWeeks(r) {
+    const host = $('weeksChart'); host.replaceChildren();
+    const W = 560, H = 150, top = 12, bottom = 22, left = 4, right = 36;
+    const weeks = r.weeks;
+    const max = Math.max(r.goals.effort_min * 1.15, ...weeks.map((w) => w.effort_min)) || 1;
+    const s = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `Effort minutes per week for the last ${weeks.length} weeks` });
+    const y = (v) => top + (H - top - bottom) * (1 - v / max);
+    const slot = (W - left - right) / weeks.length, bw = Math.min(34, slot * 0.68);
+    weeks.forEach((w, i) => {
+      const x = left + slot * i + (slot - bw) / 2;
+      s.appendChild(svgEl('rect', { class: 'bar-bg', x, y: top, width: bw, height: H - top - bottom, rx: 4 }));
+      const h = Math.max(w.effort_min ? 3 : 0, y(0) - y(w.effort_min));
+      const bar = svgEl('rect', { class: 'wk' + (w.on_target ? ' hit' : '') + (i === weeks.length - 1 ? ' now' : ''), x, y: y(0) - h, width: bw, height: h, rx: 4 });
+      const t = svgEl('title'); t.textContent = `Week of ${fmtDay(w.start)}: ${w.effort_min} effort min, ${w.workouts} workout${w.workouts === 1 ? '' : 's'}, ${w.km_on_foot} km on foot${w.sleep_avg_s ? `, slept ${fmtH(w.sleep_avg_s)} a night` : ''}`;
+      bar.appendChild(t); s.appendChild(bar);
+      if (i === 0 || i === weeks.length - 1 || i % 4 === 0) { const l = svgEl('text', { x: x + bw / 2, y: H - 6, 'text-anchor': 'middle' }); l.textContent = i === weeks.length - 1 ? 'this week' : fmtDay(w.start); s.appendChild(l); }
+    });
+    s.appendChild(svgEl('line', { class: 'goal-line', x1: left, x2: W - right + 4, y1: y(r.goals.effort_min), y2: y(r.goals.effort_min) }));
+    const gl = svgEl('text', { x: W - right + 8, y: y(r.goals.effort_min) + 3 }); gl.textContent = String(r.goals.effort_min); s.appendChild(gl);
+    host.appendChild(s);
+    $('weeksLabel').textContent = `${weeks.filter((w) => w.on_target).length} of ${weeks.length} weeks on target`;
+
+    const heat = $('heat'); heat.replaceChildren();
+    const maxDay = Math.max(1, ...r.days.map((d) => d.effort_min));
+    for (const d of r.days) {
+      const i = el('i');
+      const k = d.effort_min === 0 ? 0 : d.effort_min >= 60 ? 4 : d.effort_min >= 40 ? 3 : d.effort_min >= 20 ? 2 : 1;
+      if (k) i.classList.add('l' + k);
+      if (d.day === r.today) i.classList.add('today');
+      i.title = `${fmtDayLong(d.day)}${d.workouts ? ` · ${d.effort_min} effort min · ${d.workouts} workout${d.workouts === 1 ? '' : 's'}, ${d.minutes} min` : d.day > r.today ? '' : ' · rest'}`;
+      heat.appendChild(i);
+    }
+    void maxDay;
+    $('heatFrom').textContent = fmtDay(r.days[0].day);
+    $('heatTo').textContent = fmtDay(r.days[r.days.length - 1].day);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Nights
+  // ---------------------------------------------------------------------------------------------
+  function renderSleep(r) {
+    const host = $('sleepChart'); host.replaceChildren();
+    if (!r.nights.length) { host.appendChild(el('div', 'empty', 'No nights yet. Wear the band to bed, let it sync to Apple Health, and import the export.')); $('sleepSub').textContent = ''; return; }
+    const nights = r.nights;
+    const W = 560, H = 170, top = 12, bottom = 22, left = 30, right = 4;
+    const maxS = Math.max(r.goals.sleep_s * 1.2, ...nights.map((n) => n.in_bed_s || n.sleep_s)) || 1;
+    const s = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `Sleep per night for the last ${nights.length} nights` });
+    const y = (v) => top + (H - top - bottom) * (1 - v / maxS);
+    for (const h of [4, 6, 8, 10]) { if (h * 3600 > maxS) continue; s.appendChild(svgEl('line', { x1: left, x2: W - right, y1: y(h * 3600), y2: y(h * 3600), stroke: 'var(--border-ghost)' })); const t = svgEl('text', { x: left - 6, y: y(h * 3600) + 3, 'text-anchor': 'end' }); t.textContent = `${h} h`; s.appendChild(t); }
+    const slot = (W - left - right) / 14, bw = Math.min(28, slot * 0.66);
+    nights.forEach((n, i) => {
+      const x = left + slot * (14 - nights.length + i) + (slot - bw) / 2;
+      const parts = [['deep_s', 'var(--deep)'], ['core_s', 'var(--core)'], ['rem_s', 'var(--rem)']];
+      const staged = parts.reduce((sum, [k]) => sum + (n[k] || 0), 0);
+      let acc = 0;
+      const g = svgEl('g', {});
+      const t = svgEl('title'); t.textContent = `${fmtDayLong(n.day)}: asleep ${fmtH(n.sleep_s)}${n.in_bed_s ? ` of ${fmtH(n.in_bed_s)} in bed` : ''}, ${fmtClock(n.bedtime_min)} to ${fmtClock(n.wake_min)}${n.deep_s ? ` · deep ${fmtH(n.deep_s)}` : ''}${n.rem_s ? ` · REM ${fmtH(n.rem_s)}` : ''} · ${n.source}`; g.appendChild(t);
+      const seg = (v, fill) => { if (!v) return; g.appendChild(svgEl('rect', { x, y: y(acc + v), width: bw, height: y(acc) - y(acc + v), fill })); acc += v; };
+      if (staged) for (const [k, fill] of parts) seg(n[k] || 0, fill); else seg(n.sleep_s, 'var(--core)');
+      if (n.awake_s) seg(n.awake_s, 'var(--awake)');
+      s.appendChild(g);
+      const l = svgEl('text', { x: x + bw / 2, y: H - 6, 'text-anchor': 'middle' }); l.textContent = DAYS[(dayOf(n.day).getUTCDay() + 6) % 7][0]; s.appendChild(l);
+    });
+    s.appendChild(svgEl('line', { class: 'goal-line', x1: left, x2: W - right, y1: y(r.goals.sleep_s), y2: y(r.goals.sleep_s) }));
+    host.appendChild(s);
+    const last = nights[nights.length - 1];
+    $('sleepSub').textContent = `Last night ${fmtH(last.sleep_s)} (${fmtClock(last.bedtime_min)}–${fmtClock(last.wake_min)}). The dashed line is ${fmtH(r.goals.sleep_s)}.`;
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Bests, badges, everyone, recent
+  // ---------------------------------------------------------------------------------------------
+  const fmtBest = (b) => b.unit === 's/km' ? fmtPace(b.value) : b.unit === 's' ? fmtDur(b.value) : b.unit === 'km' ? `${b.value.toFixed(1)} km` : `${Math.round(b.value)} ${b.unit}`;
+  function renderBests(r) {
+    const host = $('bests'); host.replaceChildren();
+    if (!r.bests.length) { host.appendChild(el('div', 'empty', 'The first session sets the first records.')); return; }
+    for (const b of r.bests) {
+      const a = el('a', 'rowi'); a.href = '/dashboard/benchmarks/' + encodeURIComponent(b.ref);
+      const what = el('div', 'what'); what.appendChild(el('b', null, b.label)); what.appendChild(el('small', null, `${fmtDayLong(b.day)} · ${b.ref}`)); a.appendChild(what);
+      if (b.new) a.appendChild(el('span', 'pill new', 'new'));
+      a.appendChild(el('span', 'num', fmtBest(b)));
+      host.appendChild(a);
+    }
+  }
+
+  function renderBadges(r) {
+    const host = $('badges'); host.replaceChildren();
+    const earned = r.badges.filter((b) => b.earned).length;
+    $('badgesSub').textContent = `${earned} of ${r.badges.length} earned. The ring shows how far the next one is.`;
+    for (const b of r.badges) {
+      const tile = el('div', 'badge' + (b.earned ? ' on' : ''));
+      tile.title = `${b.name}: ${b.how}${b.earned ? ` Earned ${fmtDayLong(b.earned)}.` : b.left ? ` ${b.left.charAt(0).toUpperCase() + b.left.slice(1)}.` : ''}`;
+      const disc = el('div', 'disc');
+      const rr = 25, c = 2 * Math.PI * rr;
+      const s = svgEl('svg', { class: 'ringb', viewBox: '0 0 56 56', 'aria-hidden': 'true' });
+      s.appendChild(svgEl('circle', { class: 't', cx: 28, cy: 28, r: rr }));
+      s.appendChild(svgEl('circle', { class: 'p', cx: 28, cy: 28, r: rr, 'stroke-dasharray': c.toFixed(1), 'stroke-dashoffset': (c * (1 - b.progress)).toFixed(1) }));
+      disc.appendChild(s);
+      const ic = el('div', 'ic'); ic.appendChild(icon(BADGE_ICON[b.key] || 'trophy')); disc.appendChild(ic);
+      tile.appendChild(disc);
+      tile.appendChild(el('b', null, b.name));
+      tile.appendChild(el('small', null, b.earned ? fmtDay(b.earned) : b.left || b.how));
+      host.appendChild(tile);
+    }
+  }
+
+  function renderBoard(data, me) {
+    const host = $('board'); host.replaceChildren();
+    if (!data.leaderboard.length) { host.appendChild(el('div', 'empty', 'Nobody has imported a session yet.')); return; }
+    data.leaderboard.forEach((row, i) => {
+      const a = el('a', 'rowi' + (row.tester === me ? ' me' : '')); a.href = HERE + '/' + encodeURIComponent(row.tester);
+      a.appendChild(el('span', 'rank' + (i === 0 && row.effort_week ? ' one' : ''), i + 1));
+      const what = el('div', 'what'); what.appendChild(el('b', null, row.tester));
+      what.appendChild(el('small', null, [`${row.workouts_week} workout${row.workouts_week === 1 ? '' : 's'}`, row.km_week ? `${row.km_week} km` : null, row.sleep_avg_week_s ? `sleeps ${fmtH(row.sleep_avg_week_s)}` : null, row.streak_days ? `${row.streak_days}-day streak` : null, row.days_since_upload !== null && row.days_since_upload >= 5 ? `last export ${row.days_since_upload} d ago` : null].filter(Boolean).join(' · ')));
+      const bar = el('div', 'bar'); const fill = el('i', row.on_target ? 'done' : null); fill.style.width = `${Math.min(100, Math.round((row.effort_week / row.goal_effort_min) * 100))}%`; bar.appendChild(fill); what.appendChild(bar);
+      a.appendChild(what);
+      const num = el('span', 'num', `${row.effort_week} min`); num.appendChild(el('small', null, `${row.effort_30d} in 30 d`)); a.appendChild(num);
+      host.appendChild(a);
+    });
+  }
+
+  function renderRecent(r) {
+    const host = $('recent'); host.replaceChildren();
+    for (const s of r.recent) {
+      const a = el('a', 'rowi'); a.href = '/dashboard/benchmarks/' + encodeURIComponent(s.ref);
+      const what = el('div', 'what'); what.appendChild(el('b', null, s.title || (s.kind === 'sleep' ? 'Sleep' : activityLabel(s.activity))));
+      what.appendChild(el('small', null, `${fmtDayLong(s.day)} · ${s.ref} · ${s.source}`)); a.appendChild(what);
+      if (s.two_devices) { const p = el('span', 'pill two', 'two wrists'); p.title = 'Luna and a reference device both logged it'; a.appendChild(p); }
+      const num = el('span', 'num', s.kind === 'sleep' ? (s.sleep_s ? fmtH(s.sleep_s) : fmtDur(s.duration_s)) : `${s.effort_min} effort min`);
+      num.appendChild(el('small', null, s.kind === 'sleep' ? 'asleep' : [fmtDur(s.duration_s), s.distance_km ? `${s.distance_km.toFixed(1)} km` : null, s.kcal ? `${Math.round(s.kcal)} kcal` : null].filter(Boolean).join(' · ')));
+      a.appendChild(num);
+      host.appendChild(a);
+    }
+  }
+
+  function renderNudge(r) {
+    const n = $('nudge'); n.replaceChildren();
+    n.hidden = !r.nudges.length;
+    if (!r.nudges.length) return;
+    n.appendChild(icon('flame'));
+    const box = el('div');
+    r.nudges.forEach((t) => box.appendChild(el('p', null, t)));
+    n.appendChild(box);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Who, and load
+  // ---------------------------------------------------------------------------------------------
+  const testerFromPath = () => { const m = /^\/dashboard\/benchmarks\/progress\/(.+)$/.exec(location.pathname); return m ? decodeURIComponent(m[1]) : ''; };
+  let inflight = 0;
+  async function load(tester, push) {
+    const my = ++inflight;
+    $('body').classList.add('loading');
+    try {
+      const data = await api('/v1/admin/benchmarks/progress' + (tester ? '?tester=' + encodeURIComponent(tester) : ''));
+      if (my !== inflight) return;
+      const sel = $('who'); sel.replaceChildren();
+      for (const t of data.testers) { const o = el('option', null, t.tester); o.value = t.tester; sel.appendChild(o); }
+      if (!tester && data.testers.length) {
+        // Nobody asked for: the viewer when they are a tester, else whoever leads this week.
+        const me = await LunaShell.me().catch(() => null);
+        const mine = me && me.name && data.testers.find((t) => t.tester.trim().toLowerCase() === String(me.name).trim().toLowerCase());
+        return load((mine || data.testers[0]).tester, false);
+      }
+      const r = data.report;
+      if (!r) {
+        $('body').hidden = true; $('none').hidden = false;
+        $('noneText').textContent = data.testers.length ? 'Pick a tester above.' : 'No sessions yet. Import a health export on the Benchmarks page and the numbers start here.';
+        $('title').textContent = 'Progress';
+        return;
+      }
+      sel.value = r.tester;
+      if (push) history.replaceState(null, '', HERE + '/' + encodeURIComponent(r.tester));
+      document.title = `Luna Pulse · ${r.tester}'s progress`;
+      $('title').textContent = `${r.tester}'s progress`;
+      $('sub').textContent = `${r.totals.workouts} workout${r.totals.workouts === 1 ? '' : 's'} and ${r.totals.nights} night${r.totals.nights === 1 ? '' : 's'} since ${r.totals.first_day ? fmtDay(r.totals.first_day) : 'the start'} · ${r.totals.km_on_foot} km on foot · ${r.totals.effort_min} effort min all time${r.totals.days_since_upload !== null ? ` · last export ${r.totals.days_since_upload === 0 ? 'today' : `${r.totals.days_since_upload} d ago`}` : ''}`;
+      $('btnSessions').href = '/dashboard/benchmarks?tester=' + encodeURIComponent(r.tester);
+      $('none').hidden = true; $('body').hidden = false;
+      renderNudge(r); renderKpis(r); renderWeeks(r); renderSleep(r); renderBests(r); renderBadges(r); renderBoard(data, r.tester); renderRecent(r);
+    } catch (err) {
+      if (err.status === 401) { location.replace('/dashboard?next=' + encodeURIComponent(location.pathname)); return; }
+      if (err.status === 404) { $('body').hidden = true; $('none').hidden = false; $('noneText').textContent = err.message; return; }
+      toast('Could not load: ' + err.message);
+    } finally { if (my === inflight) $('body').classList.remove('loading'); }
+  }
+  $('who').addEventListener('change', () => load($('who').value, true));
+
+  async function boot() {
+    const s = await api('/dashboard/session').catch(() => ({ authenticated: false }));
+    if (!s.authenticated) { location.replace('/dashboard?next=' + encodeURIComponent(location.pathname)); return; }
+    await load(testerFromPath(), false);
+  }
+  boot().catch((err) => toast('Could not start: ' + err.message));
+})();
+</script>
+</body>
+</html>

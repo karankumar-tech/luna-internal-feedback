@@ -82,6 +82,9 @@ export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
   app.get('/dashboard/attention', html(PAGES.attention));
   app.get('/dashboard/settings', html(PAGES.settings));
   app.get('/dashboard/benchmarks', html(PAGES.benchmarks));
+  // Static paths win over the :ref one in Fastify's router, whatever the order here.
+  app.get('/dashboard/benchmarks/progress', html(PAGES.progress));
+  app.get('/dashboard/benchmarks/progress/:tester', html(PAGES.progress));
   app.get('/dashboard/benchmarks/:ref', html(PAGES.benchmark));
 
   // Scripts and the shared stylesheet the pages load. Code only, no data, so they are as public as the pages themselves.

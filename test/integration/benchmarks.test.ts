@@ -454,6 +454,47 @@ describe('one workout recorded as two sessions', () => {
   });
 });
 
+describe('progress', () => {
+  it('works a tester’s streaks, goals, bests and badges out of their sessions, with everyone on the board', async () => {
+    const r = await app.inject({ method: 'GET', url: `/v1/admin/benchmarks/progress?tester=${encodeURIComponent(TESTER)}&is_test=true`, headers: as('biz') });
+    expect(r.statusCode).toBe(200);
+    const { report, leaderboard, testers, goals } = r.json();
+    expect(goals).toEqual({ effort_min: 150, workouts: 3, km_on_foot: 10, sleep_s: 25_200 });
+    expect(testers.map((t: { tester: string }) => t.tester)).toContain(TESTER);
+    expect(leaderboard.find((row: { tester: string }) => row.tester === TESTER)).toMatchObject({ goal_effort_min: 150 });
+    expect(report.tester).toBe(TESTER);
+    expect(report.totals.sessions).toBeGreaterThan(0);
+    expect(report.totals.workouts).toBeGreaterThan(0);
+    expect(report.weeks).toHaveLength(12);
+    expect(report.days).toHaveLength(84);
+    expect(report.badges.find((b: { key: string }) => b.key === 'first')).toMatchObject({ progress: 1 });
+    expect(report.badges.find((b: { key: string }) => b.key === 'first').earned).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(report.bests.map((b: { key: string }) => b.key)).toContain('longest_workout');
+    expect(report.recent[0]).toMatchObject({ ref: expect.stringMatching(/^BM-\d{4,}$/) });
+    expect(typeof report.nudges[0]).toBe('string');
+    // A Polar and a Luna both logged the first run, so it counts for the Two wrists badge.
+    expect(report.totals.two_devices).toBeGreaterThan(0);
+  });
+
+  it('shows real sessions only unless asked, and nothing for a name it does not know', async () => {
+    expect((await app.inject({ method: 'GET', url: `/v1/admin/benchmarks/progress?tester=${encodeURIComponent(TESTER)}`, headers: admin })).statusCode).toBe(404);
+    const none = (await app.inject({ method: 'GET', url: '/v1/admin/benchmarks/progress?is_test=true', headers: admin })).json();
+    expect(none.report).toBeNull();
+    expect(none.leaderboard.length).toBeGreaterThan(0);
+    expect((await app.inject({ method: 'GET', url: '/v1/admin/benchmarks/progress?weeks=2', headers: admin })).statusCode).toBe(422);
+  });
+
+  it('serves the page, for everyone and for one tester, and keeps the numbers behind a sign-in', async () => {
+    for (const url of ['/dashboard/benchmarks/progress', '/dashboard/benchmarks/progress/Navay']) {
+      const page = await app.inject({ method: 'GET', url });
+      expect(page.statusCode).toBe(200);
+      expect(page.body).toContain('<title>Luna Pulse · Progress</title>');
+    }
+    expect((await app.inject({ method: 'GET', url: '/v1/admin/benchmarks/progress', headers: appKey })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: '/v1/admin/benchmarks/progress', headers: dash })).statusCode).toBe(401);
+  });
+});
+
 describe('who may do what', () => {
   it('lets every signed-in role read, and only QC, developers and admins change', async () => {
     const r = await post(body(T0 + 600_000, [polarRec(T0 + 600_000)]), as('biz'));

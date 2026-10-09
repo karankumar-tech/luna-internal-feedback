@@ -24,8 +24,8 @@ export const PUBLIC_PATHS = new Set([
   '/logo.png', '/mark.png', '/favicon.png', '/favicon.ico', '/apple-touch-icon.png',
 ]);
 
-/** Detail pages, the short share links (/i/LN-00042, /k/LNK-0007, /b/BM-0007) that redirect to them, and the pages' scripts. */
-const PUBLIC_PAGE = /^\/(?:dashboard\/(?:submissions|kinds|benchmarks|assets)|i|k|b)\/[^/]+$/;
+/** Detail pages (a tester's progress among them), the short share links (/i/LN-00042, /k/LNK-0007, /b/BM-0007) that redirect to them, and the pages' scripts. */
+const PUBLIC_PAGE = /^\/(?:dashboard\/(?:submissions|kinds|benchmarks|benchmarks\/progress|assets)|i|k|b)\/[^/]+$/;
 
 /** What the CX tool's key may call: its own routes, plus the form schema and screenshot upload credentials. */
 function cxKeyMayCall(url: string): boolean {

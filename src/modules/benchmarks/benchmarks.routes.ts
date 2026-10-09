@@ -37,6 +37,12 @@ const ListQuery = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 
+const ProgressQuery = z.object({
+  tester: z.string().trim().max(80).optional(),
+  is_test: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
+  weeks: z.coerce.number().int().min(4).max(52).optional(),
+});
+
 /** The list's filters, without paging: an export holds every session they match. */
 const ExportQuery = ListQuery.omit({ limit: true, offset: true });
 
@@ -182,6 +188,9 @@ export function registerBenchmarkRoutes(app: FastifyInstance, deps: { service: B
     const filters = parse(ExportQuery, req.query ?? {});
     return sendFile(reply, await service.exportList(filters, { ...deps.exports, filters: filtersInWords(filters) }));
   });
+
+  /** A tester's streaks, weekly goals, bests, badges and nudges, with everyone's leaderboard; without a tester, the leaderboard alone. */
+  app.get('/v1/admin/benchmarks/progress', async (req) => service.progress(parse(ProgressQuery, req.query ?? {})));
 
   /** The brands a device can be tagged as. Any other tag (a-z, 0-9, _) is accepted too. */
   app.get('/v1/admin/benchmarks/device-tags', async () => ({ items: DEVICE_TAGS.map(({ tag, label }) => ({ tag, label })) }));

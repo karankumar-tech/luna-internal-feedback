@@ -1,6 +1,7 @@
 import type pg from 'pg';
 import type { Db } from '../../db/pool.js';
-import type { Details, Kind, MetricValue, NormalizedRecording, Rec, Route, Series, Stages, Summary } from './analyze.js';
+import type { Details, HrQuality, Kind, MetricValue, NormalizedRecording, Rec, Route, Series, Stages, Summary } from './analyze.js';
+import type { ProgressSession } from './progress.js';
 
 /** A recording without its samples: what is needed to say which device it is. */
 export interface RecordingHead { id: string; session_id: string; source_name: string; device_tag: string; device_label: string | null; logged: boolean }
@@ -134,6 +135,31 @@ export class BenchmarksRepo {
       [...args, f.limit, f.offset],
     );
     return { items: r.rows.map(({ total: _total, ...row }) => row as SessionRow), total: Number(r.rows[0]?.total ?? 0) };
+  }
+
+  /**
+   * Every session with its recordings' totals and heart rate quality, for Progress: never the
+   * samples, so a tester's whole history is one small query. `isTest` as the list takes it.
+   */
+  async progressRows(isTest: boolean | undefined): Promise<ProgressSession[]> {
+    const cond = isTest === undefined ? '' : `where s.is_test = ${isTest ? 'true' : 'false'}`;
+    const r = await this.db.query<{
+      id: string; ref: string; kind: Kind; activity: string | null; title: string | null; tester: string; started_at: number; ended_at: number;
+      utc_offset_min: number; uploaded_at: number; devices: { tag: string; label: string | null; logged: boolean; metrics: Record<string, MetricValue>; hr: HrQuality | null }[] | null;
+    }>(
+      `select s.id, s.ref, s.kind, s.activity, s.title, s.tester,
+              extract(epoch from s.started_at)::float8 as started_at, extract(epoch from s.ended_at)::float8 as ended_at,
+              s.utc_offset_min, extract(epoch from s.created_at)::float8 as uploaded_at,
+              (select jsonb_agg(jsonb_build_object('tag', r.device_tag, 'label', r.device_label, 'logged', r.logged, 'metrics', r.metrics, 'hr', r.details->'hr') order by r.created_at)
+                 from luna_feedback.benchmark_recordings r where r.session_id = s.id) as devices
+         from luna_feedback.benchmark_sessions s ${cond}
+        order by s.started_at`,
+    );
+    return r.rows.map((row) => ({
+      id: row.id, ref: row.ref, kind: row.kind, activity: row.activity, title: row.title, tester: row.tester,
+      start: row.started_at, end: row.ended_at, offset_min: row.utc_offset_min, uploaded_at: row.uploaded_at,
+      devices: (row.devices ?? []).map((d) => ({ tag: d.tag, label: d.label, logged: d.logged, metrics: d.metrics ?? {}, hr: d.hr ?? null })),
+    }));
   }
 
   /** What the list's filters can offer: every tester and device tag seen so far. */

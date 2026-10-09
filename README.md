@@ -468,6 +468,24 @@ misreads a `%` or a time with text added.
 On the charts Luna is orange, the phone grey, and whatever Luna is compared with takes blue, then
 green, then ink: the hues that stay apart from orange as thin lines.
 
+**Progress.** `/dashboard/benchmarks/progress/<tester>` (Progress in the sidebar; a card per tester
+at the top of the Benchmarks list) shows the same sessions to the person who did them, the way a
+fitness app would: a day streak and weeks on target, this week's effort minutes, kilometres on foot
+and sleep against goals, twelve weeks of bars and a calendar of active days, the last fourteen
+nights by stage, personal bests, badges, a nudge or two and a leaderboard. It exists to make
+testers want to wear the band, do the workout and drop the export. Nothing new is stored:
+`GET /v1/admin/benchmarks/progress?tester=` works everything out in
+[`progress.ts`](src/modules/benchmarks/progress.ts) from the sessions and their recordings'
+totals (never the samples), real sessions only unless `is_test` says otherwise. A session's
+figures come from its best reference device (chest strap or sports watch first) when one logged
+it, else from Luna, else from the phone; *effort minutes* count minutes at 120–139 bpm once and
+140 bpm and above twice (a workout without a heart rate trace counts once, minute for minute);
+the goals (150 effort minutes, 3 workouts, 10 km on foot, 7 h of sleep a week) are the same for
+everyone for now. Days and weeks are the wearer's own; a night belongs to the morning it is woken
+from; weeks start on Monday. Badges include a few that serve the benchmarks themselves: *Two
+wrists* (five sessions where Luna and a reference both logged), *Data hero* (ten uploads) and
+*Fresh* (uploaded within three days of the session).
+
 The page's heart rate line uses the same averaging as the sample report it was modelled on (5 s up
 to half an hour, 10 s beyond), on round clock times; "Every reading" shows the raw samples.
 

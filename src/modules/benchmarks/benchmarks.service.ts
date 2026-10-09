@@ -6,6 +6,7 @@ import {
 } from './analyze.js';
 import { guessTag, isOnFoot, tagLabel } from './metrics.js';
 import { listWorkbook, sessionWorkbook, type ExportFile, type ExportOptions } from './export.js';
+import { GOALS, groupByTester, leaderboard, progressReport, testerKey } from './progress.js';
 import { toRec, type BenchmarkScreenshot, type BenchmarksRepo, type ListFilters, type LunaBuild, type RecordingHead, type RecordingRow, type SessionRow } from './benchmarks.repo.js';
 
 /** How far apart two sessions may sit and still be offered as "possibly the same one". */
@@ -89,6 +90,25 @@ export class BenchmarksService {
     let [page, facets] = await Promise.all([this.repo.list(filters), this.repo.facets()]);
     if (await this.refresh(page.items)) page = await this.repo.list(filters);
     return { total: page.total, limit: filters.limit, offset: filters.offset, facets, items: page.items.map(sessionDto) };
+  }
+
+  /**
+   * One tester's progress (streaks, goals, bests, badges, nudges) and everyone's leaderboard. With
+   * no tester, the leaderboard and the list of testers alone. Real sessions only unless asked.
+   */
+  async progress(q: { tester?: string; is_test?: boolean; weeks?: number; now?: number }) {
+    const byTester = groupByTester(await this.repo.progressRows(q.is_test ?? false));
+    const now = q.now ?? Date.now() / 1000;
+    const key = q.tester ? testerKey(q.tester) : null;
+    const mine = key ? byTester.get(key) : undefined;
+    if (key && !mine) throw AppError.notFound(`No benchmark sessions for ${q.tester}`);
+    const board = leaderboard(byTester, { now });
+    return {
+      goals: GOALS,
+      testers: board.map((r) => ({ tester: r.tester, sessions: r.sessions, last_upload_at: r.last_upload_at })),
+      leaderboard: board,
+      report: mine ? progressReport(mine[0]!.tester, mine, { now, weeks: q.weeks }) : null,
+    };
   }
 
   async get(idOrRef: string) {

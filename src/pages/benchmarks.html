@@ -89,6 +89,21 @@
   .result.err { background: var(--crit-bg); }
   .result a { font-family: var(--mono); font-size: 12px; margin-right: 8px; }
   .pager { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 12px; font-size: 12px; color: var(--gray-dark); }
+
+  /* who is chasing what: one card per tester, to their Progress page */
+  .testers { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 8px; margin: 0 0 4px; scrollbar-width: thin; }
+  .tcard { flex: 0 0 auto; width: 232px; display: flex; gap: 12px; align-items: center; padding: 12px 14px; background: var(--white); border: 1px solid var(--gray-light); border-radius: var(--r-xl); text-decoration: none; transition: box-shadow .2s var(--ease), border-color .2s var(--ease); }
+  .tcard:hover { box-shadow: var(--shadow-md); border-color: oklch(14.5% 0 0 / .16); }
+  .tcard .av { width: 36px; height: 36px; flex: none; border-radius: 50%; display: grid; place-items: center; background: linear-gradient(135deg, #F8FA8C, var(--yellow)); color: var(--black); font-size: 12px; font-weight: 700; }
+  .tcard .av.cold { background: var(--brief); color: var(--gray-dark); }
+  .tcard .who { min-width: 0; flex: 1 1 auto; }
+  .tcard b { display: block; font-size: 14px; line-height: 18px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tcard small { display: flex; align-items: center; gap: 4px; font-size: 12px; line-height: 16px; color: var(--gray-dark); white-space: nowrap; }
+  .tcard small svg { width: 12px; height: 12px; color: #E8642A; }
+  .tcard .bar { height: 4px; border-radius: 2px; background: var(--brief); overflow: hidden; margin-top: 5px; }
+  .tcard .bar i { display: block; height: 100%; background: #E8642A; border-radius: 2px; } .tcard .bar i.done { background: var(--black); }
+  .tcard .stale { color: #A03600; }
+  .tcard.more { width: auto; justify-content: center; color: var(--gray-dark); font-size: 13px; }
   .loading { opacity: .45; pointer-events: none; }
   .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--black); color: var(--white); padding: 8px 14px; border-radius: var(--r-l); font-size: 13px; z-index: 40; display: none; }
   @media (max-width: 720px) { .steps { grid-template-columns: 1fr; } }
@@ -107,6 +122,7 @@
     </div>
     <div class="page-actions"><button class="btn" id="btnExport" type="button" title="Every session the filters show, with their comparisons, in one workbook"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>Export to Excel</button><button class="btn primary" id="btnImport" type="button" hidden>Import a health export</button></div>
   </div>
+  <section class="testers" id="testers" aria-label="Testers' progress" hidden></section>
   <section class="card" id="importCard" style="margin-top:20px" hidden>
     <div class="card-head">
       <div>
@@ -233,6 +249,49 @@
   }
 
   const devChip = (color, text, background) => { const c = el('span', 'dev' + (background ? ' bg' : '')); const sw = el('i'); sw.style.background = color; c.appendChild(sw); c.appendChild(document.createTextNode(text)); return c; };
+
+  // ---------------------------------------------------------------------------------------------
+  // Who is chasing what: a card per tester with their streak and this week's effort, to Progress.
+  // ---------------------------------------------------------------------------------------------
+  const PROGRESS = '/dashboard/benchmarks/progress';
+  const initials = (name) => String(name || '').split(/[\s._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '·';
+  async function loadTesters() {
+    let data;
+    try { data = await api('/v1/admin/benchmarks/progress'); } catch { return; }
+    const host = $('testers'); host.replaceChildren();
+    host.hidden = !data.leaderboard.length;
+    for (const t of data.leaderboard) {
+      const a = el('a', 'tcard'); a.href = PROGRESS + '/' + encodeURIComponent(t.tester);
+      a.title = `${t.tester}: ${t.effort_week} of ${t.goal_effort_min} effort minutes this week, ${t.workouts_week} workout${t.workouts_week === 1 ? '' : 's'}. Open their progress.`;
+      const stale = t.days_since_upload !== null && t.days_since_upload >= 5;
+      a.appendChild(el('span', 'av' + (stale ? ' cold' : ''), initials(t.tester)));
+      const who = el('span', 'who'); who.appendChild(el('b', null, t.tester));
+      const line = el('small');
+      if (t.streak_days) { line.insertAdjacentHTML('beforeend', LunaShell.icon('progress')); line.appendChild(document.createTextNode(`${t.streak_days}-day streak · `)); }
+      line.appendChild(document.createTextNode(`${t.effort_week}/${t.goal_effort_min} min`));
+      if (stale) { line.appendChild(document.createTextNode(' · ')); line.appendChild(el('span', 'stale', `export ${t.days_since_upload} d ago`)); }
+      who.appendChild(line);
+      const bar = el('span', 'bar'); const fill = el('i', t.on_target ? 'done' : null); fill.style.width = `${Math.min(100, Math.round((t.effort_week / t.goal_effort_min) * 100))}%`; bar.appendChild(fill); who.appendChild(bar);
+      a.appendChild(who);
+      host.appendChild(a);
+    }
+    if (data.leaderboard.length > 1) { const all = el('a', 'tcard more', 'Everyone →'); all.href = PROGRESS; host.appendChild(all); }
+  }
+
+  /** What the import did for this tester's week: the moment the numbers move is the moment to say so. */
+  async function progressLine(tester) {
+    try {
+      const { report: r } = await api('/v1/admin/benchmarks/progress?tester=' + encodeURIComponent(tester));
+      if (!r) return null;
+      const bits = [`${r.week.workouts} workout${r.week.workouts === 1 ? '' : 's'} and ${r.week.effort_min} of ${r.goals.effort_min} effort minutes this week`];
+      if (r.streaks.days.current) bits.push(`streak ${r.streaks.days.current} day${r.streaks.days.current === 1 ? '' : 's'}`);
+      const fresh = r.badges.filter((b) => b.earned === r.today);
+      if (fresh.length) bits.push(`badge earned today: ${fresh.map((b) => b.name).join(', ')}`);
+      const a = el('a', null, `${tester}'s progress`); a.href = PROGRESS + '/' + encodeURIComponent(tester);
+      const p = el('div', 'result'); p.appendChild(document.createTextNode(`${tester} now has ${bits.join(', ')}. `)); p.appendChild(a);
+      return p;
+    } catch { return null; }
+  }
 
   // ---------------------------------------------------------------------------------------------
   // The list
@@ -568,6 +627,7 @@
     state.offset = 0;
     await load();
     await checkFound();
+    if (results.length && !$('asTest').checked) { const line = await progressLine(tester); if (line) box.appendChild(line); loadTesters(); }
   });
 
   // Dropping a file anywhere on the page should not navigate away from it.
@@ -580,6 +640,10 @@
     const me = await LunaShell.me().catch(() => null);
     state.canManage = Boolean(me && me.permissions && me.permissions.manage_benchmarks);
     $('btnImport').hidden = !state.canManage;
+    // Arriving from a tester's Progress page: their sessions, not everyone's.
+    const want = new URLSearchParams(location.search).get('tester');
+    if (want) { const o = el('option', null, want); o.value = want; $('fTester').appendChild(o); $('fTester').value = want; }
+    loadTesters();
     await load();
     if (state.canManage && !state.total && !$('fDevice').value && !$('fTester').value && !$('fComparable').value && !state.kind) openImport();
   }
