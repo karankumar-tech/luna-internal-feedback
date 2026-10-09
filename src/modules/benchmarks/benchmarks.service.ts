@@ -4,9 +4,9 @@ import {
   ANALYSIS_VERSION, analyzeSession, displayOrder, fingerprintOf, groupCandidates, looksLikeSameSession, mergeSeries, normalizeRecording, overlapShare,
   type Candidate, type IncomingRecording, type Kind,
 } from './analyze.js';
-import { guessTag, tagLabel } from './metrics.js';
+import { guessTag, isOnFoot, tagLabel } from './metrics.js';
 import { listWorkbook, sessionWorkbook, type ExportFile, type ExportOptions } from './export.js';
-import { toRec, type BenchmarkScreenshot, type BenchmarksRepo, type ListFilters, type RecordingHead, type RecordingRow, type SessionRow } from './benchmarks.repo.js';
+import { toRec, type BenchmarkScreenshot, type BenchmarksRepo, type ListFilters, type LunaBuild, type RecordingHead, type RecordingRow, type SessionRow } from './benchmarks.repo.js';
 
 /** How far apart two sessions may sit and still be offered as "possibly the same one". */
 const NEARBY_S = 30 * 60;
@@ -26,6 +26,9 @@ export interface ImportInput {
   end: number;
   utc_offset_min: number;
   is_test?: boolean;
+  firmware_version?: string | null;
+  app_version?: string | null;
+  platform?: LunaBuild['platform'];
   recordings: IncomingRecording[];
 }
 
@@ -92,9 +95,19 @@ export class BenchmarksService {
     let session = await this.repo.session(idOrRef);
     if (!session) throw AppError.notFound('No benchmark session with that id or reference');
     if (await this.refresh([session])) session = (await this.repo.session(session.id))!;
-    const recordings = await this.repo.recordings(session.id);
+    const [recordings, last] = await Promise.all([this.repo.recordings(session.id), this.lastBuild(session.tester)]);
     const ordered = displayOrder(recordings.map((r) => ({ tag: r.device_tag, logged: r.logged, row: r }))).map((x) => x.row);
-    return { ...sessionDto(session), recordings: ordered.map(recordingDto), nearby: await this.nearby(session, recordings) };
+    return { ...sessionDto(session), recordings: ordered.map(recordingDto), nearby: await this.nearby(session, recordings), last_build: last };
+  }
+
+  /**
+   * The Luna build this tester last entered, on whichever session: what the import page and a session
+   * without one are prefilled with, since a tester keeps the same band and phone from one test to the next.
+   */
+  async lastBuild(tester: string) {
+    if (!tester.trim()) return null;
+    const b = await this.repo.lastBuild(tester);
+    return b ? { firmware_version: b.firmware_version, app_version: b.app_version, platform: b.platform, ref: b.ref, set_at: new Date(b.set_at).toISOString() } : null;
   }
 
   /** One session as an Excel workbook: the comparison, each device's numbers and every reading. */
@@ -169,6 +182,8 @@ export class BenchmarksService {
       const notes = [target.notes, other.notes].filter(Boolean).join('\n\n').slice(0, 4000);
       if (notes !== (target.notes ?? '')) await this.repo.setNotes(c, target.id, notes || null);
       if (other.screenshots.length) await this.repo.setScreenshots(c, target.id, shots.slice(0, BENCHMARK_MAX_SCREENSHOTS));
+      // The Luna build goes along when only the other session had one, still dated when it was entered.
+      await this.repo.fillBuild(c, target.id, other, other.build_set_at);
       await this.repo.deleteSession(other.id, c);
       await this.recompute(c, target.id, target.kind);
     });
@@ -234,7 +249,7 @@ export class BenchmarksService {
       const status: GroupStatus = left === 0 ? 'imported' : session ? 'adds_device' : 'new';
       out.push({ kind: g.kind, start: g.start, end: g.end, status, session, members });
     }
-    return { groups: out };
+    return { groups: out, last_build: await this.lastBuild(tester) };
   }
 
   /**
@@ -258,6 +273,7 @@ export class BenchmarksService {
       // A source with neither a workout or night of its own nor any sample has nothing to store.
       .filter((r) => r.logged || Object.keys(r.series).length > 0);
     if (!normalized.some((r) => r.logged)) throw AppError.validation([{ path: 'recordings', message: 'at least one recording must carry the workout or the night itself' }]);
+    const build: Partial<LunaBuild> = { firmware_version: input.firmware_version ?? null, app_version: input.app_version ?? null, platform: input.platform ?? null };
 
     return this.repo.transaction(async (c) => {
       const fingerprints = normalized.map((r) => r.fingerprint).filter((f): f is string => f !== null);
@@ -275,8 +291,11 @@ export class BenchmarksService {
       const fresh = normalized.filter((r) => !(r.fingerprint && storedSet.has(r.fingerprint)));
       if (!session) {
         if (!fresh.some((r) => r.logged)) throw AppError.conflict('This session is already stored.');
-        session = await this.repo.createSession(c, { kind: input.kind, tester: input.tester, start: input.start, end: input.end, utc_offset_min: input.utc_offset_min, is_test: input.is_test ?? false, uploaded_by: uploadedBy });
+        session = await this.repo.createSession(c, { kind: input.kind, tester: input.tester, start: input.start, end: input.end, utc_offset_min: input.utc_offset_min, is_test: input.is_test ?? false, uploaded_by: uploadedBy, build });
         created = true;
+      } else {
+        // A stored session that gains a device keeps the build it has; one without takes this import's.
+        await this.repo.fillBuild(c, session.id, build);
       }
 
       const existing = created ? [] : await this.repo.recordings(session.id, c);
@@ -314,7 +333,7 @@ export class BenchmarksService {
     }, rows.map((r) => ({ id: r.id, metrics: a.metrics.get(r.id) ?? {}, details: { ...r.details, hr: a.hr.get(r.id) ?? null } })));
   }
 
-  async update(idOrRef: string, patch: { title?: string | null; notes?: string | null; tester?: string; is_test?: boolean }) {
+  async update(idOrRef: string, patch: { title?: string | null; notes?: string | null; tester?: string; is_test?: boolean } & Partial<LunaBuild>) {
     const session = await this.repo.session(idOrRef);
     if (!session) throw AppError.notFound('No benchmark session with that id or reference');
     await this.repo.patchSession(session.id, patch);
@@ -324,23 +343,27 @@ export class BenchmarksService {
   /**
    * Re-tagging a device changes which one is under test, so the comparison is redone. distance_km and
    * active_kcal are for Luna, which does not always write them to Apple Health: read off its app and
-   * typed in, null to clear.
+   * typed in, null to clear. max_pace_s is for any device that logged a workout on foot: none of them
+   * writes its fastest pace to Apple Health.
    */
-  async updateRecording(idOrRef: string, recordingId: string, patch: { device_tag?: string; device_label?: string | null; distance_km?: number | null; active_kcal?: number | null }, by: string | null = null) {
+  async updateRecording(idOrRef: string, recordingId: string, patch: { device_tag?: string; device_label?: string | null; distance_km?: number | null; active_kcal?: number | null; max_pace_s?: number | null }, by: string | null = null) {
     const session = await this.repo.session(idOrRef);
     if (!session) throw AppError.notFound('No benchmark session with that id or reference');
     const rec = (await this.repo.recordings(session.id)).find((r) => r.id === recordingId);
     if (!rec) throw AppError.notFound('No such recording in this session');
-    const typed = (['distance_km', 'active_kcal'] as const).filter((k) => patch[k] !== undefined);
-    const entered = typed.find((k) => patch[k] !== null);
-    if (entered && !(session.kind === 'workout' && rec.logged && (patch.device_tag ?? rec.device_tag) === 'luna')) {
-      throw AppError.validation([{ path: entered, message: 'distance and calories can only be entered for a workout that Luna logged' }]);
+    const FIELDS = ['distance_km', 'active_kcal', 'max_pace_s'] as const;
+    const typed = FIELDS.filter((k) => patch[k] !== undefined);
+    const entered = typed.filter((k) => patch[k] !== null);
+    const workout = session.kind === 'workout' && rec.logged;
+    for (const k of entered) {
+      if (k === 'max_pace_s' && !(workout && isOnFoot(rec.activity))) throw AppError.validation([{ path: k, message: 'a max pace can only be entered for a run, walk or hike that the device logged' }]);
+      if (k !== 'max_pace_s' && !(workout && (patch.device_tag ?? rec.device_tag) === 'luna')) throw AppError.validation([{ path: k, message: 'distance and calories can only be entered for a workout that Luna logged' }]);
     }
     await this.repo.transaction(async (c) => {
       await this.repo.patchRecording(c, rec.id, patch);
       if (typed.length) {
-        const { distance_km, active_kcal } = { ...rec.details.manual, ...patch };
-        const values = { ...(distance_km != null ? { distance_km } : {}), ...(active_kcal != null ? { active_kcal } : {}) };
+        const merged = { ...rec.details.manual, ...patch };
+        const values = Object.fromEntries(FIELDS.filter((k) => merged[k] != null).map((k) => [k, merged[k]]));
         await this.repo.setManual(c, rec.id, Object.keys(values).length ? { ...values, by, at: new Date().toISOString() } : null);
       }
       await this.recompute(c, session.id, session.kind);
@@ -381,6 +404,7 @@ function sessionDto(s: SessionRow) {
     id: s.id, ref: s.ref, kind: s.kind, activity: s.activity, title: s.title, tester: s.tester,
     started_at: iso(s.started_at), ended_at: iso(s.ended_at), duration_s: Math.round(s.ended_at - s.started_at),
     utc_offset_min: s.utc_offset_min, devices: s.devices, summary: s.summary, notes: s.notes, screenshots: s.screenshots ?? [], is_test: s.is_test,
+    firmware_version: s.firmware_version, app_version: s.app_version, platform: s.platform,
     uploaded_by: s.uploaded_by, created_at: new Date(s.created_at).toISOString(), updated_at: new Date(s.updated_at).toISOString(),
   };
 }

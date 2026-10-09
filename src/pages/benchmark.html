@@ -113,6 +113,9 @@
   .matrix td.cell { font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
   .edit { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 12px; align-items: start; }
   .edit-actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+  .build { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+  .build input[type=text] { width: 150px; }
+  .build .hint { flex: 1 1 220px; font-size: 12px; line-height: 17px; color: var(--gray-dark); padding-bottom: 7px; }
   .check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--gray-dark); cursor: pointer; }
   .method { font-size: 13px; line-height: 20px; color: var(--gray-dark); } .method li { margin-bottom: 4px; } .method b { color: var(--black); font-weight: 500; }
   .shots { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
@@ -244,13 +247,19 @@
   </section>
 
   <section class="card" id="editCard" hidden>
-    <div class="card-head"><div><h2>Notes</h2><div class="sub">Conditions of the test: where each device was worn, firmware and app versions, anything odd.</div></div></div>
+    <div class="card-head"><div><h2>Test details</h2><div class="sub">The Luna build it was recorded with, and the conditions of the test: where each device was worn, anything odd.</div></div></div>
     <div class="edit">
       <label class="field"><span>Notes</span><textarea id="notes" maxlength="4000"></textarea></label>
       <div style="display:grid;gap:10px">
         <label class="field"><span>Title</span><input type="text" id="fTitle" maxlength="120" placeholder="Optional"></label>
         <label class="field"><span>Who wore the devices</span><input type="text" id="fTester" maxlength="80"></label>
       </div>
+    </div>
+    <div class="build">
+      <label class="field"><span>Luna firmware</span><input type="text" id="fFirmware" maxlength="60" placeholder="e.g. 1.0.16" autocomplete="off" spellcheck="false"></label>
+      <label class="field"><span>Luna app version</span><input type="text" id="fApp" maxlength="60" placeholder="e.g. 2.0.6" autocomplete="off" spellcheck="false"></label>
+      <label class="field"><span>Phone</span><select id="fPlatform"><option value="">Not set</option><option value="ios">iOS</option><option value="android">Android</option></select></label>
+      <p class="hint" id="buildHint" role="status"></p>
     </div>
     <div class="edit-actions">
       <button class="btn primary" id="btnSave" type="button">Save</button>
@@ -259,7 +268,7 @@
       <button class="btn danger" id="btnDelete" type="button">Delete this session</button>
     </div>
   </section>
-  <section class="card" id="notesRead" hidden><div class="card-head"><div><h2>Notes</h2></div></div><p id="notesText" style="white-space:pre-wrap;font-size:13px"></p></section>
+  <section class="card" id="notesRead" hidden><div class="card-head"><div><h2>Test details</h2><div class="sub" id="buildRead"></div></div></div><p id="notesText" style="white-space:pre-wrap;font-size:13px"></p></section>
 
   <section class="card">
     <div class="card-head"><div><h2>How this was measured</h2></div></div>
@@ -351,7 +360,20 @@
   const recById = (id) => state.s.recordings.find((r) => r.id === id);
   const colorOf = (rec) => state.colors.get(rec.id);
   const nameOf = (rec) => rec.device_label;
-  const METRIC_ORDER = ['duration', 'time_in_bed', 'total_sleep', 'sleep_latency', 'waso', 'awakenings', 'sleep_efficiency', 'deep_sleep', 'core_sleep', 'rem_sleep', 'unstaged_sleep', 'distance', 'pace', 'speed', 'active_energy', 'basal_energy', 'steps', 'cadence', 'heart_rate'];
+  const METRIC_ORDER = ['duration', 'time_in_bed', 'total_sleep', 'sleep_latency', 'waso', 'awakenings', 'sleep_efficiency', 'deep_sleep', 'core_sleep', 'rem_sleep', 'unstaged_sleep', 'distance', 'pace', 'max_pace', 'speed', 'active_energy', 'basal_energy', 'steps', 'cadence', 'heart_rate', 'vo2_max'];
+  const PLATFORM = { ios: 'iOS', android: 'Android' };
+  /** "fw 1.0.16 · app 2.0.6 · iOS"; empty when nothing was entered. */
+  const buildText = (b) => (b ? [b.firmware_version && `fw ${b.firmware_version}`, b.app_version && `app ${b.app_version}`, b.platform && PLATFORM[b.platform]].filter(Boolean).join(' · ') : '');
+  /** Where a number that is not a plain reading of the session came from, in a few words. */
+  function metricNote(rec, key) {
+    const m = rec.metrics[key];
+    if (!m) return null;
+    if (m.at !== undefined) return `its estimate of ${day(m.at)}`;
+    if (key !== 'max_pace' || m.from === 'manual') return null;
+    const over = m.over_s ? ` ${m.over_s < 90 ? m.over_s + ' s' : Math.round(m.over_s / 60) + ' min'}` : '';
+    const from = m.max_at ? `, from ${clock(m.max_at, true)}` : '';
+    return m.basis === 'route' ? `fastest${over} of its GPS track${from}` : m.basis === 'distance' ? `fastest${over} of its distance readings${from}` : m.from === 'summary' ? 'from its own top speed' : 'from its top speed reading';
+  }
   const rank = (key) => { const i = METRIC_ORDER.indexOf(key); return i === -1 ? METRIC_ORDER.length : i; };
   const VERDICT = { match: 'Match', close: 'Close', differs: 'Differs', not_comparable: 'Not comparable' };
 
@@ -548,6 +570,7 @@
     $('over').textContent = `${s.ref} · ${what} · ${day(start)}, ${clock(start)} to ${clock(end)}`;
     const meta = $('meta'); meta.replaceChildren();
     meta.appendChild(el('div', null, `Worn by ${s.tester}${s.is_test ? ' · test data' : ''}`));
+    meta.appendChild(el('div', null, buildText(s) ? `Luna ${buildText(s)}` : 'Luna build not entered'));
     meta.appendChild(el('div', null, `Imported ${day(epoch(s.created_at))}${s.uploaded_by ? ' by ' + s.uploaded_by.split('@')[0] : ''}`));
     const hasLuna = s.recordings.some((r) => r.device_tag === 'luna');
     const gaps = (s.summary && s.summary.gaps) || [];
@@ -612,24 +635,34 @@
     host.hidden = !tiles.length; host.append(...tiles);
   }
 
-  /** Luna does not always write distance or calories to Apple Health, so whoever may edit can type in what its app showed. */
+  /**
+   * What a device's app showed but Apple Health did not get, typed in by whoever may edit: Luna does
+   * not always write distance or calories, and no device writes its fastest pace (so any device that
+   * logged a run, walk or hike can have one).
+   */
   const MANUAL = [
-    { field: 'distance_km', metric: 'distance', unit: 'km', name: 'distance', title: 'Distance', min: 0.01, max: 1000, step: '0.01' },
-    { field: 'active_kcal', metric: 'active_energy', unit: 'kcal', name: 'calories', title: 'Active calories', min: 1, max: 20000, step: '1' },
+    { field: 'distance_km', metric: 'distance', unit: 'km', name: 'distance', title: 'Distance', min: 0.01, max: 1000, step: '0.01', luna: true },
+    { field: 'active_kcal', metric: 'active_energy', unit: 'kcal', name: 'calories', title: 'Active calories', min: 1, max: 20000, step: '1', luna: true },
+    { field: 'max_pace_s', metric: 'max_pace', unit: 's/km', name: 'max pace', title: 'Max pace', min: 120, max: 3600, pace: true },
   ];
+  const onFoot = (r) => /running|walking|hiking/.test(r.activity || '');
   const manualOf = (r, f) => (r.details.manual && r.details.manual[f.field] != null ? r.details.manual[f.field] : null);
-  const canEnter = (r, f) => state.canManage && !isSleep() && r.logged && r.device_tag === 'luna' && (manualOf(r, f) !== null || !r.metrics[f.metric]);
+  const canEnter = (r, f) => state.canManage && !isSleep() && r.logged && (f.luna ? r.device_tag === 'luna' : onFoot(r)) && (manualOf(r, f) !== null || !r.metrics[f.metric]);
+  /** "4:35" -> 275 seconds; NaN when it is not minutes and seconds. */
+  const parsePace = (text) => { const m = /^(\d{1,2})[:.]([0-5]\d)$/.exec(text.trim()); return m ? Number(m[1]) * 60 + Number(m[2]) : NaN; };
   function editManual(host, r, f) {
-    const inp = el('input'); inp.type = 'number'; inp.min = String(f.min); inp.max = String(f.max); inp.step = f.step; inp.placeholder = f.unit; inp.style.width = '90px';
-    inp.setAttribute('aria-label', `${f.title} for ${nameOf(r)} in ${f.unit}`);
+    const inp = el('input');
+    if (f.pace) { inp.type = 'text'; inp.inputMode = 'numeric'; inp.placeholder = 'm:ss'; inp.style.width = '70px'; }
+    else { inp.type = 'number'; inp.min = String(f.min); inp.max = String(f.max); inp.step = f.step; inp.placeholder = f.unit; inp.style.width = '90px'; }
+    inp.setAttribute('aria-label', f.pace ? `${f.title} for ${nameOf(r)}, minutes and seconds per km` : `${f.title} for ${nameOf(r)} in ${f.unit}`);
     const was = manualOf(r, f);
-    if (was !== null) inp.value = String(was);
+    if (was !== null) inp.value = f.pace ? `${Math.floor(was / 60)}:${pad(Math.round(was % 60))}` : String(was);
     let done = false;
     const save = () => {
       if (done) return; done = true;
-      const v = inp.value.trim() === '' ? null : Number(inp.value);
+      const v = inp.value.trim() === '' ? null : f.pace ? parsePace(inp.value) : Number(inp.value);
       if (v === was) { render(); return; }
-      if (v !== null && !(v >= f.min && v <= f.max)) { toast(`Enter the ${f.name} in ${f.unit}, or leave it empty to clear.`); render(); return; }
+      if (v !== null && !(v >= f.min && v <= f.max)) { toast(f.pace ? 'Enter the max pace as minutes:seconds per km, such as 4:35, or leave it empty to clear.' : `Enter the ${f.name} in ${f.unit}, or leave it empty to clear.`); render(); return; }
       patchRecording(r.id, { [f.field]: v });
     };
     inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { done = true; render(); } });
@@ -762,6 +795,7 @@
       const lbl = el('td', 'rowlabel', r.label); if (r.note) lbl.appendChild(el('small', null, r.note)); tr.appendChild(lbl);
       const cell = (rec, v) => {
         const td = el('td', 'val', v === null ? 'Not recorded' : value(v, r.unit) + at(rec, r.key));
+        if (v !== null && r.key === 'vo2_max') { const how = metricNote(rec, r.key); if (how) td.appendChild(el('small', null, how)); }
         const f = MANUAL.find((x) => x.metric === r.key);
         if (f && v === null && canEnter(rec, f)) { const s = el('small'); const b = el('button', 'btn small ghost', `Enter ${f.name}`); b.type = 'button'; b.addEventListener('click', () => editManual(s, rec, f)); s.appendChild(b); td.appendChild(s); }
         return td;
@@ -796,7 +830,9 @@
       for (const r of recs) {
         const m = r.metrics[key];
         const td = el('td', 'val', m ? value(m.value, m.unit) : '—');
-        if (m && m.min !== undefined && m.max !== undefined) td.appendChild(el('small', null, `${value(m.min, m.unit)} to ${value(m.max, m.unit)}`));
+        const how = metricNote(r, key);
+        if (how) td.appendChild(el('small', null, how));
+        else if (m && m.min !== undefined && m.max !== undefined) td.appendChild(el('small', null, `${value(m.min, m.unit)} to ${value(m.max, m.unit)}`));
         else if (m && m.from === 'manual') td.appendChild(el('small', null, 'entered by hand'));
         else if (m && m.approx) td.appendChild(el('small', null, 'estimate: its totals straddle the session'));
         else if (m && m.from === 'samples' && !r.logged) td.appendChild(el('small', null, 'during the session'));
@@ -1089,20 +1125,25 @@
   function renderShots() {
     const shots = shotsOf(), full = shots.length >= MAX_SHOTS;
     $('shotsCard').hidden = !shots.length && !state.canManage;
-    $('shotsSub').textContent = `What each device's app showed for this session. ${shots.length} of ${MAX_SHOTS}${shots.length ? ' · click one to open it full size' : ''}.`;
+    $('shotsSub').textContent = `What each device's app showed for this session. ${shots.length} of ${MAX_SHOTS}${shots.length ? ' · click one to see them full size' : ''}.`;
     $('btnShots').hidden = !state.canManage;
     $('btnShots').disabled = full || shotsBusy;
     $('btnShots').title = full ? `A session holds at most ${MAX_SHOTS} screenshots. Remove one to add another.` : '';
     $('shotsEmpty').hidden = shots.length > 0;
     const host = $('shots'); host.hidden = !shots.length; host.replaceChildren();
-    for (const sc of shots) {
+    const sized = (url, tr) => { try { const u = new URL(url); u.searchParams.set('tr', tr); return u.toString(); } catch { return url; } };
+    const about = (sc) => [sc.added_by && 'added by ' + sc.added_by.split('@')[0], sc.added_at && day(epoch(sc.added_at))].filter(Boolean).join(' · ');
+    const items = shots.map((sc) => ({ url: sc.url, thumb: sized(sc.url, 'w-160,q-70'), name: sc.name || 'screenshot', caption: about(sc) }));
+    shots.forEach((sc, i) => {
       const box = el('div', 'shot');
-      const a = el('a'); a.href = sc.url; a.target = '_blank'; a.rel = 'noopener';
+      // A plain click opens the viewer here; Cmd/Ctrl-click still opens the image in a new tab.
+      const a = el('a'); a.href = sc.url; a.target = '_blank'; a.rel = 'noopener'; a.setAttribute('aria-label', `View ${sc.name || 'screenshot'} full size`);
+      a.addEventListener('click', (e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return; e.preventDefault(); LunaShell.viewer(items, i, a); });
       const img = el('img'); img.alt = sc.name || 'screenshot'; img.loading = 'lazy';
-      try { const u = new URL(sc.url); u.searchParams.set('tr', 'w-480,q-80'); img.src = u.toString(); } catch { img.src = sc.url; }
+      img.src = sized(sc.url, 'w-480,q-80');
       a.appendChild(img);
       const cap = el('div', 'cap', sc.name || 'screenshot');
-      cap.title = [sc.name, sc.added_by && 'added by ' + sc.added_by.split('@')[0], sc.added_at && day(epoch(sc.added_at))].filter(Boolean).join(' · ');
+      cap.title = [sc.name, about(sc)].filter(Boolean).join(' · ');
       a.appendChild(cap); box.appendChild(a);
       if (state.canManage) {
         const rm = el('button', 'rm', '×'); rm.type = 'button'; rm.setAttribute('aria-label', `Remove ${sc.name || 'screenshot'}`);
@@ -1110,7 +1151,7 @@
         box.appendChild(rm);
       }
       host.appendChild(box);
-    }
+    });
   }
 
   /** Longest side at most 1600 px, as JPEG: what is uploaded is a few hundred KB whatever the phone made. */
@@ -1173,10 +1214,16 @@
   function renderEdit() {
     const s = state.s;
     $('editCard').hidden = !state.canManage;
-    $('notesRead').hidden = state.canManage || !s.notes;
+    $('notesRead').hidden = state.canManage || (!s.notes && !buildText(s));
     $('notesText').textContent = s.notes || '';
+    $('buildRead').textContent = buildText(s) ? `Luna ${buildText(s)}` : 'Luna build not entered.';
     if (!state.canManage) return;
     $('notes').value = s.notes || ''; $('fTitle').value = s.title || ''; $('fTester').value = s.tester; $('fTest').checked = s.is_test;
+    // A session without a build starts from the one this tester entered last: the same band and phone, usually.
+    const own = Boolean(buildText(s)), last = s.last_build;
+    const b = own ? s : last || {};
+    $('fFirmware').value = b.firmware_version || ''; $('fApp').value = b.app_version || ''; $('fPlatform').value = b.platform || '';
+    $('buildHint').textContent = !own && last && buildText(last) ? `Filled in from what was last entered for ${s.tester}, on ${last.ref}. Save to keep it.` : '';
   }
 
   function render() {
@@ -1203,7 +1250,13 @@
     if (!confirm(`Merge ${n.ref} into ${state.s.ref}? Its recordings move here and ${n.ref} is removed. To undo, remove the device from this session and import the export again.`)) return;
     await change(async () => (await api(`/v1/admin/benchmarks/${state.s.id}/merge`, { method: 'POST', body: { other: n.id } })).session, `Merged ${n.ref} into ${state.s.ref}`);
   }
-  $('btnSave').addEventListener('click', () => change(() => api(`/v1/admin/benchmarks/${state.s.id}`, { method: 'PATCH', body: { notes: $('notes').value, title: $('fTitle').value, tester: $('fTester').value.trim() || state.s.tester, is_test: $('fTest').checked } }), 'Saved'));
+  $('btnSave').addEventListener('click', () => {
+    const body = { notes: $('notes').value, title: $('fTitle').value, tester: $('fTester').value.trim() || state.s.tester, is_test: $('fTest').checked };
+    // Only a build that changed is sent: saving a note on an old session must not make its build the tester's latest.
+    const build = { firmware_version: $('fFirmware').value.trim() || null, app_version: $('fApp').value.trim() || null, platform: $('fPlatform').value || null };
+    for (const k of Object.keys(build)) if (build[k] !== (state.s[k] || null)) body[k] = build[k];
+    change(() => api(`/v1/admin/benchmarks/${state.s.id}`, { method: 'PATCH', body }), 'Saved');
+  });
   $('btnDelete').addEventListener('click', async () => {
     if (!confirm(`Delete ${state.s.ref} and everything the devices recorded in it? This cannot be undone here; importing the export again recreates it.`)) return;
     try { await api(`/v1/admin/benchmarks/${state.s.id}`, { method: 'DELETE' }); location.href = '/dashboard/benchmarks'; } catch (err) { toast('Could not delete: ' + err.message); }

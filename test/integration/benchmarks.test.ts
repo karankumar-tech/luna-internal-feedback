@@ -134,9 +134,9 @@ describe('importing a session', () => {
   it('redoes a stored session whose numbers came from an older version of the analysis', async () => {
     await app.db.query(`update luna_feedback.benchmark_sessions set summary = jsonb_set(summary - 'gaps', '{version}', '1') where ref = $1`, [ref]);
     const listed = (await app.inject({ method: 'GET', url: `/v1/admin/benchmarks?tester=${encodeURIComponent(TESTER)}&is_test=true`, headers: admin })).json();
-    expect(listed.items[0].summary).toMatchObject({ version: 3, gaps: [], why: null });
+    expect(listed.items[0].summary).toMatchObject({ version: 4, gaps: [], why: null });
     await app.db.query(`update luna_feedback.benchmark_sessions set summary = jsonb_set(summary - 'gaps', '{version}', '1') where ref = $1`, [ref]);
-    expect((await get(ref)).summary).toMatchObject({ version: 3, gaps: [], why: null });
+    expect((await get(ref)).summary).toMatchObject({ version: 4, gaps: [], why: null });
   });
 
   it('lists sessions, filtered by device, tester and kind', async () => {
@@ -271,6 +271,84 @@ describe('a distance entered by hand for Luna', () => {
     expect(cleared.metrics.distance).toBeUndefined();
     expect(cleared.metrics.pace).toBeUndefined();
     expect(cleared.details.manual).toBeUndefined();
+  });
+});
+
+describe('the Luna build a session was recorded with', () => {
+  const WHO = `${TESTER}-build`;
+  const at = (n: number) => T0 + 400_000 + n * 10_000;
+  const one = (t: number, over: Record<string, unknown> = {}) => post({ ...body(t, [polarRec(t)]), tester: WHO, ...over });
+  const check = async (tester: string) => (await app.inject({ method: 'POST', url: '/v1/admin/benchmarks/check', headers: as('qc'), payload: { tester, candidates: [{ key: 'k', kind: 'workout', source: `nothing ${run}`, start: at(9), end: at(9) + 60 }] } })).json();
+
+  it('is stored with the import, and is what the tester’s next session starts from', async () => {
+    expect((await check(WHO)).last_build).toBeNull();
+    const first = (await one(at(0), { firmware_version: '1.0.16', app_version: '2.0.6', platform: 'ios' })).json().session.ref;
+    expect(await get(first)).toMatchObject({ firmware_version: '1.0.16', app_version: '2.0.6', platform: 'ios', last_build: { firmware_version: '1.0.16', ref: first } });
+    // The import page asks with the tester's name; the name matches however it is typed.
+    expect((await check(` ${WHO.toUpperCase()} `)).last_build).toMatchObject({ firmware_version: '1.0.16', app_version: '2.0.6', platform: 'ios', ref: first });
+
+    // A session imported without one has none of its own, and is offered the last one.
+    const second = (await one(at(1))).json().session.ref;
+    expect(await get(second)).toMatchObject({ firmware_version: null, app_version: null, platform: null, last_build: { ref: first } });
+
+    // Entering it on the session page makes it the latest.
+    const url = `/v1/admin/benchmarks/${second}`;
+    expect((await app.inject({ method: 'PATCH', url, headers: as('qc'), payload: { firmware_version: '1.0.17', app_version: '2.0.6', platform: 'android' } })).json())
+      .toMatchObject({ firmware_version: '1.0.17', platform: 'android', last_build: { firmware_version: '1.0.17', ref: second } });
+    expect((await check(WHO)).last_build).toMatchObject({ firmware_version: '1.0.17', ref: second });
+
+    // Cleared, it no longer counts: the one before is the latest again.
+    expect((await app.inject({ method: 'PATCH', url, headers: as('qc'), payload: { firmware_version: '', app_version: null, platform: null } })).json())
+      .toMatchObject({ firmware_version: null, app_version: null, platform: null, last_build: { ref: first } });
+
+    expect((await app.inject({ method: 'PATCH', url, headers: as('qc'), payload: { platform: 'windows' } })).statusCode).toBe(422);
+    expect((await app.inject({ method: 'PATCH', url, headers: as('biz'), payload: { firmware_version: '9' } })).statusCode).toBe(403);
+  });
+
+  it('is kept when a later import adds a device, and filled in when the session had none', async () => {
+    const t = at(2);
+    const ref = (await one(t, { firmware_version: '1.0.16' })).json().session.ref;
+    await post({ ...body(t, [lunaRec(t)]), tester: WHO, firmware_version: '1.0.99', platform: 'ios' });
+    expect(await get(ref)).toMatchObject({ firmware_version: '1.0.16', platform: null });
+
+    const u = at(3);
+    const bare = (await one(u)).json().session.ref;
+    await post({ ...body(u, [lunaRec(u)]), tester: WHO, firmware_version: '1.0.18', platform: 'ios' });
+    expect(await get(bare)).toMatchObject({ firmware_version: '1.0.18', platform: 'ios' });
+  });
+});
+
+describe('max pace and VO2max', () => {
+  it('takes a max pace typed in for any device that logged a run, and a VO2max read near it', async () => {
+    const t = T0 + 500_000;
+    const vo2 = { value: 49.57, unit: 'mL/min·kg', at: t + 5 * 3600 };
+    const r = await post(body(t, [{ ...polarRec(t), vo2max: vo2 }, { ...lunaRec(t), vo2max: { value: 3, at: t } }]));
+    expect(r.statusCode).toBe(201);
+    const s = await get(r.json().session.ref);
+    const polar = s.recordings.find((x: { source_name: string }) => x.source_name === POLAR);
+    const luna = s.recordings.find((x: { source_name: string }) => x.source_name === LUNA);
+    expect(polar.metrics.vo2_max).toMatchObject({ label: 'VO2max', unit: 'ml/kg/min', value: 49.6, at: vo2.at, from: 'summary' });
+    // A reading nobody could have is dropped, not refused.
+    expect(luna.metrics.vo2_max).toBeUndefined();
+    expect(polar.metrics.max_pace).toBeUndefined();
+
+    const patch = (rid: string, payload: object, who = 'qc') => app.inject({ method: 'PATCH', url: `/v1/admin/benchmarks/${s.ref}/recordings/${rid}`, headers: as(who), payload });
+    const a = await patch(polar.id, { max_pace_s: 265 });
+    expect(a.statusCode).toBe(200);
+    expect(a.json().recordings.find((x: { id: string }) => x.id === polar.id)).toMatchObject({ metrics: { max_pace: { value: 265, from: 'manual' } }, details: { manual: { max_pace_s: 265, by: email('qc') } } });
+    const b = (await patch(luna.id, { device_tag: 'luna', max_pace_s: 251.4 })).json();
+    const row = b.summary.pairs[0].rows.find((x: { key: string }) => x.key === 'max_pace');
+    // Each side by the name it goes by here (an earlier test named this source's device).
+    const label = (id: string) => b.recordings.find((x: { id: string }) => x.id === id).device_label;
+    expect(row).toMatchObject({ reference: 265, test: 251, note: `${label(polar.id)}: entered by hand. ${label(luna.id)}: entered by hand.` });
+
+    // Seconds per km from 2:00 to 60:00, and only for a run, walk or hike the device logged.
+    expect((await patch(polar.id, { max_pace_s: 60 })).statusCode).toBe(422);
+    const night = await post({ tester: TESTER, kind: 'sleep', start: t + 50_000, end: t + 60_000, utc_offset_min: 330, is_test: true, recordings: [{ source: OURA, logged: true, samples: {}, sleep: { start: t + 50_000, end: t + 60_000, segments: [[t + 50_000, t + 60_000, 'HKCategoryValueSleepAnalysisAsleepCore']] } }] });
+    const n = await get(night.json().session.ref);
+    expect((await app.inject({ method: 'PATCH', url: `/v1/admin/benchmarks/${n.ref}/recordings/${n.recordings[0].id}`, headers: as('qc'), payload: { max_pace_s: 300 } })).statusCode).toBe(422);
+    const cleared = (await patch(polar.id, { max_pace_s: null })).json().recordings.find((x: { id: string }) => x.id === polar.id);
+    expect(cleared.metrics.max_pace).toBeUndefined();
   });
 });
 

@@ -382,6 +382,18 @@ each to 1600 px, uploads it straight to ImageKit with a short-lived signature (f
 `<IMAGEKIT_FOLDER>/benchmarks`) and then attaches it to the session
 (`benchmark_sessions.screenshots`, migration `20261005000000_benchmark_screenshots.sql`). Removing
 one, or deleting the session, deletes the image; a merge keeps both sessions' screenshots up to 6.
+Clicking a screenshot, here or on a report's page, opens it full size over the page
+(`LunaShell.viewer` in [`shell.js`](src/pages/scripts/shell.js)): arrow keys, a swipe or the strip
+move between them, Escape closes, and Cmd/Ctrl-click still opens the image in a new tab.
+
+**The Luna build.** Each session holds the band's firmware, the Luna app's version and the phone
+(`firmware_version`, `app_version`, `platform` `ios|android`; migration
+`20261009000000_benchmark_luna_build.sql`). An Apple Health export cannot supply them (Luna writes
+only a build number there), so they are typed in on the import page or the session page. A tester
+keeps the same band and phone from one test to the next, so both pages start from what was last
+entered for that tester (`build_set_at` dates each entry; `check` and the session's `last_build`
+return it). Saving a session sends the build only when it changed, so editing a note on an old
+session does not make its build the latest.
 
 **What is stored** (migration `20261002000000_benchmarks.sql`): `benchmark_sessions` (`BM-0007`, a
 workout or a night for one tester, with the comparison in `summary`) and `benchmark_recordings`
@@ -408,6 +420,17 @@ measured against it.
 - Every total both reported (duration, distance, pace, calories, steps…) with the difference and a
   verdict: match within about 2% or 3 bpm, close within about 5% or 7 bpm, otherwise differs.
   Calories are "not comparable" when the two apps were given different body weights.
+- Max pace, for a run, walk or hike: the fastest pace held for at least 30 s. No device writes it to
+  Apple Health, so it comes from the finest detail each wrote: its own top speed, else its GPS
+  track (a fix jumping faster than 43 km/h adds no distance; anything faster than 2:00 /km is
+  ignored), else its distance readings when they come in pieces of 2 minutes or less, else its
+  speed readings. Luna and Google Health write distance in pieces of several minutes, which cannot
+  show a fastest stretch, so a max pace read off any device's app can be typed in instead
+  (`max_pace_s`). The comparison row says where each side's number came from.
+- VO2max (the Health app's "Cardio Fitness"): devices estimate it once a day (Google Health writes
+  one at midnight) or just after an outdoor workout, never during it. The import takes each
+  source's first reading from the workout's start to a day after it ends, else its last in the day
+  before; it shows as that device's estimate with its date.
 - Sleep: stages laid on 30-second steps; time in bed, time asleep, time to fall asleep, time awake
   after that, awakenings, efficiency and each stage; and epoch by epoch agreement with the
   reference (asleep or awake, stage by stage, kappa, the confusion table).
@@ -450,10 +473,10 @@ to half an hour, 10 s beyond), on round clock times; "Every reading" shows the r
 | `GET /v1/admin/benchmarks/export?kind=&device=&tester=&is_test=&comparable=` | every session the filters match, as an Excel workbook |
 | `GET /v1/admin/benchmarks/{id or BM-ref}` | one session with every recording's metrics, series, stages and route, and `nearby` sessions it could be merged with |
 | `GET /v1/admin/benchmarks/{id or BM-ref}/export` | one session as an Excel workbook, with every reading |
-| `POST /v1/admin/benchmarks/check` | which workouts and nights from an export are one session, and which are stored |
-| `POST /v1/admin/benchmarks/import` | one session's recordings (201 created, 200 updated or unchanged) |
-| `PATCH /v1/admin/benchmarks/{id}` | title, notes, tester, test flag |
-| `PATCH /v1/admin/benchmarks/{id}/recordings/{rid}` | brand tag and device name, and for a workout Luna logged `distance_km` and `active_kcal` (typed in from its app, since Luna does not always write them to Apple Health; `null` clears one); redoes the comparison |
+| `POST /v1/admin/benchmarks/check` | which workouts and nights from an export are one session, and which are stored; `last_build` is the Luna build last entered for the tester |
+| `POST /v1/admin/benchmarks/import` | one session's recordings (201 created, 200 updated or unchanged), with the Luna build optionally; a stored session that gains a device keeps its own build |
+| `PATCH /v1/admin/benchmarks/{id}` | title, notes, tester, test flag, and the Luna build: `firmware_version`, `app_version`, `platform` (`ios`/`android`; `null` or `""` clears) |
+| `PATCH /v1/admin/benchmarks/{id}/recordings/{rid}` | brand tag and device name; for a workout Luna logged `distance_km` and `active_kcal` (typed in from its app, since Luna does not always write them to Apple Health); for any device's run, walk or hike `max_pace_s` (seconds per km). `null` clears one; redoes the comparison |
 | `POST /v1/admin/benchmarks/{id}/merge` | `{ "other": id or BM-ref }` joins another session into this one |
 | `GET /v1/admin/benchmarks/screenshot-auth` | ImageKit upload credentials for one screenshot |
 | `POST /v1/admin/benchmarks/{id}/screenshots` | `{ file_id, url, name?, width?, height?, size? }` attaches an uploaded image (409 once there are 6) |

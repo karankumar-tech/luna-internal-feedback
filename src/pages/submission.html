@@ -204,7 +204,7 @@
   .chat-meta { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 12px; color: var(--gray-dark); margin-top: 6px; }
   .chat-meta .left { min-width: 0; }
 
-  @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
+  @media (max-width: 960px) { .grid { grid-template-columns: minmax(0, 1fr); } }
   @media (prefers-reduced-motion: reduce) { .meter .fill { transition: none; } }
   /* tags under the title: removable chips, one-click common tags, and an input with suggestions */
   .tag-line { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
@@ -494,21 +494,25 @@
     const shots = r.screenshots || [];
     $('shotsCard').hidden = shots.length === 0;
     if (shots.length) {
-      $('shotsSub').textContent = `${shots.length} attached by the tester · click to open full size`;
+      $('shotsSub').textContent = `${shots.length} attached by the tester · click one to see them full size`;
       const g = $('gallery'); g.replaceChildren();
-      for (const sc of shots) {
-        const a = el('a'); a.href = sc.url; a.target = '_blank'; a.rel = 'noopener';
+      const sized = (sc, tr) => { try { const u = new URL(sc.url); u.searchParams.set('tr', tr); return u.toString(); } catch { return sc.thumbnail_url || sc.url; } };
+      const kb = (n) => n >= 1024 * 1024 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB';
+      const items = shots.map((sc) => ({ url: sc.url, thumb: sized(sc, 'w-160,q-70'), name: sc.name || 'screenshot', caption: [sc.width && sc.height ? `${sc.width}×${sc.height}` : null, sc.size ? kb(sc.size) : null].filter(Boolean).join(' · ') }));
+      shots.forEach((sc, i) => {
+        // A plain click opens the viewer here; Cmd/Ctrl-click still opens the image in a new tab.
+        const a = el('a'); a.href = sc.url; a.target = '_blank'; a.rel = 'noopener'; a.setAttribute('aria-label', `View ${sc.name || 'screenshot'} full size`);
+        a.addEventListener('click', (e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return; e.preventDefault(); LunaShell.viewer(items, i, a); });
         const img = el('img'); img.alt = sc.name || 'screenshot'; img.loading = 'lazy';
-        try { const u = new URL(sc.url); u.searchParams.set('tr', 'w-480,q-80'); img.src = u.toString(); } catch { img.src = sc.thumbnail_url || sc.url; }
+        img.src = sized(sc, 'w-480,q-80');
         a.appendChild(img);
-        const kb = (n) => n >= 1024 * 1024 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB';
         const cap = el('div', 'cap');
         cap.appendChild(el('div', null, [sc.original_width && sc.original_height ? `sent ${sc.original_width}×${sc.original_height}` : null, sc.upload_size ? (sc.original_width ? '' : 'sent ') + kb(sc.upload_size) : null].filter(Boolean).join(' · ') || (sc.upload_size == null ? 'sent size not reported by app' : '')));
         cap.appendChild(el('div', null, [sc.width && sc.height ? `stored ${sc.width}×${sc.height}` : null, sc.size ? kb(sc.size) : null].filter(Boolean).join(' · ')));
         cap.title = sc.name || 'screenshot';
         a.appendChild(cap);
         g.appendChild(a);
-      }
+      });
     }
     dl($('client'), [['Platform', r.platform], ['App version', r.app_version, true], ['Build', r.build_number, true], ['Channel', r.build_channel, true], ['Firmware', r.firmware_version, true], ['OS', r.os_version], ['Device ID', r.device_id, true], ['Session', r.session_id, true]]);
   }

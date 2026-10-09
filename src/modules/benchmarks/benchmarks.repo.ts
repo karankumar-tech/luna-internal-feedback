@@ -35,10 +35,19 @@ export interface SessionRow {
   notes: string | null;
   screenshots: BenchmarkScreenshot[];
   is_test: boolean;
+  /** The Luna build it was recorded with, typed in by a person. */
+  firmware_version: string | null;
+  app_version: string | null;
+  platform: 'ios' | 'android' | null;
+  build_set_at: Date | null;
   uploaded_by: string | null;
   created_at: Date;
   updated_at: Date;
 }
+
+/** Luna's firmware, the Luna app's version and the phone's platform. */
+export interface LunaBuild { firmware_version: string | null; app_version: string | null; platform: 'ios' | 'android' | null }
+export const BUILD_FIELDS = ['firmware_version', 'app_version', 'platform'] as const;
 
 export interface RecordingRow {
   id: string;
@@ -72,7 +81,8 @@ export interface ListFilters {
 }
 
 const SESSION_COLS = `id, ref, kind, activity, title, tester, extract(epoch from started_at)::float8 as started_at,
-  extract(epoch from ended_at)::float8 as ended_at, utc_offset_min, devices, summary, notes, screenshots, is_test, uploaded_by, created_at, updated_at`;
+  extract(epoch from ended_at)::float8 as ended_at, utc_offset_min, devices, summary, notes, screenshots, is_test,
+  firmware_version, app_version, platform, build_set_at, uploaded_by, created_at, updated_at`;
 const RECORDING_COLS = `id, session_id, source_name, source_version, device_tag, device_label, logged, fingerprint, activity,
   extract(epoch from started_at)::float8 as started_at, extract(epoch from ended_at)::float8 as ended_at,
   metrics, series, stages, route, details`;
@@ -206,14 +216,39 @@ export class BenchmarksRepo {
     return out;
   }
 
-  async createSession(c: Queryable, s: { kind: Kind; tester: string; start: number; end: number; utc_offset_min: number; is_test: boolean; uploaded_by: string | null }): Promise<SessionRow> {
+  async createSession(c: Queryable, s: { kind: Kind; tester: string; start: number; end: number; utc_offset_min: number; is_test: boolean; uploaded_by: string | null; build?: Partial<LunaBuild> }): Promise<SessionRow> {
+    const b = s.build ?? {};
     const r = await c.query<SessionRow>(
-      `insert into luna_feedback.benchmark_sessions (kind, tester, started_at, ended_at, utc_offset_min, is_test, uploaded_by)
-       values ($1, $2, to_timestamp($3), to_timestamp($4), $5, $6, $7)
+      `insert into luna_feedback.benchmark_sessions (kind, tester, started_at, ended_at, utc_offset_min, is_test, uploaded_by, firmware_version, app_version, platform, build_set_at)
+       values ($1, $2, to_timestamp($3), to_timestamp($4), $5, $6, $7, $8, $9, $10, case when $11::boolean then now() end)
        returning ${SESSION_COLS}`,
-      [s.kind, s.tester, s.start, s.end, s.utc_offset_min, s.is_test, s.uploaded_by],
+      [s.kind, s.tester, s.start, s.end, s.utc_offset_min, s.is_test, s.uploaded_by, b.firmware_version ?? null, b.app_version ?? null, b.platform ?? null,
+        BUILD_FIELDS.some((k) => b[k])],
     );
     return r.rows[0]!;
+  }
+
+  /** Fills in the Luna build of a stored session that has none yet (a later import adding a device). */
+  async fillBuild(c: Queryable, sessionId: string, b: Partial<LunaBuild>, setAt: Date | null = null): Promise<void> {
+    if (!BUILD_FIELDS.some((k) => b[k])) return;
+    await c.query(
+      `update luna_feedback.benchmark_sessions
+          set firmware_version = $2, app_version = $3, platform = $4, build_set_at = coalesce($5, now()), updated_at = now()
+        where id = $1 and firmware_version is null and app_version is null and platform is null`,
+      [sessionId, b.firmware_version ?? null, b.app_version ?? null, b.platform ?? null, setAt],
+    );
+  }
+
+  /** The Luna build last entered for this tester, on any of their sessions: what the next one is prefilled with. */
+  async lastBuild(tester: string, q: Queryable = this.db): Promise<(LunaBuild & { ref: string; set_at: Date }) | null> {
+    const r = await q.query<LunaBuild & { ref: string; set_at: Date }>(
+      `select firmware_version, app_version, platform, ref, build_set_at as set_at
+         from luna_feedback.benchmark_sessions
+        where tester_key = lower(btrim($1)) and build_set_at is not null
+        order by build_set_at desc limit 1`,
+      [tester],
+    );
+    return r.rows[0] ?? null;
   }
 
   async insertRecording(c: Queryable, sessionId: string, rec: NormalizedRecording, tag: string, label: string | null): Promise<string> {
@@ -241,17 +276,23 @@ export class BenchmarksRepo {
     );
   }
 
-  async patchSession(id: string, p: { title?: string | null; notes?: string | null; tester?: string; is_test?: boolean }): Promise<void> {
+  async patchSession(id: string, p: { title?: string | null; notes?: string | null; tester?: string; is_test?: boolean } & Partial<LunaBuild>): Promise<void> {
     const sets: string[] = [];
     const args: unknown[] = [id];
+    const at: Partial<Record<string, number>> = {};
     // Column names come from this list, never from the caller.
-    for (const col of ['title', 'notes', 'tester', 'is_test'] as const) {
+    for (const col of ['title', 'notes', 'tester', 'is_test', ...BUILD_FIELDS] as const) {
       const value = p[col];
       if (value === undefined) continue;
       args.push(value);
+      at[col] = args.length;
       sets.push(`${col} = $${args.length}`);
     }
     if (!sets.length) return;
+    // Entering a build makes it the tester's latest; clearing all of it leaves the session out of that.
+    if (BUILD_FIELDS.some((k) => p[k] !== undefined)) {
+      sets.push(`build_set_at = case when ${BUILD_FIELDS.map((k) => (at[k] ? `$${at[k]}::text is not null` : `${k} is not null`)).join(' or ')} then now() end`);
+    }
     await this.db.query(`update luna_feedback.benchmark_sessions set ${sets.join(', ')}, updated_at = now() where id = $1`, args);
   }
 

@@ -23,6 +23,9 @@ const Source = z.string().trim().min(1).max(120);
 const Tag = z.string().trim().toLowerCase().regex(/^[a-z0-9_]{1,30}$/, 'letters, digits and _ only, at most 30');
 const Num = z.number().finite();
 const Offsets = z.array(Num).max(25_000);
+/** The Luna build a session was recorded with. Empty clears it. */
+const Version = z.string().trim().max(60).transform((v) => v || null).nullable();
+const Platform = z.enum(['ios', 'android']).nullable();
 
 const ListQuery = z.object({
   kind: Kind.optional(),
@@ -117,6 +120,8 @@ const Recording = z.object({
     weight_kg: Num.min(20).max(400).optional().catch(undefined),
     height_cm: Num.min(50).max(260).optional().catch(undefined),
   }).strict().nullish(),
+  /** The source's VO2max (Cardio Fitness) reading nearest the workout, in ml/kg/min. An impossible one is dropped. */
+  vo2max: z.object({ value: Num.min(10).max(100), unit: z.string().max(30).optional(), at: Epoch }).strict().nullish().catch(undefined),
 }).strict();
 
 const ImportBody = z.object({
@@ -126,6 +131,10 @@ const ImportBody = z.object({
   end: Epoch,
   utc_offset_min: z.number().int().min(-840).max(840).default(330),
   is_test: z.boolean().optional(),
+  /** Luna's firmware, the Luna app's version and the phone's platform, as typed on the import page. */
+  firmware_version: Version.optional(),
+  app_version: Version.optional(),
+  platform: Platform.optional(),
   recordings: z.array(Recording).min(1).max(12),
 }).strict().refine((b) => b.end >= b.start, { message: 'end must not be before start', path: ['end'] });
 
@@ -134,7 +143,10 @@ const PatchBody = z.object({
   notes: z.string().trim().max(4000).transform((v) => v || null).nullable().optional(),
   tester: Tester.optional(),
   is_test: z.boolean().optional(),
-}).strict().refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'send title, notes, tester or is_test' });
+  firmware_version: Version.optional(),
+  app_version: Version.optional(),
+  platform: Platform.optional(),
+}).strict().refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'send title, notes, tester, is_test, firmware_version, app_version or platform' });
 
 const RecordingPatch = z.object({
   device_tag: Tag.optional(),
@@ -142,7 +154,9 @@ const RecordingPatch = z.object({
   /** Luna only: the distance and active calories its app showed, typed in by hand. null clears one. */
   distance_km: Num.min(0.01).max(1000).transform((v) => Math.round(v * 1000) / 1000).nullable().optional(),
   active_kcal: Num.min(1).max(20_000).transform((v) => Math.round(v * 10) / 10).nullable().optional(),
-}).strict().refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'send device_tag, device_label, distance_km or active_kcal' });
+  /** Any device, on foot: the fastest pace its app showed, in seconds per km (2:00 to 60:00). No device writes it to Apple Health. */
+  max_pace_s: Num.min(120).max(3600).transform((v) => Math.round(v)).nullable().optional(),
+}).strict().refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'send device_tag, device_label, distance_km, active_kcal or max_pace_s' });
 
 const ScreenshotBody = z.object({
   file_id: z.string().trim().min(1).max(120),

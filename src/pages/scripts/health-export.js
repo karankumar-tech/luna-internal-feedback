@@ -9,7 +9,15 @@
 // Served at /dashboard/assets/health-export.js (embedded by scripts/embed-pages.mjs).
 
 /** Quantity types worth keeping for a workout: anything about effort, movement or the heart. */
-export const WORKOUT_TYPES = /HeartRate|EnergyBurned|Distance|StepCount|FlightsClimbed|Speed|Power|Cadence|StrideLength|VerticalOscillation|GroundContactTime|StrokeCount|VO2Max|RespiratoryRate|OxygenSaturation|Temperature|PhysicalEffort/;
+export const WORKOUT_TYPES = /HeartRate|EnergyBurned|Distance|StepCount|FlightsClimbed|Speed|Power|Cadence|StrideLength|VerticalOscillation|GroundContactTime|StrokeCount|RespiratoryRate|OxygenSaturation|Temperature|PhysicalEffort/;
+/**
+ * VO2max, which the Health app calls Cardio Fitness. Devices estimate it once a day (Google Health
+ * writes one at midnight) or just after an outdoor workout, so it is almost never inside the workout:
+ * pass 1 keeps every reading and each workout takes its nearest one.
+ */
+export const VO2MAX_TYPE = /^HKQuantityTypeIdentifier(VO2Max|CardioFitness)/;
+/** How far from a workout a VO2max reading may be and still be that workout's. */
+const VO2MAX_REACH_S = 24 * 3600;
 /** For a night only the vitals matter; steps and distance are noise. */
 export const SLEEP_TYPES = /HeartRate|RespiratoryRate|OxygenSaturation|Temperature/;
 
@@ -284,13 +292,14 @@ export function guessTester(sourceNames) {
 
 /**
  * Lists every workout and night in the export, per source.
- * Returns { exportDate, offsetMin, workouts, nights, sources, profiles, tester }.
+ * Returns { exportDate, offsetMin, workouts, nights, sources, profiles, vo2max, tester }.
  */
 export async function scanExport(src, opts = {}) {
   const workouts = [];
   const sleep = [];
   const sources = new Map();
   const profiles = {};
+  const vo2max = {};
   let exportDate = null;
   let offsetMin = null;
   let cur = null;
@@ -318,6 +327,11 @@ export async function scanExport(src, opts = {}) {
         s.sleep += 1;
         const a = parseAttrs(body);
         sleep.push({ source, sourceVersion: a.sourceVersion, start: parseDate(a.startDate), end: parseDate(a.endDate), value: a.value, offsetMin: offsetOf(a.startDate) });
+      } else if (type && VO2MAX_TYPE.test(type)) {
+        const a = parseAttrs(body);
+        const at = parseDate(a.startDate);
+        const value = num(a.value);
+        if (value !== undefined && Number.isFinite(at)) (vo2max[source] || (vo2max[source] = [])).push({ at, value, unit: a.unit || '' });
       } else if (type === QUANTITY_PREFIX + 'BodyMass' || type === QUANTITY_PREFIX + 'Height') {
         const a = parseAttrs(body);
         const at = parseDate(a.startDate);
@@ -387,9 +401,10 @@ export async function scanExport(src, opts = {}) {
   const nights = buildNights(sleep.filter((r) => Number.isFinite(r.start) && Number.isFinite(r.end)));
   const sourceList = [...sources.values()].sort((a, b) => b.records - a.records);
   const lastOffset = unique.length ? unique[unique.length - 1].offsetMin : nights.length ? nights[nights.length - 1].offsetMin : 0;
+  for (const list of Object.values(vo2max)) list.sort((a, b) => a.at - b.at);
   return {
     exportDate, offsetMin: offsetMin ?? lastOffset,
-    workouts: unique, nights, sources: sourceList, profiles,
+    workouts: unique, nights, sources: sourceList, profiles, vo2max,
     tester: guessTester(sourceList.map((s) => s.name)),
   };
 }
@@ -549,6 +564,8 @@ export async function extractSessions(src, sessions, scan, opts = {}) {
       }
       const profile = profileOf(scan, member.source);
       if (profile) recording.profile = profile;
+      const vo2 = member.kind === 'workout' ? vo2maxFor(scan, member.source, member.start, member.end) : null;
+      if (vo2) recording.vo2max = vo2;
       recordings.push(recording);
     }
     // A source that logged nothing itself but has samples inside the session (the phone counting
@@ -560,11 +577,27 @@ export async function extractSessions(src, sessions, scan, opts = {}) {
       const recording = { source, source_version: rec.version || null, device: rec.device || null, logged: false, samples };
       const profile = profileOf(scan, source);
       if (profile) recording.profile = profile;
+      const vo2 = session.kind === 'workout' ? vo2maxFor(scan, source, w.start, w.end) : null;
+      if (vo2) recording.vo2max = vo2;
       recordings.push(recording);
     }
     out[w.index] = { kind: session.kind, start: w.start, end: w.end, utc_offset_min: session.members[0] ? session.members[0].offsetMin : 0, recordings };
   }
   return out;
+}
+
+/**
+ * A source's VO2max for a workout: the first reading from its start up to a day after it ends (the
+ * estimate that takes the workout in), else the last one in the day before it.
+ */
+export function vo2maxFor(scan, source, start, end) {
+  const list = scan && scan.vo2max && scan.vo2max[source];
+  if (!list || !list.length) return null;
+  const after = list.find((x) => x.at >= start && x.at <= end + VO2MAX_REACH_S);
+  const before = after ? null : [...list].reverse().find((x) => x.at < start && x.at >= start - VO2MAX_REACH_S);
+  const pick = after || before;
+  // ml/kg/min whatever the app wrote; nobody has a VO2max outside 10 to 100.
+  return pick && pick.value >= 10 && pick.value <= 100 ? { value: Math.round(pick.value * 100) / 100, unit: pick.unit, at: pick.at } : null;
 }
 
 function profileOf(scan, source) {

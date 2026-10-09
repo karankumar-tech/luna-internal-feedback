@@ -33,6 +33,8 @@
     search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     menu: '<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>',
     bell: '<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>',
+    close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    external: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
   };
   const icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ''}</svg>`;
 
@@ -186,6 +188,103 @@
       clearTimeout(t._h); t._h = setTimeout(() => { t.style.display = 'none'; }, 3200);
     },
   };
+  // ---------- screenshots: full size over the page, one after another ----------
+  // items: [{ url, thumb?, name?, caption? }]. Opens on `start`; arrows, swipe or the strip move
+  // between them; Escape, the cross or a click outside the image closes it and gives focus back.
+  let lb = null;
+  function viewer(items, start, opener) {
+    const list = (items || []).filter((x) => x && x.url);
+    if (!list.length) return;
+    if (!lb) {
+      const root = document.createElement('div');
+      root.className = 'lb'; root.hidden = true;
+      root.setAttribute('role', 'dialog'); root.setAttribute('aria-modal', 'true'); root.setAttribute('aria-label', 'Screenshots');
+      root.innerHTML = `<div class="lb-top">
+          <span class="lb-count" aria-live="polite"></span><span class="lb-name"></span>
+          <a class="lb-btn lb-open" target="_blank" rel="noopener" title="Open the original in a new tab" aria-label="Open the original in a new tab">${icon('external')}</a>
+          <button class="lb-btn lb-x" type="button" title="Close (Esc)" aria-label="Close">${icon('close')}</button>
+        </div>
+        <div class="lb-stage">
+          <button class="lb-btn lb-nav lb-prev" type="button" title="Previous (←)" aria-label="Previous screenshot">${icon('left')}</button>
+          <figure class="lb-fig"><img class="lb-img" alt=""><figcaption class="lb-cap"></figcaption></figure>
+          <button class="lb-btn lb-nav lb-next" type="button" title="Next (→)" aria-label="Next screenshot">${icon('right')}</button>
+        </div>
+        <div class="lb-strip" role="group" aria-label="All screenshots"></div>`;
+      body.appendChild(root);
+      const q = (sel) => root.querySelector(sel);
+      lb = { root, list: [], i: 0, opener: null, img: q('.lb-img'), strip: q('.lb-strip') };
+      const close = () => {
+        root.hidden = true; document.documentElement.classList.remove('lb-lock');
+        document.removeEventListener('keydown', onKey, true);
+        if (lb.opener && lb.opener.focus) lb.opener.focus();
+      };
+      const onKey = (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+        else if (e.key === 'ArrowLeft') { e.preventDefault(); show(lb.i - 1); }
+        else if (e.key === 'ArrowRight') { e.preventDefault(); show(lb.i + 1); }
+        else if (e.key === 'Home') { e.preventDefault(); show(0); }
+        else if (e.key === 'End') { e.preventDefault(); show(lb.list.length - 1); }
+        else if (e.key === 'Tab') {
+          // Focus stays inside while it is open.
+          const f = [...root.querySelectorAll('a[href], button:not([hidden])')].filter((x) => x.offsetParent !== null);
+          if (!f.length) return;
+          const first = f[0], last = f[f.length - 1];
+          if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+          else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+      };
+      lb.close = close; lb.onKey = onKey;
+      q('.lb-x').addEventListener('click', close);
+      q('.lb-prev').addEventListener('click', () => show(lb.i - 1));
+      q('.lb-next').addEventListener('click', () => show(lb.i + 1));
+      // A click on the dark around the image closes, as it does on a phone's photo viewer.
+      root.addEventListener('click', (e) => { if (e.target === root || e.target.classList.contains('lb-stage') || e.target.classList.contains('lb-fig')) close(); });
+      lb.img.addEventListener('load', () => root.classList.remove('loading'));
+      lb.img.addEventListener('error', () => root.classList.remove('loading'));
+      // Swipe left or right on a touch screen.
+      let x0 = null, y0 = 0;
+      q('.lb-stage').addEventListener('pointerdown', (e) => { if (e.pointerType !== 'mouse') { x0 = e.clientX; y0 = e.clientY; } });
+      q('.lb-stage').addEventListener('pointerup', (e) => {
+        if (x0 === null) return;
+        const dx = e.clientX - x0, dy = e.clientY - y0; x0 = null;
+        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) show(lb.i + (dx < 0 ? 1 : -1));
+      });
+      q('.lb-stage').addEventListener('pointercancel', () => { x0 = null; });
+    }
+    const show = (i) => {
+      const n = lb.list.length;
+      lb.i = ((i % n) + n) % n;
+      const it = lb.list[lb.i];
+      lb.root.classList.add('loading');
+      lb.img.src = it.url; lb.img.alt = it.name || `Screenshot ${lb.i + 1}`;
+      if (lb.img.complete) lb.root.classList.remove('loading');
+      lb.root.querySelector('.lb-count').textContent = n > 1 ? `${lb.i + 1} of ${n}` : '';
+      lb.root.querySelector('.lb-name').textContent = it.name || '';
+      lb.root.querySelector('.lb-cap').textContent = it.caption || '';
+      lb.root.querySelector('.lb-cap').hidden = !it.caption;
+      lb.root.querySelector('.lb-open').href = it.url;
+      [...lb.strip.children].forEach((b, k) => { b.classList.toggle('on', k === lb.i); if (k === lb.i) { b.setAttribute('aria-current', 'true'); b.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } else b.removeAttribute('aria-current'); });
+      // The neighbours load while this one is looked at, so the next arrow is instant.
+      for (const k of [lb.i - 1, lb.i + 1]) { const nb = lb.list[((k % n) + n) % n]; if (nb && nb !== it) { const pre = new Image(); pre.src = nb.url; } }
+    };
+    lb.list = list; lb.opener = opener || document.activeElement;
+    lb.strip.replaceChildren();
+    lb.strip.hidden = list.length < 2;
+    for (const b of lb.root.querySelectorAll('.lb-nav')) b.hidden = list.length < 2;
+    list.forEach((it, k) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'lb-thumb'; b.setAttribute('aria-label', `Screenshot ${k + 1}${it.name ? ': ' + it.name : ''}`);
+      const im = document.createElement('img'); im.alt = ''; im.loading = 'lazy'; im.src = it.thumb || it.url; b.appendChild(im);
+      b.addEventListener('click', () => show(k));
+      lb.strip.appendChild(b);
+    });
+    lb.root.hidden = false; document.documentElement.classList.add('lb-lock');
+    document.addEventListener('keydown', lb.onKey, true);
+    show(Math.max(0, Math.min(list.length - 1, start || 0)));
+    lb.root.querySelector('.lb-x').focus();
+  }
+  LunaShell.viewer = viewer;
+
   window.LunaShell = LunaShell;
   paintViewer(); paintAttention();
 

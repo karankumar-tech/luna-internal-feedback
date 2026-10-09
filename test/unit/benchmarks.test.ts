@@ -225,7 +225,7 @@ describe('metric names, units and device tags', () => {
       HKQuantityTypeIdentifierRunningSpeed: { unit: 'm/s', t0: 1000, s: [0], e: null, v: [3] },
       HKQuantityTypeIdentifierOxygenSaturation: { unit: '%', t0: 1000, s: [0], e: null, v: [0.97] },
     });
-    expect(s.distance).toMatchObject({ unit: 'km', agg: 'sum', v: [1.609], d: [60] });
+    expect(s.distance).toMatchObject({ unit: 'km', agg: 'sum', v: [1.60934], d: [60] });
     expect(s.active_energy!.v).toEqual([100]);
     expect(s.running_speed).toMatchObject({ unit: 'km/h', v: [10.8], d: null });
     expect(s.oxygen_saturation!.v).toEqual([97]);

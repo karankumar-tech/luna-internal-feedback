@@ -35,7 +35,9 @@ const KNOWN: Record<string, { key: string; label: string }> = {
   RespiratoryRate: { key: 'respiratory_rate', label: 'Breathing rate' },
   OxygenSaturation: { key: 'oxygen_saturation', label: 'Blood oxygen' },
   AppleSleepingWristTemperature: { key: 'wrist_temperature', label: 'Wrist temperature' },
-  VO2Max: { key: 'vo2_max', label: 'VO2 max' },
+  // Apple Health shows it as "Cardio Fitness"; it is VO2max all the same.
+  VO2Max: { key: 'vo2_max', label: 'VO2max' },
+  CardioFitness: { key: 'vo2_max', label: 'VO2max' },
   RunningSpeed: { key: 'running_speed', label: 'Running speed' },
   WalkingSpeed: { key: 'walking_speed', label: 'Walking speed' },
   RunningPower: { key: 'running_power', label: 'Running power' },
@@ -70,6 +72,7 @@ function unitOf(key: string, unit: string): string {
   if (/^(kcal|Cal|kJ|cal)$/.test(u)) return 'kcal';
   if (/^(km\/hr|m\/s|mi\/hr|km\/h|mph)$/.test(u)) return 'km/h';
   if (u === 'degF' || u === 'degC') return '°C';
+  if (/^ml\/(min·kg|kg·min|kg\/min|\(kg·min\))$/i.test(u)) return 'ml/kg/min';
   if (u === 'count') return '';
   return u;
 }

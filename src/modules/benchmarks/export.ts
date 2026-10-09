@@ -73,7 +73,7 @@ const VERDICT: Record<Verdict, string> = { match: 'Match', close: 'Close', diffe
 const verdictText = (v: Verdict, test: string, reference: string) => (v === 'only_test' ? `${test} only` : v === 'only_reference' ? `${reference} only` : VERDICT[v]);
 
 const STAGE_LABEL: Record<Stage, string> = { awake: 'Awake', rem: 'REM', core: 'Light (core)', deep: 'Deep', asleep: 'Asleep, no stage given', in_bed: 'In bed' };
-const METRIC_ORDER = ['duration', 'time_in_bed', 'total_sleep', 'sleep_latency', 'waso', 'awakenings', 'sleep_efficiency', 'deep_sleep', 'core_sleep', 'rem_sleep', 'unstaged_sleep', 'distance', 'pace', 'speed', 'active_energy', 'basal_energy', 'steps', 'cadence', 'heart_rate'];
+const METRIC_ORDER = ['duration', 'time_in_bed', 'total_sleep', 'sleep_latency', 'waso', 'awakenings', 'sleep_efficiency', 'deep_sleep', 'core_sleep', 'rem_sleep', 'unstaged_sleep', 'distance', 'pace', 'max_pace', 'speed', 'active_energy', 'basal_energy', 'steps', 'cadence', 'heart_rate', 'vo2_max'];
 const metricRank = (key: string) => { const i = METRIC_ORDER.indexOf(key); return i === -1 ? METRIC_ORDER.length : i; };
 const metricLabel = (key: string, m: { label: string }) => (key === 'heart_rate' ? 'Average heart rate' : m.label);
 
@@ -83,6 +83,7 @@ const offsetLabel = (min: number) => `UTC${min < 0 ? '−' : '+'}${String(Math.f
 /** The session's own day, as a file name part: 2026-09-30. */
 const dayOf = (s: SessionRow) => new Date((s.started_at + s.utc_offset_min * 60) * 1000).toISOString().slice(0, 10);
 const summaryOf = (s: SessionRow): Summary | null => ((s.summary as Summary).version ? (s.summary as Summary) : null);
+const PLATFORM: Record<string, string> = { ios: 'iOS', android: 'Android' };
 
 /** The averaging step the session page draws heart rate with: 5 s up to half an hour, 10 s up to three hours. */
 const stepFor = (seconds: number) => (seconds <= 1800 ? 5 : seconds <= 3 * 3600 ? 10 : seconds <= 8 * 3600 ? 30 : 60);
@@ -195,6 +196,11 @@ export function sessionWorkbook(s: SessionRow, recordings: RecordingRow[], opts:
 
   // Each device's own numbers.
   const fromText = (m: MetricValue, logged: boolean) => {
+    if (m.at !== undefined) return `Its own estimate, the reading of ${new Date((m.at + s.utc_offset_min * 60) * 1000).toISOString().slice(0, 16).replace('T', ' ')}: not measured during the session`;
+    if (m.basis && m.from !== 'manual') {
+      const over = m.over_s !== undefined ? ` ${m.over_s < 90 ? `${m.over_s} s` : `${Math.round(m.over_s / 60)} min`}` : '';
+      return m.basis === 'route' ? `The fastest${over} of its GPS track` : m.basis === 'distance' ? `The fastest${over} of its distance readings` : m.from === 'summary' ? 'From the device’s own top speed' : 'From its top speed reading';
+    }
     const base = m.from === 'summary' ? 'The device’s own total' : m.from === 'manual' ? 'Entered by hand, read off its app'
       : m.from === 'derived' ? 'Worked out from its other numbers' : m.agg === 'sum' ? 'Added up from its readings' : 'Averaged from its readings';
     return base + (m.approx ? '; an estimate, its totals straddle the session' : '') + (m.from === 'samples' && !logged ? ', during the session' : '');
@@ -215,7 +221,8 @@ export function sessionWorkbook(s: SessionRow, recordings: RecordingRow[], opts:
       const q = r.details.hr ?? null;
       const d = r.details.device ?? {};
       const manual = r.details.manual;
-      const typed = manual ? [manual.distance_km != null ? `distance ${manual.distance_km} km` : '', manual.active_kcal != null ? `active calories ${manual.active_kcal} kcal` : ''].filter(Boolean).join(', ') + (manual.by ? ` (by ${manual.by})` : '') : '';
+      const mmss = (v: number) => `${Math.floor(v / 60)}:${String(Math.round(v % 60)).padStart(2, '0')} /km`;
+      const typed = manual ? [manual.distance_km != null ? `distance ${manual.distance_km} km` : '', manual.active_kcal != null ? `active calories ${manual.active_kcal} kcal` : '', manual.max_pace_s != null ? `max pace ${mmss(manual.max_pace_s)}` : ''].filter(Boolean).join(', ') + (manual.by ? ` (by ${manual.by})` : '') : '';
       return [
         name(r), tagLabel(r.device_tag), roleOf(r), r.logged ? 'Yes' : 'No, readings only',
         r.logged ? (s.kind === 'sleep' ? 'Night' : activityLabel(r.activity)) : '',
@@ -329,6 +336,9 @@ export function sessionWorkbook(s: SessionRow, recordings: RecordingRow[], opts:
   kv('What', whatOf(s));
   if (s.title) kv('Title', s.title);
   kv('Worn by', s.tester);
+  kv('Luna firmware', s.firmware_version ?? 'Not entered');
+  kv('Luna app version', s.app_version ?? 'Not entered');
+  kv('Phone', s.platform ? PLATFORM[s.platform]! : 'Not entered');
   kv('Started', c.at(s.started_at));
   kv('Ended', c.at(s.ended_at));
   kv('Length', c.length(s.ended_at - s.started_at));
@@ -387,6 +397,7 @@ export function listWorkbook(sessions: SessionRow[], opts: ExportOptions & { fil
     const start = c.at(s.started_at);
     sessionRows.push([
       s.ref, start, c.at(s.ended_at), c.length(s.ended_at - s.started_at), s.kind === 'sleep' ? 'Sleep' : 'Workout', what, s.title ?? '', s.tester,
+      s.firmware_version ?? '', s.app_version ?? '', s.platform ? PLATFORM[s.platform]! : '',
       recs.filter((r) => r.logged).map((r) => r.label).join(', '), recs.filter((r) => !r.logged).map((r) => r.label).join(', '),
       leadTest, leadRef,
       lead?.hr ? bpmCell(lead.hr.typical_gap) : null, lead?.hr ? bpmCell(lead.hr.bias, true) : null, lead?.hr ? { v: lead.hr.r, fmt: '0.00' } : null, lead?.hr ? VERDICT[lead.hr.verdict] : '',
@@ -413,7 +424,7 @@ export function listWorkbook(sessions: SessionRow[], opts: ExportOptions & { fil
 
   const now = opts.now ?? new Date();
   const sheets: { sheet: Sheet; about: string }[] = [
-    { sheet: { name: 'Sessions', header: ['Session', 'Started', 'Ended', 'Length', 'Kind', 'What', 'Title', 'Worn by', 'Logged by', 'Readings only', 'Under test', 'Reference',
+    { sheet: { name: 'Sessions', header: ['Session', 'Started', 'Ended', 'Length', 'Kind', 'What', 'Title', 'Worn by', 'Luna firmware', 'Luna app version', 'Phone', 'Logged by', 'Readings only', 'Under test', 'Reference',
       'Heart rate, typical gap', 'Heart rate, lean', 'Heart rate, correlation', 'Heart rate, verdict', 'Asleep or awake: the same', 'Same stage', 'Nothing compared because', 'Test data', 'Notes', 'Link'], rows: sessionRows },
       about: 'One line per session with its headline comparison (the one its page leads with). Times are each wearer’s own clock.' },
     { sheet: { name: 'Comparison', header: ['Session', 'Started', 'What', 'Worn by', 'Under test', 'Reference', 'Measure', 'Reference value', 'Under test value', 'Difference', 'Difference %', 'Verdict', 'Note'], rows: comparison },

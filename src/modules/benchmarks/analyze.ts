@@ -50,8 +50,13 @@ export interface MetricValue {
   value: number;
   min?: number;
   max?: number;
-  /** When the maximum was read. */
+  /** When the maximum was read; for a fastest pace, when that stretch started. */
   max_at?: number;
+  /** When a single reading was taken, for one that stands for more than the session (a daily VO2max estimate). */
+  at?: number;
+  /** A fastest pace: how long the stretch it was held over is, and what it was worked out from. */
+  over_s?: number;
+  basis?: 'route' | 'distance' | 'speed';
   n?: number;
   /** A total pieced together from samples that only partly fall inside the session: an estimate. */
   approx?: boolean;
@@ -90,8 +95,10 @@ export interface Details {
   } | null;
   hr?: HrQuality | null;
   sleep?: { has_stages: boolean } | null;
+  /** The device's own VO2max estimate nearest the workout (Apple Health calls it Cardio Fitness), in ml/kg/min. */
+  vo2max?: { value: number; at: number } | null;
   /** Typed in by a person, read off the device's own app, for what it did not write to Apple Health. */
-  manual?: { distance_km?: number; active_kcal?: number; by: string | null; at: string } | null;
+  manual?: { distance_km?: number; active_kcal?: number; max_pace_s?: number; by: string | null; at: string } | null;
 }
 
 /** One device's recording, as stored. */
@@ -184,7 +191,7 @@ export interface Finding {
 }
 
 /** Bumped when the numbers are worked out differently, so stored sessions are redone when next read. */
-export const ANALYSIS_VERSION = 3;
+export const ANALYSIS_VERSION = 4;
 
 export interface Summary {
   version: number;
@@ -215,6 +222,7 @@ export const ZONE_LABELS = ['Below 100', '100–119', '120–139', '140–159', 
 const r1 = (n: number) => Math.round(n * 10) / 10;
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
+const r5 = (n: number) => Math.round(n * 100_000) / 100_000;
 
 // ---------------------------------------------------------------------------------------------
 // From the upload to what is stored
@@ -239,6 +247,8 @@ export interface IncomingRecording {
   sleep?: { start: number; end: number; segments: [number, number, string][] };
   route?: { t0: number; points: number; t: number[]; lat: number[]; lon: number[]; ele: (number | null)[] | null; speed: (number | null)[] | null } | null;
   profile?: { weight_kg?: number; height_cm?: number } | null;
+  /** The source's VO2max reading nearest the workout, from outside it: devices estimate it once a day or after a workout. */
+  vo2max?: { value: number; unit?: string; at: number } | null;
 }
 
 export type NormalizedRecording = Omit<Rec, 'id' | 'tag' | 'label'> & { source_version: string | null; fingerprint: string | null };
@@ -268,7 +278,8 @@ export function normalizeSeries(samples: Record<string, IncomingSamples>): Recor
       label: info.label, unit: info.unit, agg: info.agg, t0,
       t: rows.map((r) => r[0] - t0),
       d: hasLength ? rows.map((r) => r[1]) : null,
-      v: rows.map((r) => r3(r[2])),
+      // Distance to the centimetre: a watch writes it a few metres at a time, and a fastest pace is worked out from those.
+      v: rows.map((r) => (key === 'distance' ? r5(r[2]) : r3(r[2]))),
     };
   }
   return out;
@@ -405,6 +416,7 @@ export function normalizeRecording(input: IncomingRecording, kind: Kind, window:
       metadata: w.metadata ?? {},
       events: (w.events ?? []).map((e) => ({ type: String(e.type ?? '').replace('HKWorkoutEventType', ''), at: e.at, duration_s: toSeconds(e.duration, e.durationUnit) })),
     };
+    if (input.vo2max && Number.isFinite(input.vo2max.value)) details.vo2max = { value: r1(input.vo2max.value), at: input.vo2max.at };
     if (input.route && input.route.t.length >= 2) {
       const r = input.route;
       let km = 0;
@@ -486,6 +498,98 @@ const median = (values: number[]) => {
   const mid = a.length >> 1;
   return a.length % 2 ? a[mid]! : (a[mid - 1]! + a[mid]!) / 2;
 };
+
+/** A fastest pace has to be held at least this long: over a few seconds it is GPS noise. */
+const PACE_WINDOW_S = 30;
+/** Distance written in pieces longer than this cannot tell the fastest stretch from the average. */
+const PACE_DETAIL_S = 120;
+/** Faster than 2:00 a kilometre on foot, held for half a minute, is a GPS jump rather than a runner. */
+const FASTEST_ON_FOOT_S_PER_KM = 120;
+/** Between two GPS points, faster than this (43 km/h) is the fix jumping: that step adds no distance. */
+const GPS_JUMP_KM_PER_S = 0.012;
+
+type Track = [number, number][];
+
+/** [moment, km so far] along a GPS track. */
+function routeTrack(route: Route): Track {
+  const out: Track = [];
+  let km = 0;
+  for (let i = 0; i < route.t.length; i++) {
+    if (i) {
+      const step = haversineKm(route.lat[i - 1]!, route.lon[i - 1]!, route.lat[i]!, route.lon[i]!);
+      const dt = route.t[i]! - route.t[i - 1]!;
+      if (dt > 0 && step / dt <= GPS_JUMP_KM_PER_S) km += step;
+    }
+    out.push([route.t0 + route.t[i]!, km]);
+  }
+  return out;
+}
+
+/**
+ * The same from distance samples inside [from, to], each piece spread evenly over its own span.
+ * Null when the device wrote its distance in pieces too long to show a fastest stretch.
+ */
+function distanceTrack(s: Series, from: number, to: number): Track | null {
+  if (!s.d) return null;
+  const pieces: [number, number, number][] = [];
+  for (let i = 0; i < s.t.length; i++) {
+    const a = s.t0 + s.t[i]!, b = a + s.d[i]!;
+    if (s.d[i]! > 0 && b > from && a < to) pieces.push([a, b, s.v[i]!]);
+  }
+  if (pieces.length < 3 || median(pieces.map((p) => p[1] - p[0])) > PACE_DETAIL_S) return null;
+  pieces.sort((x, y) => x[0] - y[0]);
+  const out: Track = [];
+  let km = 0, last = -Infinity;
+  for (const [a0, b, v] of pieces) {
+    // Pieces that overlap count once: only the part after the previous one ended.
+    const a = Math.max(a0, last);
+    if (b <= a) continue;
+    out.push([a, km]);
+    km += v * ((b - a) / (b - a0));
+    out.push([b, km]);
+    last = b;
+  }
+  return out;
+}
+
+/** The fastest pace (seconds per km) held over at least `window` seconds of a track, where it starts and how long it is. */
+export function fastestPace(track: Track, window = PACE_WINDOW_S): { pace: number; at: number; over_s: number } | null {
+  let best: { pace: number; at: number; over_s: number } | null = null;
+  let j = 0;
+  for (let i = 0; i < track.length; i++) {
+    if (j < i) j = i;
+    while (j < track.length && track[j]![0] - track[i]![0] < window) j++;
+    if (j >= track.length) break;
+    const dt = track[j]![0] - track[i]![0], km = track[j]![1] - track[i]![1];
+    if (!(km > 0)) continue;
+    const pace = dt / km;
+    if (pace < FASTEST_ON_FOOT_S_PER_KM) continue;
+    if (!best || pace < best.pace) best = { pace, at: track[i]![0], over_s: dt };
+  }
+  return best;
+}
+
+/**
+ * A workout's fastest pace, from the finest detail the device wrote: its own top speed, its GPS
+ * track, its distance pieces, or its speed readings, in that order.
+ */
+function fastestOf(rec: Rec, metrics: Record<string, MetricValue>, from: number, to: number): { pace: number; from: MetricValue['from']; basis: NonNullable<MetricValue['basis']>; at?: number; over_s?: number } | null {
+  const top = (m: MetricValue | undefined) => (m && m.max !== undefined && 3600 / m.max >= FASTEST_ON_FOOT_S_PER_KM ? m : undefined);
+  const speeds = [metrics.running_speed, metrics.walking_speed].map(top);
+  const own = speeds.find((m) => m?.from === 'summary');
+  if (own) return { pace: 3600 / own.max!, from: 'summary', basis: 'speed' };
+  const tracks: [NonNullable<MetricValue['basis']>, Track | null][] = [
+    ['route', rec.route && rec.route.t.length >= 2 ? routeTrack(rec.route) : null],
+    ['distance', rec.series.distance ? distanceTrack(rec.series.distance, from, to) : null],
+  ];
+  for (const [basis, track] of tracks) {
+    const f = track ? fastestPace(track) : null;
+    if (f) return { pace: f.pace, from: 'derived', basis, at: f.at, over_s: f.over_s };
+  }
+  const read = speeds.find((m) => m && (m.n ?? 0) >= 3);
+  if (read) return { pace: 3600 / read.max!, from: 'samples', basis: 'speed', at: read.max_at };
+  return null;
+}
 
 /** How good the heart rate trace is on its own: sampling, dropouts, stuck values, time in ranges. */
 export function heartRateQuality(s: Series, from: number, to: number): HrQuality | null {
@@ -628,7 +732,22 @@ export function recordingMetrics(rec: Rec, kind: Kind, window: { start: number; 
     if (metrics.steps && duration > 0 && isOnFoot(rec.activity)) {
       metrics.cadence = { label: 'Cadence', unit: 'steps/min', agg: 'avg', value: Math.round(metrics.steps.value / (duration / 60)), from: 'derived' };
     }
+    if (isOnFoot(rec.activity)) {
+      // No device writes its fastest pace to Apple Health, so a number read off its app comes first.
+      const typed = rec.details.manual?.max_pace_s;
+      const f = typed ? null : fastestOf(rec, metrics, from, to);
+      if (typed) metrics.max_pace = { label: 'Max pace', unit: 's/km', agg: 'avg', value: typed, from: 'manual' };
+      else if (f) {
+        metrics.max_pace = {
+          label: 'Max pace', unit: 's/km', agg: 'avg', value: Math.round(f.pace), from: f.from, basis: f.basis,
+          ...(f.at !== undefined ? { max_at: Math.round(f.at) } : {}), ...(f.over_s !== undefined ? { over_s: Math.round(f.over_s) } : {}),
+        };
+      }
+    }
   }
+  // An estimate of fitness rather than a reading of the workout: taken from outside it, kept as written.
+  const vo2 = kind === 'workout' ? rec.details.vo2max : null;
+  if (vo2) metrics.vo2_max = { label: 'VO2max', unit: 'ml/kg/min', agg: 'avg', value: vo2.value, at: vo2.at, from: 'summary' };
   return { metrics, hr };
 }
 
@@ -799,8 +918,16 @@ function judge(key: string, unit: string, kind: Kind, reference: number, test: n
 const ROW_ORDER = [
   'start', 'end', 'duration', 'time_in_bed', 'total_sleep', 'sleep_latency', 'waso', 'awakenings', 'sleep_efficiency',
   'deep_sleep', 'core_sleep', 'rem_sleep', 'unstaged_sleep',
-  'distance', 'pace', 'speed', 'active_energy', 'basal_energy', 'steps', 'cadence', 'heart_rate', 'heart_rate_min', 'heart_rate_max',
+  'distance', 'pace', 'max_pace', 'speed', 'active_energy', 'basal_energy', 'steps', 'cadence', 'heart_rate', 'heart_rate_min', 'heart_rate_max', 'vo2_max',
 ];
+
+/** How a device's fastest pace was found, in a few words. */
+function paceSource(m: MetricValue): string {
+  if (m.from === 'manual') return 'entered by hand';
+  if (m.from === 'summary') return 'its own top speed';
+  const over = m.over_s !== undefined ? ` ${m.over_s < 90 ? `${m.over_s} s` : `${Math.round(m.over_s / 60)} min`}` : '';
+  return m.basis === 'route' ? `fastest${over} of its GPS track` : m.basis === 'distance' ? `fastest${over} of its distance readings` : 'its top speed reading';
+}
 
 /** Every number both devices reported, side by side, with a verdict on each. */
 export function compareRows(test: Rec, reference: Rec, kind: Kind, m: Map<string, Record<string, MetricValue>>): Row[] {
@@ -830,7 +957,10 @@ export function compareRows(test: Rec, reference: Rec, kind: Kind, m: Map<string
     const t = tm[key], r = rm[key];
     const info = (t ?? r)!;
     const typed = key === 'distance' || key === 'active_energy' ? [t?.from === 'manual' ? test.label : null, r?.from === 'manual' ? reference.label : null].filter(Boolean) : [];
-    add(key, key === 'heart_rate' ? 'Average heart rate' : info.label, info.unit, r?.value, t?.value, typed.length ? `${typed.join(' and ')}: entered by hand, not written to Apple Health.` : undefined);
+    let note = typed.length ? `${typed.join(' and ')}: entered by hand, not written to Apple Health.` : undefined;
+    if (key === 'max_pace') note = [[reference, r], [test, t]].filter(([, m]) => m).map(([rec, m]) => `${(rec as Rec).label}: ${paceSource(m as MetricValue)}`).join('. ') + '.';
+    if (key === 'vo2_max') note = 'Each app’s own estimate nearest the workout (Apple Health calls it Cardio Fitness), not measured during it.';
+    add(key, key === 'heart_rate' ? 'Average heart rate' : info.label, info.unit, r?.value, t?.value, note);
     if (key === 'heart_rate') {
       add('heart_rate_min', 'Minimum heart rate', info.unit, r?.min, t?.min);
       add('heart_rate_max', 'Maximum heart rate', info.unit, r?.max, t?.max);

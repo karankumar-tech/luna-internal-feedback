@@ -61,6 +61,7 @@ function build(kind: Kind, incoming: (IncomingRecording & { tag: string })[], ov
   const session: SessionRow = {
     id: 'session-1', ref: 'BM-0042', kind, activity: a.activity, title: null, tester: 'Asha', started_at: a.window.start, ended_at: a.window.end, utc_offset_min: 330,
     devices: [...new Set(recs.map((r) => r.tag))], summary: a.summary, notes: 'Polar strap on the chest, Luna on the left wrist.', screenshots: [], is_test: false,
+    firmware_version: '1.0.16', app_version: '2.0.6', platform: 'ios', build_set_at: new Date('2026-10-01T06:00:00Z'),
     uploaded_by: 'qc@luna.invalid', created_at: new Date('2026-10-01T06:00:00Z'), updated_at: new Date('2026-10-01T06:00:00Z'), ...over,
   };
   const recordings: RecordingRow[] = recs.map((r) => ({
@@ -87,7 +88,7 @@ const nightSession = () => build('sleep', [
     [NIGHT - 600, NIGHT + 1200, 'HKCategoryValueSleepAnalysisAwake'], [NIGHT + 1200, NIGHT + 3 * 3600, 'HKCategoryValueSleepAnalysisAsleepCore'],
     [NIGHT + 3 * 3600, NIGHT + 5 * 3600, 'HKCategoryValueSleepAnalysisAsleepDeep'], [NIGHT + 5 * 3600, NIGHT + 7 * 3600, 'HKCategoryValueSleepAnalysisAsleepREM'],
   ] } },
-], { ref: 'BM-0043', notes: null });
+], { ref: 'BM-0043', notes: null, firmware_version: null, app_version: null, platform: null, build_set_at: null });
 
 const OPTS = { baseUrl: 'https://luna.example.test/', timeZone: 'Asia/Kolkata', now: new Date('2026-10-08T05:00:00Z') };
 
@@ -138,6 +139,7 @@ describe('one session as a workbook', () => {
     expect(summary.get('Compared')).toBe('Luna against Polar Flow');
     expect(summary.get('Heart rate, verdict')).toMatch(/^(Match|Close|Differs)$/);
     expect(summary.get('Notes')).toBe('Polar strap on the chest, Luna on the left wrist.');
+    expect([summary.get('Luna firmware'), summary.get('Luna app version'), summary.get('Phone')]).toEqual(['1.0.16', '2.0.6', 'iOS']);
     expect(summary.get('Exported')).toBe('2026-10-08 10:30:00 +05:30');
     for (const name of book.names.slice(1)) expect(summary.has(name)).toBe(true);
   });
@@ -222,11 +224,12 @@ describe('a list of sessions as a workbook', () => {
     const book = readBook(file.body);
     expect(book.names).toEqual(['Sessions', 'Comparison', 'Agreement', 'Findings', 'About']);
     const sessions = book.values('Sessions');
-    expect(sessions.slice(1).map((r) => [r[0], r[4], r[5], r[8], r[9], r[10], r[11]])).toEqual([
-      ['BM-0043', 'Sleep', 'Sleep', 'Luna, Connect', '', 'Luna', 'Connect'],
-      ['BM-0042', 'Workout', 'Running', 'Luna, Polar Flow', 'iPhone', 'Luna', 'Polar Flow'],
+    expect(sessions.slice(1).map((r) => [r[0], r[4], r[5], r[8], r[9], r[10], r[11], r[12], r[13], r[14]])).toEqual([
+      ['BM-0043', 'Sleep', 'Sleep', '', '', '', 'Luna, Connect', '', 'Luna', 'Connect'],
+      ['BM-0042', 'Workout', 'Running', '1.0.16', '2.0.6', 'iOS', 'Luna, Polar Flow', 'iPhone', 'Luna', 'Polar Flow'],
     ]);
-    expect(sessions[2]![21]).toBe('https://luna.example.test/b/BM-0042');
+    expect(sessions[0]!.slice(8, 11)).toEqual(['Luna firmware', 'Luna app version', 'Phone']);
+    expect(sessions[2]![24]).toBe('https://luna.example.test/b/BM-0042');
     const comparison = book.values('Comparison');
     expect(new Set(comparison.slice(1).map((r) => r[0]))).toEqual(new Set(['BM-0042', 'BM-0043']));
     expect(comparison.find((r) => r[0] === 'BM-0042' && r[6] === 'Distance')!.slice(7, 12)).toEqual([3, 2.97, -0.03, -0.01, 'Match']);
