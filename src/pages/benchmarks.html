@@ -66,6 +66,7 @@
   .pill { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 6px; border-radius: var(--r-s); display: inline-block; line-height: 14px; white-space: nowrap; }
   .pill.new { background: var(--yellow); color: #000; }
   .pill.adds { background: var(--blue-50); color: #0C3AAA; }
+  .pill.more { background: var(--blue-50); color: #0C3AAA; }
   .pill.have { background: var(--brief); color: var(--gray-dark); }
   .pill.test { background: var(--brief); color: var(--gray-dark); margin-left: 6px; }
   .pill.kind { background: transparent; box-shadow: inset 0 0 0 1px var(--gray-light); color: var(--gray-dark); }
@@ -89,6 +90,26 @@
   .result.err { background: var(--crit-bg); }
   .result a { font-family: var(--mono); font-size: 12px; margin-right: 8px; }
   .pager { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 12px; font-size: 12px; color: var(--gray-dark); }
+
+  /* picking sessions on the list to export them together */
+  th.pick, td.pick { width: 30px; padding-right: 0; }
+  td.pick input, th.pick input { cursor: pointer; }
+  tr.picked td { background: var(--yellow-50); }
+  .selbar.none { background: transparent; box-shadow: inset 0 0 0 1px var(--border-ghost); }
+  .selbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; padding: 8px 10px 8px 12px; margin: -2px 0 12px; border-radius: var(--r-l); background: var(--yellow-50); box-shadow: inset 0 0 0 1px oklch(14.5% 0 0 / .08); font-size: 13px; }
+  .selbar b { font-weight: 600; }
+  .selbar .grow { flex: 1 1 auto; }
+  .selbar .tertiary { font-size: 12px; }
+
+  /* a day of steps in the import table: each device's count, and whether it is part of the comparison */
+  .daysrc { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; padding: 3px 8px 3px 6px; border: 1px solid var(--border-warm); border-radius: 10px; background: var(--white); margin: 0 4px 4px 0; white-space: nowrap; cursor: pointer; }
+  .daysrc i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+  .daysrc b { font-family: var(--mono); font-weight: 500; font-size: 11px; }
+  .daysrc input { width: 13px; height: 13px; margin: 0; }
+  .daysrc.out { color: var(--gray-dark); border-style: dashed; } .daysrc.out b { text-decoration: line-through; }
+  .daysrc.fixed { cursor: default; }
+  .worn { display: block; font-size: 11px; line-height: 15px; color: #A03600; }
+  .what small.as { color: var(--gray-dark); }
 
   /* who is chasing what: one card per tester, to their Progress page */
   .testers { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 8px; margin: 0 0 4px; scrollbar-width: thin; }
@@ -142,7 +163,7 @@
       <div class="steps">
         <div><b>1 · On the iPhone</b>Health app, your profile picture (top right), Export All Health Data. It makes export.zip.</div>
         <div><b>2 · Get it here</b>AirDrop or save it to Files, then drop it on this page. Zipped or unzipped both work.</div>
-        <div><b>3 · Pick the sessions</b>You will see every workout and night in the file, with the ones already imported marked.</div>
+        <div><b>3 · Pick the sessions</b>You will see every workout and night in the file, and each day of steps of the last six weeks, with the ones already imported marked.</div>
       </div>
     </div>
 
@@ -185,6 +206,7 @@
         <button type="button" data-kind="" class="on">All</button>
         <button type="button" data-kind="workout">Workouts</button>
         <button type="button" data-kind="sleep">Sleep</button>
+        <button type="button" data-kind="steps">Steps</button>
       </div>
     </label>
     <label class="field"><span>Device</span><select id="fDevice"><option value="">Any device</option></select></label>
@@ -199,8 +221,16 @@
 
   <section class="card" id="listCard">
     <div class="card-head">
-      <div><h2>Sessions</h2><div class="sub">A workout or a night recorded by more than one device at once. Open one for the heart rate lines, the side by side numbers and what stands out.</div></div>
+      <div><h2>Sessions</h2><div class="sub">A workout, a night or a day of steps recorded by more than one device at once. Open one for the heart rate lines, the side by side numbers and what stands out.</div></div>
       <span class="count" id="listCount"></span>
+    </div>
+    <div class="selbar none" id="selbar" hidden>
+      <span id="selCount"></span>
+      <span class="tertiary" id="selNote"></span>
+      <span class="grow"></span>
+      <button class="btn small" id="btnPickedSummary" type="button" title="One workbook: a line per session, every side-by-side number, agreement and findings">Export comparisons</button>
+      <button class="btn small" id="btnPickedFull" type="button" title="A zip: each session's own workbook with every reading, and the comparisons workbook">Export with every reading</button>
+      <button class="btn small ghost" id="btnPickedClear" type="button">Clear</button>
     </div>
     <div class="table-scroll" id="list"></div>
     <div class="pager" id="pager" hidden>
@@ -225,13 +255,15 @@
   const LUNA_COLOR = '#E8642A', PHONE_COLOR = '#9E9E9E';
   const REFERENCE_COLORS = ['#2E64E4', '#1BAF7A', '#1A1A18', '#7A4FD6'];
   const TAG_LABELS = { luna: 'Luna', polar: 'Polar', garmin: 'Garmin', fitbit: 'Fitbit', apple_watch: 'Apple Watch', whoop: 'Whoop', oura: 'Oura', ultrahuman: 'Ultrahuman', samsung: 'Samsung', coros: 'Coros', suunto: 'Suunto', wahoo: 'Wahoo', amazfit: 'Amazfit', strava: 'Strava', phone: 'Phone', other: 'Other' };
-  const ACTIVITY = { traditional_strength_training: 'Strength training', functional_strength_training: 'Functional strength', high_intensity_interval_training: 'HIIT', other: 'Other workout' };
+  const ACTIVITY = { traditional_strength_training: 'Strength training', functional_strength_training: 'Functional strength', high_intensity_interval_training: 'HIIT', core_training: 'Core training', other: 'Other workout' };
 
   const tagLabel = (t) => TAG_LABELS[t] || (t.charAt(0).toUpperCase() + t.slice(1).replace(/_/g, ' '));
   /** One colour per device, in the order given. */
   const colorsFor = (tags) => { let next = 0, luna = false; return tags.map((t) => { if (t === 'luna' && !luna) { luna = true; return LUNA_COLOR; } if (t === 'phone') return PHONE_COLOR; return REFERENCE_COLORS[next++ % REFERENCE_COLORS.length]; }); };
   const activityLabel = (key) => { if (!key) return 'Workout'; if (ACTIVITY[key]) return ACTIVITY[key]; const s = key.replace(/_/g, ' '); return s.charAt(0).toUpperCase() + s.slice(1); };
   const hkActivity = (id) => activityLabel(String(id || '').replace('HKWorkoutActivityType', '').replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2').toLowerCase());
+  const whatOf = (s) => (s.kind === 'sleep' ? 'Sleep' : s.kind === 'steps' ? 'Daily steps' : activityLabel(s.activity));
+  const nf = (n) => new Intl.NumberFormat('en-IN').format(Math.round(n));
   /** A moment in the wearer's own time zone, from epoch seconds and the offset the export wrote. */
   const local = (seconds, offsetMin) => new Date((seconds + offsetMin * 60) * 1000);
   const pad = (n) => String(n).padStart(2, '0');
@@ -296,12 +328,23 @@
   // ---------------------------------------------------------------------------------------------
   // The list
   // ---------------------------------------------------------------------------------------------
-  const state = { kind: '', offset: 0, total: 0, canManage: false };
+  // Sessions ticked on the list, by reference, kept across pages and filters until exported or cleared.
+  const state = { kind: '', offset: 0, total: 0, canManage: false, items: [], picked: new Map() };
 
   /** What the comparison found, in a few chips: the heart rate gap first, then the biggest numbers. */
   function agreement(s) {
     const box = el('span');
     const h = s.summary && s.summary.headline;
+    // A day of steps: the day's total, how closely the hours follow each other, and any stretch one device missed.
+    const sp = s.kind === 'steps' && s.summary && s.summary.pairs && s.summary.pairs[s.summary.primary ?? 0];
+    if (sp && sp.steps) {
+      const total = sp.rows.find((r) => r.key === 'steps' && r.diff !== null);
+      if (total) { const c = el('span', 'chip ' + total.verdict, total.pct !== null ? `Steps ${signed(total.pct, 1)}%` : `Steps ${signed(total.diff)}`); c.title = `${nf(total.test)} on ${tagLabel(h.test)} against ${nf(total.reference)} on ${tagLabel(h.reference)}.`; box.appendChild(c); }
+      if (sp.steps.r !== null) box.appendChild(el('span', 'chip', `Hourly r ${sp.steps.r.toFixed(2)}`));
+      const off = sp.steps.quiet.filter((q) => q.device === 'reference').length;
+      if (off) { const c = el('span', 'chip differs', `${tagLabel(h.reference)} off ${off === 1 ? 'once' : off + ' times'}?`); c.title = 'Stretches where the reference counted almost nothing while Luna counted a walk: it may not have been worn. Open the day to see the hours, and leave it out if so.'; box.appendChild(c); }
+      return box;
+    }
     // The headline numbers when there are any; otherwise whatever the two devices do have in
     // common (a pair with only its average heart rate or its start time still is a comparison).
     const lead = s.summary && s.summary.pairs && s.summary.pairs[s.summary.primary ?? 0];
@@ -336,6 +379,8 @@
   function renderList(data) {
     const host = $('list'); host.replaceChildren();
     state.total = data.total;
+    state.items = data.items;
+    updateSelbar();
     $('listCount').textContent = data.total ? `${data.total} session${data.total === 1 ? '' : 's'}` : '';
     $('totals').textContent = '';
     if (!data.items.length) {
@@ -348,17 +393,27 @@
       return;
     }
     const t = el('table'); const head = el('tr');
+    // Ticks or unticks every session on this page; the ones on other pages stay as they are.
+    const allTh = el('th', 'pick'); const all = el('input'); all.type = 'checkbox'; all.id = 'pickPage'; all.setAttribute('aria-label', 'Select every session on this page');
+    all.addEventListener('change', () => { for (const s of data.items) { if (all.checked) state.picked.set(s.ref, { ref: s.ref, id: s.id }); else state.picked.delete(s.ref); } renderList(data); });
+    allTh.appendChild(all); head.appendChild(allTh);
     for (const h of ['Session', 'When', 'What', 'Length', 'Devices', 'Tester', 'How they agree']) head.appendChild(el('th', h === 'Length' ? 'num' : null, h));
     t.appendChild(head);
     for (const s of data.items) {
-      const tr = el('tr', 'link'); tr.tabIndex = 0;
+      const picked = state.picked.has(s.ref);
+      const tr = el('tr', 'link' + (picked ? ' picked' : '')); tr.tabIndex = 0;
       const go = () => { location.href = HERE + '/' + encodeURIComponent(s.ref); };
       tr.addEventListener('click', go); tr.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+      const pc = el('td', 'pick'); const box = el('input'); box.type = 'checkbox'; box.checked = picked; box.setAttribute('aria-label', `Select ${s.ref}`);
+      // The tick is the row's own: it must not open the session.
+      pc.addEventListener('click', (e) => e.stopPropagation()); pc.addEventListener('keydown', (e) => e.stopPropagation());
+      box.addEventListener('change', () => { if (box.checked) state.picked.set(s.ref, { ref: s.ref, id: s.id }); else state.picked.delete(s.ref); tr.classList.toggle('picked', box.checked); updateSelbar(); });
+      pc.appendChild(box); tr.appendChild(pc);
       const start = local(Date.parse(s.started_at) / 1000, s.utc_offset_min);
       const ref = el('td', 'nowrap'); ref.appendChild(el('span', 'mono', s.ref)); if (s.is_test) ref.appendChild(el('span', 'pill test', 'test')); tr.appendChild(ref);
-      const when = el('td', 'nowrap'); when.appendChild(document.createTextNode(fmtDay(start))); when.appendChild(el('span', 'tertiary', ' ' + fmtClock(start))); tr.appendChild(when);
-      const what = el('td', 'what'); what.appendChild(el('b', null, s.title || (s.kind === 'sleep' ? 'Sleep' : activityLabel(s.activity)))); if (s.title) what.appendChild(el('small', null, s.kind === 'sleep' ? 'Sleep' : activityLabel(s.activity))); tr.appendChild(what);
-      tr.appendChild(el('td', 'num', fmtDur(s.duration_s)));
+      const when = el('td', 'nowrap'); when.appendChild(document.createTextNode(fmtDay(start))); when.appendChild(el('span', 'tertiary', s.kind === 'steps' ? ' all day' : ' ' + fmtClock(start))); tr.appendChild(when);
+      const what = el('td', 'what'); what.appendChild(el('b', null, s.title || whatOf(s))); if (s.title) what.appendChild(el('small', null, whatOf(s))); tr.appendChild(what);
+      tr.appendChild(el('td', 'num', s.kind === 'steps' ? '24 h' : fmtDur(s.duration_s)));
       const dev = el('td');
       const recs = (s.summary && s.summary.recordings) || [];
       if (recs.length) {
@@ -369,8 +424,9 @@
         recs.forEach((r, i) => {
           if (!r.logged && r.tag === 'phone') return;
           const name = r.label === r.source ? tagLabel(r.tag) : r.label;
-          const chip = devChip(cols[i], r.logged ? name : `${name} · ${r.hr ? 'heart rate only' : 'readings only'}`, !r.logged);
-          if (!r.logged) chip.title = `${name} did not log this ${s.kind === 'sleep' ? 'night' : 'workout'} itself. It only has ${r.hr ? 'the heart rate' : 'the readings'} it wrote to Apple Health during it.`;
+          const chip = devChip(cols[i], r.excluded ? `${name} · left out` : r.logged ? name : `${name} · ${r.hr ? 'heart rate only' : 'readings only'}`, !r.logged || r.excluded);
+          if (r.excluded) chip.title = `${name} is left out of this day's comparison: not worn all of it.`;
+          else if (!r.logged) chip.title = `${name} did not log this ${s.kind === 'sleep' ? 'night' : 'workout'} itself. It only has ${r.hr ? 'the heart rate' : 'the readings'} it wrote to Apple Health during it.`;
           dev.appendChild(chip);
         });
       }
@@ -381,6 +437,7 @@
       t.appendChild(tr);
     }
     host.appendChild(t);
+    updateSelbar();
     const more = data.total > PAGE;
     $('pager').hidden = !more;
     if (more) {
@@ -434,6 +491,95 @@
     catch (err) { toast('Could not export: ' + err.message); }
     finally { b.disabled = false; }
   });
+  // ---------------------------------------------------------------------------------------------
+  // Sessions picked on the list, exported together
+  // ---------------------------------------------------------------------------------------------
+  /** The most sessions exported with every reading at once: each is a workbook of its own, fetched one by one. */
+  const MAX_FULL = 25;
+  // Always in place, so ticking the first session does not move the rows under the pointer.
+  function updateSelbar() {
+    const n = state.picked.size;
+    // Nothing on the list and nothing picked: nothing to say.
+    $('selbar').hidden = !n && !state.items.length;
+    $('selbar').classList.toggle('none', !n);
+    $('selCount').replaceChildren(n ? el('b', null, `${n} selected`) : el('span', 'tertiary', 'Tick sessions to export just those'));
+    const elsewhere = [...state.picked.keys()].filter((ref) => !state.items.some((s) => s.ref === ref)).length;
+    $('selNote').textContent = elsewhere ? `${elsewhere} of them not on this page` : '';
+    $('btnPickedSummary').disabled = !n; $('btnPickedClear').hidden = !n;
+    $('btnPickedFull').disabled = !n || n > MAX_FULL;
+    $('btnPickedFull').title = n > MAX_FULL ? `At most ${MAX_FULL} sessions at a time with every reading; the comparisons export takes any number.` : 'A zip: each session’s own workbook with every reading, and the comparisons workbook';
+    const page = $('pickPage');
+    if (page) { const on = state.items.filter((s) => state.picked.has(s.ref)).length; page.checked = on > 0 && on === state.items.length; page.indeterminate = on > 0 && on < state.items.length; }
+  }
+  const pickedRefs = () => [...state.picked.keys()];
+  $('btnPickedClear').addEventListener('click', () => { state.picked.clear(); for (const tr of $('list').querySelectorAll('tr.picked')) { tr.classList.remove('picked'); const b = tr.querySelector('td.pick input'); if (b) b.checked = false; } updateSelbar(); });
+  $('btnPickedSummary').addEventListener('click', async () => {
+    const b = $('btnPickedSummary'); b.disabled = true;
+    try { await LunaShell.download('/v1/admin/benchmarks/export?refs=' + encodeURIComponent(pickedRefs().join(',')), 'luna-benchmarks-selected.xlsx'); }
+    catch (err) { toast('Could not export: ' + err.message); }
+    finally { b.disabled = !state.picked.size; }
+  });
+
+  /** A file the dashboard serves, as bytes with the name the server gave it. */
+  async function fetchFile(path, fallbackName) {
+    const r = await fetch(path, { credentials: 'same-origin', headers: { 'x-requested-with': 'dashboard' } });
+    if (!r.ok) { const b = await r.json().catch(() => null); const e = new Error((b && b.error && b.error.message) || `HTTP ${r.status}`); e.status = r.status; throw e; }
+    const name = (/filename="([^"]+)"/.exec(r.headers.get('content-disposition') || '') || [])[1] || fallbackName;
+    return { name, data: new Uint8Array(await r.arrayBuffer()) };
+  }
+  const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  const crc32 = (u8) => { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  /**
+   * Files in one zip, stored as they are: a workbook is compressed already, so packing it again only
+   * costs time. Names are UTF-8. Small enough to write here rather than load a library for.
+   */
+  function zipFiles(files) {
+    const enc = new TextEncoder(), now = new Date(), parts = [], dir = [];
+    const time = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+    const date = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+    let offset = 0;
+    for (const f of files) {
+      const name = enc.encode(f.name), crc = crc32(f.data), size = f.data.length;
+      const h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(10, time, true); h.setUint16(12, date, true);
+      h.setUint32(14, crc, true); h.setUint32(18, size, true); h.setUint32(22, size, true); h.setUint16(26, name.length, true);
+      parts.push(h, name, f.data);
+      const d = new DataView(new ArrayBuffer(46));
+      d.setUint32(0, 0x02014b50, true); d.setUint16(4, 20, true); d.setUint16(6, 20, true); d.setUint16(8, 0x0800, true); d.setUint16(12, time, true); d.setUint16(14, date, true);
+      d.setUint32(16, crc, true); d.setUint32(20, size, true); d.setUint32(24, size, true); d.setUint16(28, name.length, true); d.setUint32(42, offset, true);
+      dir.push(d, name);
+      offset += 30 + name.length + size;
+    }
+    const e = new DataView(new ArrayBuffer(22));
+    e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
+    e.setUint32(12, dir.reduce((n, x) => n + x.byteLength, 0), true); e.setUint32(16, offset, true);
+    return new Blob([...parts, ...dir, e], { type: 'application/zip' });
+  }
+  function saveBlob(blob, name) {
+    const a = el('a'); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+  }
+  // Each session's own workbook (every reading) and one with all their comparisons, in a single zip.
+  $('btnPickedFull').addEventListener('click', async () => {
+    const picked = [...state.picked.values()];
+    if (!picked.length || picked.length > MAX_FULL) return;
+    const b = $('btnPickedFull'), label = b.textContent; b.disabled = true;
+    try {
+      const files = [];
+      for (let i = 0; i < picked.length; i++) {
+        b.textContent = `Exporting ${i + 1} of ${picked.length}…`;
+        files.push(await fetchFile(`/v1/admin/benchmarks/${encodeURIComponent(picked[i].id)}/export`, `luna-benchmark-${picked[i].ref}.xlsx`));
+      }
+      b.textContent = 'Packing…';
+      files.push(await fetchFile('/v1/admin/benchmarks/export?refs=' + encodeURIComponent(picked.map((x) => x.ref).join(',')), 'luna-benchmarks-selected.xlsx'));
+      const d = new Date();
+      saveBlob(zipFiles(files), `luna-benchmarks-${picked.length}-sessions-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.zip`);
+      toast(`Exported ${picked.length} session${picked.length === 1 ? '' : 's'}`);
+    } catch (err) { toast('Could not export: ' + err.message); }
+    finally { b.textContent = label; b.disabled = !state.picked.size || state.picked.size > MAX_FULL; }
+  });
+
   $('btnPrev').addEventListener('click', () => { state.offset = Math.max(0, state.offset - PAGE); load(); });
   $('btnNext').addEventListener('click', () => { state.offset += PAGE; load(); });
 
@@ -473,7 +619,7 @@
     } catch (err) { show('stepPick'); fail(err.message || 'Could not read that file.'); return; }
     imp.busy = false;
     const scan = imp.scan;
-    if (!scan.workouts.length && !scan.nights.length) { show('stepPick'); fail('No workouts or sleep in this export. Check that the devices are allowed to write to Apple Health, then export again.'); return; }
+    if (!scan.workouts.length && !scan.nights.length && !scan.stepDays.length) { show('stepPick'); fail('No workouts, sleep or steps in this export. Check that the devices are allowed to write to Apple Health, then export again.'); return; }
     if (!$('tester').value.trim()) $('tester').value = scan.tester || '';
     await checkFound();
   }
@@ -481,22 +627,30 @@
   /** Asks the server which sessions in the file are one and the same, and which are already stored. */
   async function checkFound() {
     const scan = imp.scan;
-    imp.byKey = new Map([...scan.workouts, ...scan.nights].map((x) => [x.key, x]));
-    // The newest 500: an export holds years, a benchmark is about the last few days.
-    const all = [...imp.byKey.values()].sort((a, b) => b.start - a.start);
-    const candidates = all.slice(0, 500).map((x) => ({ key: x.key, kind: x.kind, source: x.source, activity: x.activity || null, start: x.start, end: x.end }));
+    imp.byKey = new Map([...scan.workouts, ...scan.nights, ...scan.stepDays].map((x) => [x.key, x]));
+    // The newest 500 workouts and nights: an export holds years, a benchmark is about the last few
+    // days. Days of steps are the last six weeks already.
+    const all = [...scan.workouts, ...scan.nights].sort((a, b) => b.start - a.start);
+    const candidates = [
+      ...all.slice(0, 500).map((x) => ({ key: x.key, kind: x.kind, source: x.source, activity: x.activity || null, start: x.start, end: x.end })),
+      ...scan.stepDays.map((x) => ({ key: x.key, kind: 'steps', source: x.source, start: x.start, end: x.end, samples: x.samples })),
+    ];
     try {
       const res = await api('/v1/admin/benchmarks/check', { method: 'POST', body: { tester: $('tester').value.trim(), candidates } });
-      imp.groups = res.groups.sort((a, b) => b.start - a.start).map((g, i) => ({ ...g, index: i, picked: false }));
+      // A day of steps sorts by its evening, so it sits after that day's workouts.
+      const at = (g) => (g.kind === 'steps' ? g.end - 1 : g.start);
+      imp.groups = res.groups.sort((a, b) => at(b) - at(a)).map((g, i) => ({ ...g, index: i, picked: false, out: new Set() }));
       prefillBuild(res.last_build);
     } catch (err) { show('stepPick'); fail(err.status === 403 ? 'Your role cannot import benchmarks.' : 'Could not check the export: ' + err.message); return; }
-    const sources = scan.sources.filter((s) => s.workouts || s.sleep || s.heartRate).map((s) => s.name);
+    const sources = scan.sources.filter((s) => s.workouts || s.sleep || s.heartRate || s.steps).map((s) => s.name);
     const found = $('found'); found.replaceChildren();
     const fresh = imp.groups.filter((g) => g.status !== 'imported').length;
-    found.appendChild(el('b', null, `${scan.workouts.length} workout${scan.workouts.length === 1 ? '' : 's'} and ${scan.nights.length} night${scan.nights.length === 1 ? '' : 's'}`));
+    const days = imp.groups.filter((g) => g.kind === 'steps').length;
+    found.appendChild(el('b', null, `${scan.workouts.length} workout${scan.workouts.length === 1 ? '' : 's'}, ${scan.nights.length} night${scan.nights.length === 1 ? '' : 's'} and ${days} day${days === 1 ? '' : 's'} of steps`));
     found.appendChild(document.createTextNode(` in this export, written by ${sources.join(', ') || 'no known source'}. `));
     found.appendChild(el('b', null, `${fresh} not imported yet.`));
-    if (all.length > 500) found.appendChild(document.createTextNode(' Showing the newest 500.'));
+    if (all.length > 500) found.appendChild(document.createTextNode(' Showing the newest 500 workouts and nights.'));
+    if (days) found.appendChild(document.createTextNode(' A day of steps is offered when Luna and another device both counted steps that day; untick a device that was not worn all day to leave it out.'));
     if (imp.src.kind === 'xml') found.appendChild(document.createTextNode(' GPS routes are only in the zip; choose export.zip to include them.'));
     pick('recent');
     show('stepChoose');
@@ -548,16 +702,23 @@
       box.addEventListener('change', () => { g.picked = box.checked; for (const b of $('pickSeg').querySelectorAll('button')) b.classList.remove('on'); updateImportButton(); });
       c.appendChild(box); tr.appendChild(c);
       const d = local(g.start, offset);
-      const when = el('td', 'nowrap'); when.appendChild(document.createTextNode(fmtDay(d))); when.appendChild(el('span', 'tertiary', ` ${fmtClock(d)}–${fmtClock(local(g.end, offset))}`)); tr.appendChild(when);
+      const when = el('td', 'nowrap'); when.appendChild(document.createTextNode(fmtDay(d))); when.appendChild(el('span', 'tertiary', g.kind === 'steps' ? ' all day' : ` ${fmtClock(d)}–${fmtClock(local(g.end, offset))}`)); tr.appendChild(when);
       const what = el('td', 'what');
-      const acts = [...new Set(g.members.map((m) => m.activity).filter(Boolean))];
-      what.appendChild(el('b', null, g.kind === 'sleep' ? 'Sleep' : acts.length ? acts.map(hkActivity).join(' / ') : 'Workout'));
+      // A workout type this tester's workouts from that device are changed to, as someone set before.
+      const acts = [...new Set(g.members.map((m) => (m.activity_as ? activityLabel(m.activity_as) : m.activity ? hkActivity(m.activity) : null)).filter(Boolean))];
+      what.appendChild(el('b', null, g.kind === 'sleep' ? 'Sleep' : g.kind === 'steps' ? 'Daily steps' : acts.length ? acts.join(' / ') : 'Workout'));
+      const inText = (l) => (l === l.toUpperCase() ? l : l.charAt(0).toLowerCase() + l.slice(1));
+      for (const m of g.members) if (m.activity_as) what.appendChild(el('small', 'as', `${m.source}: ${hkActivity(m.activity)}, taken as ${inText(m.activity_as_label)} as set before`));
       tr.appendChild(what);
-      tr.appendChild(el('td', 'num', fmtDur(g.end - g.start)));
-      const by = el('td'); const cols = colorsFor(g.members.map((m) => m.tag)); g.members.forEach((m, i) => { const chip = devChip(cols[i], m.source); if (m.status === 'imported') chip.title = 'Already imported'; by.appendChild(chip); }); tr.appendChild(by);
+      tr.appendChild(el('td', 'num', g.kind === 'steps' ? '24 h' : fmtDur(g.end - g.start)));
+      const by = el('td'); const cols = colorsFor(g.members.map((m) => m.tag));
+      if (g.kind === 'steps') stepsChips(by, g, cols);
+      else g.members.forEach((m, i) => { const chip = devChip(cols[i], m.source); if (m.status === 'imported') chip.title = 'Already imported'; by.appendChild(chip); });
+      tr.appendChild(by);
       const st = el('td', 'nowrap');
       if (g.status === 'imported') { st.appendChild(el('span', 'pill have', 'Already imported')); }
       else if (g.status === 'adds_device') { st.appendChild(el('span', 'pill adds', 'Adds a device')); }
+      else if (g.status === 'updates') { const p = el('span', 'pill more', 'More steps'); p.title = 'Stored already; a device synced more of this day since. Importing brings the rest.'; st.appendChild(p); }
       else st.appendChild(el('span', 'pill new', 'New'));
       if (g.session) { st.appendChild(document.createTextNode(' ')); const a = el('a', 'mono', g.session.ref); a.href = HERE + '/' + encodeURIComponent(g.session.ref); a.target = '_blank'; a.rel = 'noopener'; st.appendChild(a); }
       tr.appendChild(st);
@@ -566,6 +727,37 @@
     host.appendChild(t);
     updateImportButton();
   }
+  /**
+   * Each device's steps that day, with a tick: unticked, the device is stored but left out of the
+   * comparison (it was not worn all day). Luna is taken to be worn all day and has no tick. A device
+   * far below Luna gets a word of warning; whether it was worn is the uploader's call.
+   */
+  function stepsChips(host, g, cols) {
+    const luna = g.members.find((m) => m.tag === 'luna');
+    const lunaSteps = luna ? (imp.byKey.get(luna.key) || {}).steps : null;
+    g.members.forEach((m, i) => {
+      const day = imp.byKey.get(m.key) || {};
+      // A stored device (even one with more samples to take) keeps the choice made when it was imported: change it on the day's page.
+      const isLuna = m.tag === 'luna', stored = m.status !== 'new';
+      const chip = el('label', 'daysrc' + (g.out.has(m.source) ? ' out' : '') + (isLuna || stored ? ' fixed' : ''));
+      if (!isLuna && !stored) {
+        const tick = el('input'); tick.type = 'checkbox'; tick.checked = !g.out.has(m.source);
+        tick.setAttribute('aria-label', `Compare ${m.source}'s steps with Luna's`);
+        tick.addEventListener('change', () => { if (tick.checked) g.out.delete(m.source); else g.out.add(m.source); chip.classList.toggle('out', !tick.checked); });
+        chip.appendChild(tick);
+      }
+      const sw = el('i'); sw.style.background = cols[i]; chip.appendChild(sw);
+      chip.appendChild(document.createTextNode(m.source + ' '));
+      chip.appendChild(el('b', null, day.steps !== undefined ? nf(day.steps) : '—'));
+      const span = day.first !== undefined ? `steps from ${fmtClock(local(day.first, day.offsetMin || 0))} to ${fmtClock(local(day.last, day.offsetMin || 0))}` : '';
+      chip.title = isLuna ? `Luna is taken to be worn all day: it is the device under test. ${span}` : stored ? `Already imported${m.status === 'more' ? '; this export has more of its steps, which importing adds' : ''}. To leave it out, open the day. ${span}` : `Untick to leave it out of the comparison, if it was not worn all day. ${span}`;
+      const wrap = el('span'); wrap.style.display = 'inline-block'; wrap.style.verticalAlign = 'top'; wrap.appendChild(chip);
+      // A fifth under Luna is more than two wrist counters differ by: worth a second look before importing.
+      if (!isLuna && !stored && lunaSteps && day.steps < lunaSteps * 0.8) wrap.appendChild(el('span', 'worn', `${Math.round((1 - day.steps / lunaSteps) * 100)}% under Luna: ${m.tag === 'phone' ? 'carried' : 'worn'} all day?`));
+      host.appendChild(wrap);
+    });
+  }
+
   function updateImportButton() {
     const n = imp.groups.filter((g) => g.picked).length;
     const open = imp.groups.filter((g) => g.status !== 'imported').length;
@@ -600,7 +792,8 @@
     const build = { firmware_version: $('impFirmware').value.trim() || null, app_version: $('impApp').value.trim() || null, platform: $('impPlatform').value || null };
     try {
       // Only what is not stored yet is read out; a stored device's samples are skipped by the server anyway.
-      const sessions = chosen.map((g) => ({ id: g.index, kind: g.kind, start: g.start, end: g.end, members: g.members.filter((m) => m.status !== 'imported').map((m) => imp.byKey.get(m.key)).filter(Boolean) }));
+      // A device unticked on a day of steps goes along, marked as left out of the comparison.
+      const sessions = chosen.map((g) => ({ id: g.index, kind: g.kind, start: g.start, end: g.end, members: g.members.filter((m) => m.status !== 'imported').map((m) => { const x = imp.byKey.get(m.key); return x && g.kind === 'steps' ? { ...x, excluded: g.out.has(m.source) } : x; }).filter(Boolean) }));
       const payloads = await imp.mod.extractSessions(imp.src, sessions, imp.scan, { onProgress: (f) => progress(f * 0.85) });
       for (let i = 0; i < payloads.length; i++) {
         progress(0.85 + 0.15 * (i / payloads.length), `Saving session ${i + 1} of ${payloads.length}…`, '');
@@ -619,7 +812,7 @@
     if (results.length) {
       const created = results.filter((r) => r.status === 'created').length, updated = results.filter((r) => r.status === 'updated').length, same = results.filter((r) => r.status === 'unchanged').length;
       const r = el('div', 'result');
-      r.appendChild(document.createTextNode([created && `${created} session${created === 1 ? '' : 's'} added`, updated && `${updated} gained a device`, same && `${same} already stored`].filter(Boolean).join(', ') + '. '));
+      r.appendChild(document.createTextNode([created && `${created} session${created === 1 ? '' : 's'} added`, updated && `${updated} gained a device or more steps`, same && `${same} already stored`].filter(Boolean).join(', ') + '. '));
       for (const x of results) { const a = el('a', null, x.session.ref); a.href = HERE + '/' + encodeURIComponent(x.session.ref); r.appendChild(a); }
       box.appendChild(r);
     }

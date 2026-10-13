@@ -109,7 +109,18 @@ const ACTIVITY_LABELS: Record<string, string> = {
   other: 'Other workout',
   mixed_cardio: 'Mixed cardio',
   cross_training: 'Cross training',
+  core_training: 'Core training',
 };
+
+/**
+ * Workout types a person can change a recording to, most likely first: a device's own choice is not
+ * always what was done (testers pick HIIT on Garmin for a strength session). Any other Apple Health
+ * type is accepted by the API as well.
+ */
+export const CHOOSABLE_ACTIVITIES = [
+  'traditional_strength_training', 'functional_strength_training', 'high_intensity_interval_training', 'core_training', 'cross_training',
+  'mixed_cardio', 'running', 'walking', 'hiking', 'cycling', 'elliptical', 'rowing', 'stair_climbing', 'yoga', 'pilates', 'dance', 'swimming', 'other',
+].map((key) => ({ key, label: activityLabel(key) }));
 
 /** "HKWorkoutActivityTypeTraditionalStrengthTraining" -> "traditional_strength_training". */
 export function activityKey(identifier: string | null | undefined): string {
@@ -124,6 +135,12 @@ export function activityLabel(key: string | null | undefined): string {
   if (known) return known;
   const s = key.replace(/_/g, ' ');
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** A workout type inside a sentence: "strength training", but "HIIT". */
+export function activityInText(key: string | null | undefined): string {
+  const label = activityLabel(key);
+  return label === label.toUpperCase() ? label : label.charAt(0).toLowerCase() + label.slice(1);
 }
 
 /** Whether pace (time per km) is the natural way to read this workout's speed. */

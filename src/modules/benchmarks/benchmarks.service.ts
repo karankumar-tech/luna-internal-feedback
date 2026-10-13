@@ -4,7 +4,7 @@ import {
   ANALYSIS_VERSION, analyzeSession, displayOrder, fingerprintOf, groupCandidates, looksLikeSameSession, mergeSeries, normalizeRecording, overlapShare,
   type Candidate, type IncomingRecording, type Kind,
 } from './analyze.js';
-import { guessTag, isOnFoot, tagLabel } from './metrics.js';
+import { activityKey, activityLabel, guessTag, isOnFoot, tagLabel, TEST_TAG } from './metrics.js';
 import { listWorkbook, sessionWorkbook, type ExportFile, type ExportOptions } from './export.js';
 import { GOALS, groupByTester, leaderboard, progressReport, testerKey } from './progress.js';
 import { toRec, type BenchmarkScreenshot, type BenchmarksRepo, type ListFilters, type LunaBuild, type RecordingHead, type RecordingRow, type SessionRow } from './benchmarks.repo.js';
@@ -33,9 +33,16 @@ export interface ImportInput {
   recordings: IncomingRecording[];
 }
 
-export type CandidateStatus = 'new' | 'imported';
-/** new: nothing like it is stored. adds_device: a stored session gains a device. imported: all of it is already stored. */
-export type GroupStatus = 'new' | 'adds_device' | 'imported';
+/** more: a day of steps that is stored, but this export holds more of its samples (a device synced late). */
+export type CandidateStatus = 'new' | 'imported' | 'more';
+/**
+ * new: nothing like it is stored. adds_device: a stored session gains a device. updates: a stored day
+ * of steps gets the samples a device synced since. imported: all of it is already stored.
+ */
+export type GroupStatus = 'new' | 'adds_device' | 'updates' | 'imported';
+
+/** A candidate for the check: a workout, a night, or one source's day of steps (with its sample count). */
+export type CheckCandidate = Candidate & { samples?: number | null };
 
 const iso = (seconds: number) => new Date(seconds * 1000).toISOString();
 
@@ -147,12 +154,25 @@ export class BenchmarksService {
     return listWorkbook(page.items, opts);
   }
 
+  /** The sessions picked on the list, by reference or id, as the same workbook. Unknown references are named in the error. */
+  async exportPicked(refs: string[], opts: ExportOptions): Promise<ExportFile> {
+    const wanted = [...new Set(refs.map((r) => r.trim()).filter(Boolean))];
+    let rows = await this.repo.byRefs(wanted);
+    const found = new Set(rows.flatMap((r) => [r.id, r.ref]));
+    const missing = wanted.filter((w) => !found.has(w) && !found.has(w.toUpperCase()));
+    if (missing.length) throw AppError.notFound(`No benchmark session ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ` and ${missing.length - 5} more` : ''}`);
+    if (await this.refresh(rows)) rows = await this.repo.byRefs(wanted);
+    return listWorkbook(rows, { ...opts, filters: [['Picked', `${rows.length} session${rows.length === 1 ? '' : 's'} picked on the list: ${rows.map((r) => r.ref).join(', ')}`]] });
+  }
+
   /**
    * This tester's other sessions of the same kind recorded close to this one, that could be joined
    * with it: a device whose clock is off records the same workout as a separate session. One where
    * a device logged something in both is left out: that device recorded two things.
    */
   private async nearby(session: SessionRow, mine: RecordingHead[]) {
+    // A day of steps is that day: the one before and after are other days, never the same one.
+    if (session.kind === 'steps') return [];
     const others = (await this.repo.overlapping(session.tester, session.kind, session.started_at - NEARBY_S, session.ended_at + NEARBY_S))
       .filter((o) => o.id !== session.id);
     const heads = await this.repo.heads(others.map((o) => o.id));
@@ -182,6 +202,7 @@ export class BenchmarksService {
     if (!target || !other) throw AppError.notFound('No benchmark session with that id or reference');
     if (target.id === other.id) throw AppError.validation([{ path: 'other', message: 'a session cannot be merged with itself' }]);
     if (target.kind !== other.kind) throw AppError.validation([{ path: 'other', message: `${other.ref} is a ${other.kind} session and ${target.ref} a ${target.kind} session` }]);
+    if (target.kind === 'steps') throw AppError.validation([{ path: 'other', message: 'days of steps are not merged: each is one day' }]);
     const shots = [...target.screenshots, ...other.screenshots.filter((o) => !target.screenshots.some((t) => t.file_id === o.file_id))];
     await this.repo.transaction(async (c) => {
       const [here, there] = await Promise.all([this.repo.recordings(target.id, c), this.repo.recordings(other.id, c)]);
@@ -239,11 +260,12 @@ export class BenchmarksService {
    * Looks at the workouts and nights found in an export before anything is uploaded: which of them
    * are the same session on different devices, and which are already stored.
    */
-  async check(tester: string, candidates: Candidate[]) {
+  async check(tester: string, candidates: CheckCandidate[]) {
     const fp = (c: Candidate) => fingerprintOf(c.kind, c.source, c.start, c.end);
     const stored = new Map((await this.repo.byFingerprints(candidates.map(fp))).map((r) => [r.fingerprint, r]));
     const lastTags = await this.repo.lastTags([...new Set(candidates.map((c) => c.source))]);
-    const groups = groupCandidates(candidates);
+    const rules = await this.repo.activityRules(tester);
+    const groups = groupCandidates(candidates) as (Omit<ReturnType<typeof groupCandidates>[number], 'members'> & { members: CheckCandidate[] })[];
     // Everything this tester has stored across the span of the export, fetched once.
     const mine = tester.trim() && candidates.length
       ? await this.repo.overlapping(tester, null, Math.min(...candidates.map((c) => c.start)), Math.max(...candidates.map((c) => c.end)))
@@ -252,8 +274,17 @@ export class BenchmarksService {
     for (const g of groups) {
       const members = g.members.map((c) => {
         const hit = stored.get(fp(c));
-        return { key: c.key, source: c.source, activity: c.activity ?? null, start: c.start, end: c.end, status: (hit ? 'imported' : 'new') as CandidateStatus, tag: hit?.device_tag ?? lastTags.get(c.source)?.tag ?? guessTag(c.source) };
+        // A stored day of steps with fewer samples than this export has: the export brings the rest.
+        const status: CandidateStatus = !hit ? 'new' : g.kind === 'steps' && c.samples != null && (hit.samples ?? 0) < c.samples ? 'more' : 'imported';
+        // A workout type this tester's workouts from this source are changed to, from the next import on.
+        const rule = g.kind === 'workout' && c.activity ? rules.find((x) => x.source === c.source && x.from === activityKey(c.activity!)) : undefined;
+        return {
+          key: c.key, source: c.source, activity: c.activity ?? null, start: c.start, end: c.end, status, tag: hit?.device_tag ?? lastTags.get(c.source)?.tag ?? guessTag(c.source),
+          ...(rule ? { activity_as: rule.to, activity_as_label: activityLabel(rule.to) } : {}),
+        };
       });
+      // A day of steps is a benchmark of Luna: one without Luna, or with Luna alone, is not offered.
+      if (g.kind === 'steps' && (members.length < 2 || !members.some((m) => m.tag === TEST_TAG))) continue;
       const hits = g.members.map((c) => stored.get(fp(c))).filter((h) => h !== undefined);
       let session = hits[0] ? { id: hits[0].session_id, ref: hits[0].ref } : null;
       // Nothing of it is stored under the same start and end, but this tester may already have the
@@ -266,7 +297,8 @@ export class BenchmarksService {
         }
       }
       const left = members.filter((m) => m.status === 'new').length;
-      const status: GroupStatus = left === 0 ? 'imported' : session ? 'adds_device' : 'new';
+      const more = members.filter((m) => m.status === 'more').length;
+      const status: GroupStatus = left === 0 && more === 0 ? 'imported' : !session ? 'new' : left ? 'adds_device' : 'updates';
       out.push({ kind: g.kind, start: g.start, end: g.end, status, session, members });
     }
     return { groups: out, last_build: await this.lastBuild(tester) };
@@ -288,11 +320,27 @@ export class BenchmarksService {
 
   private async importOnce(input: ImportInput, uploadedBy: string | null) {
     const window = { start: input.start, end: input.end };
+    const now = new Date().toISOString();
     const normalized = input.recordings
-      .map((r) => normalizeRecording(r, input.kind, window))
+      .map((r) => {
+        const n = normalizeRecording(r, input.kind, window);
+        // The uploader left this device out of the day: not worn all of it.
+        if (input.kind === 'steps' && r.excluded) n.details.excluded = { by: uploadedBy, at: now, at_import: true };
+        return n;
+      })
       // A source with neither a workout or night of its own nor any sample has nothing to store.
       .filter((r) => r.logged || Object.keys(r.series).length > 0);
-    if (!normalized.some((r) => r.logged)) throw AppError.validation([{ path: 'recordings', message: 'at least one recording must carry the workout or the night itself' }]);
+    if (!normalized.some((r) => r.logged)) throw AppError.validation([{ path: 'recordings', message: input.kind === 'steps' ? 'at least one recording must carry its day of steps' : 'at least one recording must carry the workout or the night itself' }]);
+    // This tester's workouts from a source logged as one type are another, as a person decided before (Garmin's HIIT as strength training).
+    if (input.kind === 'workout') {
+      const rules = await this.repo.activityRules(input.tester);
+      for (const rec of normalized) {
+        const rule = rec.logged && rec.activity ? rules.find((x) => x.source === rec.source && x.from === rec.activity) : undefined;
+        if (!rule) continue;
+        rec.details.activity_set = { from: rule.from, to: rule.to, scope: 'tester', by: rule.by, at: now };
+        rec.activity = rule.to;
+      }
+    }
     const build: Partial<LunaBuild> = { firmware_version: input.firmware_version ?? null, app_version: input.app_version ?? null, platform: input.platform ?? null };
 
     return this.repo.transaction(async (c) => {
@@ -309,6 +357,11 @@ export class BenchmarksService {
         if (near) session = await this.repo.session(near.id, c);
       }
       const fresh = normalized.filter((r) => !(r.fingerprint && storedSet.has(r.fingerprint)));
+      // A stored day of steps that this export has more samples of (a device synced late): its readings are replaced.
+      const refresh = input.kind !== 'steps' ? [] : normalized.flatMap((r) => {
+        const hit = stored.find((x) => x.fingerprint === r.fingerprint);
+        return hit && (hit.samples ?? 0) < (r.details.day?.samples ?? 0) ? [{ id: hit.id, rec: r }] : [];
+      });
       if (!session) {
         if (!fresh.some((r) => r.logged)) throw AppError.conflict('This session is already stored.');
         session = await this.repo.createSession(c, { kind: input.kind, tester: input.tester, start: input.start, end: input.end, utc_offset_min: input.utc_offset_min, is_test: input.is_test ?? false, uploaded_by: uploadedBy, build });
@@ -323,20 +376,28 @@ export class BenchmarksService {
       const lastTags = await this.repo.lastTags(fresh.map((r) => r.source), c);
       const added: string[] = [];
       const addsLogged = fresh.some((r) => r.logged && !have.has(r.source));
-      const skipped: string[] = normalized.filter((r) => !fresh.includes(r)).map((r) => r.source);
+      const refreshed: string[] = [];
+      for (const { id, rec } of refresh) {
+        await this.repo.replaceDay(c, id, rec.series, rec.details.day ?? null);
+        refreshed.push(rec.source);
+      }
+      const skipped: string[] = normalized.filter((r) => !fresh.includes(r) && !refreshed.includes(r.source)).map((r) => r.source);
       for (const rec of fresh) {
         if (have.has(rec.source)) { skipped.push(rec.source); continue; }
         // A source joining a stored session without a workout of its own adds nothing new to compare.
         if (!created && !rec.logged && !addsLogged) { skipped.push(rec.source); continue; }
         const last = lastTags.get(rec.source);
         const device = rec.details.device ?? undefined;
-        await this.repo.insertRecording(c, session.id, rec, last?.tag ?? guessTag(rec.source, device), last?.label ?? null);
+        const tag = last?.tag ?? guessTag(rec.source, device);
+        // Luna is taken to be worn all day: it is the device under test, never left out.
+        if (tag === TEST_TAG && rec.details.excluded) delete rec.details.excluded;
+        await this.repo.insertRecording(c, session.id, rec, tag, last?.label ?? null);
         have.add(rec.source);
         added.push(rec.source);
       }
-      if (added.length) await this.recompute(c, session.id, input.kind);
+      if (added.length || refreshed.length) await this.recompute(c, session.id, input.kind);
       const after = (await this.repo.session(session.id, c))!;
-      return { status: created ? 'created' as const : added.length ? 'updated' as const : 'unchanged' as const, session: { id: after.id, ref: after.ref }, added, skipped };
+      return { status: created ? 'created' as const : added.length || refreshed.length ? 'updated' as const : 'unchanged' as const, session: { id: after.id, ref: after.ref }, added, refreshed, skipped };
     });
   }
 
@@ -350,7 +411,7 @@ export class BenchmarksService {
       start: a.window.start, end: a.window.end, activity: a.activity,
       devices: [...new Set(rows.map((r) => r.device_tag))].sort(),
       summary: a.summary,
-    }, rows.map((r) => ({ id: r.id, metrics: a.metrics.get(r.id) ?? {}, details: { ...r.details, hr: a.hr.get(r.id) ?? null } })));
+    }, rows.map((r) => ({ id: r.id, metrics: a.metrics.get(r.id) ?? {}, details: { ...r.details, hr: a.hr.get(r.id) ?? null, ...(kind === 'steps' ? { steps: a.steps.get(r.id) ?? null } : {}) } })));
   }
 
   async update(idOrRef: string, patch: { title?: string | null; notes?: string | null; tester?: string; is_test?: boolean } & Partial<LunaBuild>) {
@@ -365,8 +426,17 @@ export class BenchmarksService {
    * active_kcal are for Luna, which does not always write them to Apple Health: read off its app and
    * typed in, null to clear. max_pace_s is for any device that logged a workout on foot: none of them
    * writes its fastest pace to Apple Health.
+   *
+   * activity changes the workout type a device logged (Garmin's "HIIT" that was strength training).
+   * activity_scope 'tester' makes it every workout of this tester that this source logged as that type,
+   * stored and imported from then on; 'session' (the default) only this one.
+   *
+   * excluded leaves a device out of a day of steps (it was not worn the whole day), or takes it back in.
    */
-  async updateRecording(idOrRef: string, recordingId: string, patch: { device_tag?: string; device_label?: string | null; distance_km?: number | null; active_kcal?: number | null; max_pace_s?: number | null }, by: string | null = null) {
+  async updateRecording(idOrRef: string, recordingId: string, patch: {
+    device_tag?: string; device_label?: string | null; distance_km?: number | null; active_kcal?: number | null; max_pace_s?: number | null;
+    activity?: string; activity_scope?: 'session' | 'tester'; excluded?: boolean;
+  }, by: string | null = null) {
     const session = await this.repo.session(idOrRef);
     if (!session) throw AppError.notFound('No benchmark session with that id or reference');
     const rec = (await this.repo.recordings(session.id)).find((r) => r.id === recordingId);
@@ -376,19 +446,41 @@ export class BenchmarksService {
     const entered = typed.filter((k) => patch[k] !== null);
     const workout = session.kind === 'workout' && rec.logged;
     for (const k of entered) {
-      if (k === 'max_pace_s' && !(workout && isOnFoot(rec.activity))) throw AppError.validation([{ path: k, message: 'a max pace can only be entered for a run, walk or hike that the device logged' }]);
+      if (k === 'max_pace_s' && !(workout && isOnFoot(patch.activity ?? rec.activity))) throw AppError.validation([{ path: k, message: 'a max pace can only be entered for a run, walk or hike that the device logged' }]);
       if (k !== 'max_pace_s' && !(workout && (patch.device_tag ?? rec.device_tag) === 'luna')) throw AppError.validation([{ path: k, message: 'distance and calories can only be entered for a workout that Luna logged' }]);
     }
+    if (patch.activity !== undefined && !workout) throw AppError.validation([{ path: 'activity', message: 'only a workout the device logged has a workout type' }]);
+    if (patch.excluded !== undefined) {
+      if (session.kind !== 'steps') throw AppError.validation([{ path: 'excluded', message: 'only a device in a day of steps can be left out; remove a device from a workout or a night instead' }]);
+      if (patch.excluded && (patch.device_tag ?? rec.device_tag) === TEST_TAG) throw AppError.validation([{ path: 'excluded', message: 'Luna is taken to be worn all day: it is the device under test' }]);
+    }
+    const at = new Date().toISOString();
+    const also: string[] = [];
     await this.repo.transaction(async (c) => {
       await this.repo.patchRecording(c, rec.id, patch);
       if (typed.length) {
         const merged = { ...rec.details.manual, ...patch };
         const values = Object.fromEntries(FIELDS.filter((k) => merged[k] != null).map((k) => [k, merged[k]]));
-        await this.repo.setManual(c, rec.id, Object.keys(values).length ? { ...values, by, at: new Date().toISOString() } : null);
+        await this.repo.setManual(c, rec.id, Object.keys(values).length ? { ...values, by, at } : null);
+      }
+      if (patch.excluded !== undefined) await this.repo.setExcluded(c, rec.id, patch.excluded ? { by, at } : null);
+      if (patch.activity !== undefined) {
+        // What the device logged it as, however often it has been changed since.
+        const from = rec.details.activity_set?.from ?? rec.activity ?? 'other';
+        if (patch.activity_scope === 'tester') {
+          const sessions = await this.repo.setActivityForTester(c, { tester: session.tester, source: rec.source_name, from, to: patch.activity, by, at, keep: rec.id });
+          for (const id of sessions) {
+            if (id === session.id) continue;
+            const other = await this.repo.session(id, c);
+            if (other) { await this.recompute(c, id, other.kind); also.push(other.ref); }
+          }
+        } else {
+          await this.repo.setActivity(c, rec.id, patch.activity, patch.activity === from ? null : { from, to: patch.activity, scope: 'session', by, at });
+        }
       }
       await this.recompute(c, session.id, session.kind);
     });
-    return this.get(session.id);
+    return { ...(await this.get(session.id)), also_changed: also.sort() };
   }
 
   async remove(idOrRef: string): Promise<{ deleted: string }> {

@@ -4,6 +4,7 @@ import { buildApp, type App } from '../../src/build-app.js';
 import { loadConfig } from '../../src/config.js';
 import { BenchmarksRepo } from '../../src/modules/benchmarks/benchmarks.repo.js';
 import { BenchmarksService } from '../../src/modules/benchmarks/benchmarks.service.js';
+import { ANALYSIS_VERSION } from '../../src/modules/benchmarks/analyze.js';
 
 /**
  * Device benchmarks: importing what an export's devices recorded, recognising a second upload,
@@ -134,9 +135,9 @@ describe('importing a session', () => {
   it('redoes a stored session whose numbers came from an older version of the analysis', async () => {
     await app.db.query(`update luna_feedback.benchmark_sessions set summary = jsonb_set(summary - 'gaps', '{version}', '1') where ref = $1`, [ref]);
     const listed = (await app.inject({ method: 'GET', url: `/v1/admin/benchmarks?tester=${encodeURIComponent(TESTER)}&is_test=true`, headers: admin })).json();
-    expect(listed.items[0].summary).toMatchObject({ version: 4, gaps: [], why: null });
+    expect(listed.items[0].summary).toMatchObject({ version: ANALYSIS_VERSION, gaps: [], why: null });
     await app.db.query(`update luna_feedback.benchmark_sessions set summary = jsonb_set(summary - 'gaps', '{version}', '1') where ref = $1`, [ref]);
-    expect((await get(ref)).summary).toMatchObject({ version: 4, gaps: [], why: null });
+    expect((await get(ref)).summary).toMatchObject({ version: ANALYSIS_VERSION, gaps: [], why: null });
   });
 
   it('lists sessions, filtered by device, tester and kind', async () => {
@@ -572,6 +573,215 @@ describe('screenshots on a session', () => {
     expect((await app2.inject({ method: 'DELETE', url: `/v1/admin/benchmarks/${ref}`, headers: admin })).statusCode).toBe(200);
     expect(deleted.sort()).toEqual(['bm_a', 'bm_b', 'bm_c', 'bm_d', 'bm_e', 'bm_f']);
     await app2.close();
+  });
+});
+
+describe('a day of steps', () => {
+  const GARMIN = `Garmin Connect ${run}`, PHONE2 = `Phone steps ${run}`;
+  // The wearer's midnight (UTC+05:30), far from the other tests' sessions.
+  const DAY = (() => { const t = T0 + 3_000_000; return t - ((t + 330 * 60) % 86400); })();
+  const hourly = (from: number, counts: number[]) => ({ unit: 'count', t0: from, s: counts.map((_, h) => h * 3600), e: counts.map((_, h) => h * 3600 + 3600), v: counts });
+  const LUNA_DAY = [0, 0, 0, 0, 0, 0, 0, 800, 1200, 900, 600, 400, 700, 500, 300, 600, 900, 1100, 800, 400, 200, 100, 0, 0];
+  // Garmin was put on at 10:00: almost nothing from 07:00 to 10:00, then close to Luna.
+  const GARMIN_DAY = [0, 0, 0, 0, 0, 0, 0, 20, 30, 10, 640, 420, 720, 530, 310, 640, 930, 1150, 820, 420, 210, 90, 0, 0];
+  const dayRec = (source: string, counts: number[], day = DAY, extra: Record<string, unknown> = {}) => ({ source, logged: true, samples: { HKQuantityTypeIdentifierStepCount: hourly(day, counts) }, day: { start: day, end: day + 86400 }, ...extra });
+  const dayBody = (recordings: unknown[], day = DAY) => ({ tester: TESTER, kind: 'steps', start: day, end: day + 86400, utc_offset_min: 330, is_test: true, recordings });
+  const check = async (candidates: unknown[]) => (await app.inject({ method: 'POST', url: '/v1/admin/benchmarks/check', headers: as('qc'), payload: { tester: TESTER, candidates } })).json();
+  const cand = (key: string, source: string, samples: number, day = DAY) => ({ key, kind: 'steps', source, start: day, end: day + 86400, samples });
+  let ref = '';
+
+  it('offers a day that Luna and another device counted, and stores it compared hour by hour', async () => {
+    const offered = await check([cand('l', LUNA, 24), cand('g', GARMIN, 24)]);
+    expect(offered.groups).toHaveLength(1);
+    expect(offered.groups[0]).toMatchObject({ kind: 'steps', status: 'new', session: null });
+    expect(offered.groups[0].members.map((m: { key: string; tag: string }) => [m.key, m.tag]).sort()).toEqual([['g', 'garmin'], ['l', 'luna']]);
+
+    const r = await post(dayBody([dayRec(LUNA, LUNA_DAY), dayRec(GARMIN, GARMIN_DAY)]), as('qc'));
+    expect(r.statusCode).toBe(201);
+    ref = r.json().session.ref;
+    const s = await get(ref);
+    expect(s).toMatchObject({ kind: 'steps', activity: null, duration_s: 86400, devices: ['garmin', 'luna'], nearby: [] });
+    const [luna, garmin] = s.recordings;
+    expect(luna).toMatchObject({ device_tag: 'luna', metrics: { steps: { value: 9_500 }, first_steps: { value: DAY + 7 * 3600 }, last_steps: { value: DAY + 21 * 3600 } } });
+    expect(garmin.metrics.steps.value).toBe(6_940);
+    expect(garmin.details.steps.hourly).toEqual(GARMIN_DAY);
+    expect(garmin.details.day).toEqual({ samples: 24 });
+
+    const pair = s.summary.pairs[0];
+    expect(pair).toMatchObject({ test: luna.id, reference: garmin.id, hr: null, sleep: null });
+    expect(pair.rows.find((x: { key: string }) => x.key === 'steps')).toMatchObject({ test: 9_500, reference: 6_940, verdict: 'differs' });
+    expect(pair.rows.find((x: { key: string }) => x.key === 'first_steps')).toMatchObject({ diff: -10_800, verdict: 'differs' });
+    expect(pair.rows.some((x: { key: string }) => x.key === 'start')).toBe(false);
+    // 07:00 to 10:00: Luna counted 2,900 and Garmin 60. Garmin was not on the wrist.
+    expect(pair.steps.quiet).toEqual([{ device: 'reference', from: DAY + 7 * 3600, to: DAY + 10 * 3600, test: 2900, reference: 60 }]);
+    expect(pair.steps.r).toBeGreaterThan(0.5);
+    expect(s.summary.findings.map((f: { title: string }) => f.title)).toEqual(expect.arrayContaining(['Steps differ from the reference', expect.stringMatching(/may not have been worn from 07:00 to 10:00$/)]));
+    expect(s.summary.headline).toMatchObject({ test: 'luna', reference: 'garmin' });
+  });
+
+  it('knows a stored day, takes the rest of one a device synced late, and does not offer a day without Luna', async () => {
+    const again = await check([cand('l', LUNA, 24), cand('g', GARMIN, 24)]);
+    expect(again.groups[0]).toMatchObject({ status: 'imported', session: { ref } });
+    const more = await check([cand('l', LUNA, 24), cand('g', GARMIN, 30)]);
+    expect(more.groups[0]).toMatchObject({ status: 'updates', session: { ref } });
+    expect(more.groups[0].members.find((m: { key: string }) => m.key === 'g').status).toBe('more');
+
+    // Six more samples: the evening Garmin synced later.
+    const late = { ...dayRec(GARMIN, GARMIN_DAY) };
+    const st = late.samples.HKQuantityTypeIdentifierStepCount;
+    for (let i = 0; i < 6; i++) { st.s.push(22 * 3600 + i * 300); st.e.push(22 * 3600 + i * 300 + 300); st.v.push(50); }
+    const r = await post(dayBody([late]));
+    expect(r.json()).toMatchObject({ status: 'updated', session: { ref }, refreshed: [GARMIN], added: [] });
+    const garmin = (await get(ref)).recordings.find((x: { source_name: string }) => x.source_name === GARMIN);
+    expect(garmin.metrics.steps.value).toBe(7_240);
+    expect(garmin.details.day).toEqual({ samples: 30 });
+
+    const other = DAY + 86400;
+    const without = await check([cand('g', GARMIN, 10, other), cand('p', PHONE2, 10, other)]);
+    expect(without.groups).toEqual([]);
+    const alone = await check([cand('l', LUNA, 10, other)]);
+    expect(alone.groups).toEqual([]);
+  });
+
+  it('leaves a device out of the day and takes it back in; Luna is never left out', async () => {
+    const s = await get(ref);
+    const [luna, garmin] = s.recordings;
+    const url = (id: string) => `/v1/admin/benchmarks/${ref}/recordings/${id}`;
+    const out = await app.inject({ method: 'PATCH', url: url(garmin.id), headers: as('qc'), payload: { excluded: true } });
+    expect(out.statusCode).toBe(200);
+    const left = out.json();
+    expect(left.summary).toMatchObject({ pairs: [], primary: null, why: 'Every other device is left out' });
+    expect(left.summary.recordings.find((x: { id: string }) => x.id === garmin.id)).toMatchObject({ excluded: true });
+    expect(left.summary.gaps).toEqual(expect.arrayContaining([expect.stringMatching(/is left out of the comparison: not worn the whole day/)]));
+    expect(left.recordings.find((x: { id: string }) => x.id === garmin.id).details.excluded).toMatchObject({ by: email('qc') });
+    // Its count stays on the session.
+    expect(left.recordings.find((x: { id: string }) => x.id === garmin.id).metrics.steps.value).toBe(7_240);
+    expect((await app.inject({ method: 'GET', url: `/v1/admin/benchmarks?tester=${encodeURIComponent(TESTER)}&is_test=true&kind=steps&comparable=false`, headers: admin })).json().total).toBe(1);
+
+    const lunaOut = await app.inject({ method: 'PATCH', url: url(luna.id), headers: as('qc'), payload: { excluded: true } });
+    expect(lunaOut.statusCode).toBe(422);
+    expect(JSON.stringify(lunaOut.json())).toContain('worn all day');
+    expect((await app.inject({ method: 'PATCH', url: url(garmin.id), headers: as('biz'), payload: { excluded: false } })).statusCode).toBe(403);
+
+    const back = await app.inject({ method: 'PATCH', url: url(garmin.id), headers: as('qc'), payload: { excluded: false } });
+    expect(back.json().summary.pairs).toHaveLength(1);
+    expect(back.json().recordings.find((x: { id: string }) => x.id === garmin.id).details.excluded).toBeUndefined();
+  });
+
+  it('stores a device the uploader unticked as left out, and keeps days of steps out of Progress', async () => {
+    const day = DAY + 2 * 86400;
+    const r = await post(dayBody([dayRec(LUNA, LUNA_DAY, day), dayRec(GARMIN, GARMIN_DAY, day, { excluded: true })], day));
+    expect(r.statusCode).toBe(201);
+    const s = await get(r.json().session.ref);
+    expect(s.recordings.find((x: { source_name: string }) => x.source_name === GARMIN).details.excluded).toMatchObject({ at_import: true });
+    expect(s.summary.pairs).toEqual([]);
+    // Luna sent as left out is taken in anyway.
+    const day2 = DAY + 3 * 86400;
+    const r2 = await post(dayBody([dayRec(LUNA, LUNA_DAY, day2, { excluded: true }), dayRec(GARMIN, GARMIN_DAY, day2)], day2));
+    expect((await get(r2.json().session.ref)).summary.pairs).toHaveLength(1);
+
+    const list = (await app.inject({ method: 'GET', url: `/v1/admin/benchmarks?tester=${encodeURIComponent(TESTER)}&is_test=true&kind=steps`, headers: admin })).json();
+    expect(list.total).toBe(3);
+    const progress = (await app.inject({ method: 'GET', url: `/v1/admin/benchmarks/progress?tester=${encodeURIComponent(TESTER)}&is_test=true`, headers: admin })).json();
+    expect(progress.report.recent.some((x: { kind: string }) => x.kind === 'steps')).toBe(false);
+  });
+
+  it('exports a day with its steps hour by hour', async () => {
+    const one = await app.inject({ method: 'GET', url: `/v1/admin/benchmarks/${ref}/export`, headers: admin });
+    const files = unzipSync(one.rawPayload);
+    const names = [...strFromU8(files['xl/workbook.xml']!).matchAll(/<sheet name="([^"]+)"/g)].map((m) => m[1]);
+    expect(names).toContain('Steps by hour');
+    expect(strFromU8(files['xl/worksheets/sheet1.xml']!)).toContain('Daily steps');
+  });
+
+  it('refuses a day of steps without its day, and a merge of two days', async () => {
+    const bad = dayBody([{ source: LUNA, logged: true, samples: { HKQuantityTypeIdentifierStepCount: hourly(DAY, LUNA_DAY) } }]);
+    expect((await post(bad)).statusCode).toBe(422);
+    const other = (await app.inject({ method: 'GET', url: `/v1/admin/benchmarks?tester=${encodeURIComponent(TESTER)}&is_test=true&kind=steps`, headers: admin })).json().items.find((x: { ref: string }) => x.ref !== ref);
+    expect((await app.inject({ method: 'POST', url: `/v1/admin/benchmarks/${ref}/merge`, headers: as('qc'), payload: { other: other.ref } })).statusCode).toBe(422);
+  });
+});
+
+describe('a workout type changed by hand', () => {
+  const GARMIN = `Garmin Connect W ${run}`, LUNA_W = `Luna W ${run}`;
+  const HIIT = 'HKWorkoutActivityTypeHighIntensityIntervalTraining', STRENGTH = 'HKWorkoutActivityTypeTraditionalStrengthTraining';
+  const at = (n: number) => T0 + 4_000_000 + n * 100_000;
+  const typed = (source: string, t: number, activity: string) => ({ source, logged: true, samples: { HKQuantityTypeIdentifierHeartRate: heartRate(t, 1800, 2, (x) => 110 + 15 * Math.sin(x / 200)) }, workout: { ...workout(t, t + 1800, 0, 200), activity, stats: [] } });
+  const session = async (n: number, withLuna = true) => (await post({ ...body(at(n), withLuna ? [typed(GARMIN, at(n), HIIT), typed(LUNA_W, at(n) + 20, STRENGTH)] : [typed(GARMIN, at(n), HIIT)]), end: at(n) + 1800 })).json().session.ref as string;
+  const patch = (ref: string, rid: string, payload: unknown) => app.inject({ method: 'PATCH', url: `/v1/admin/benchmarks/${ref}/recordings/${rid}`, headers: as('qc'), payload: payload as object });
+  const garminOf = async (ref: string) => (await get(ref)).recordings.find((x: { source_name: string }) => x.source_name === GARMIN);
+  let a = '', b = '', d = '';
+
+  it('points out a workout two devices logged as different types, and changes one by hand', async () => {
+    a = await session(0); b = await session(1); d = await session(2, false);
+    const s = await get(a);
+    expect(s.activity).toBe('high_intensity_interval_training');
+    expect(s.summary.findings.map((f: { title: string }) => f.title)).toContain('Logged as different workouts');
+
+    const r = await patch(a, (await garminOf(a)).id, { activity: 'traditional_strength_training' });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({ activity: 'traditional_strength_training', also_changed: [] });
+    expect(r.json().summary.findings.map((f: { title: string }) => f.title)).not.toContain('Logged as different workouts');
+    expect((await garminOf(a)).details.activity_set).toMatchObject({ from: 'high_intensity_interval_training', to: 'traditional_strength_training', scope: 'session', by: email('qc') });
+    // One workout only: the next import of a Garmin HIIT stays HIIT.
+    const offered = (await app.inject({ method: 'POST', url: '/v1/admin/benchmarks/check', headers: as('qc'), payload: { tester: TESTER, candidates: [{ key: 'x', kind: 'workout', source: GARMIN, activity: HIIT, start: at(5), end: at(5) + 1800 }] } })).json();
+    expect(offered.groups[0].members[0].activity_as).toBeUndefined();
+  });
+
+  it('changes all of a tester’s workouts of that type from that device, and their next imports', async () => {
+    const r = await patch(b, (await garminOf(b)).id, { activity: 'traditional_strength_training', activity_scope: 'tester' });
+    expect(r.statusCode).toBe(200);
+    // The one set by hand on its own session is left as set; the other stored one follows.
+    expect(r.json().also_changed).toEqual([d]);
+    expect((await get(d)).activity).toBe('traditional_strength_training');
+    expect((await garminOf(d)).details.activity_set).toMatchObject({ scope: 'tester', from: 'high_intensity_interval_training' });
+
+    const offered = (await app.inject({ method: 'POST', url: '/v1/admin/benchmarks/check', headers: as('qc'), payload: { tester: TESTER, candidates: [{ key: 'x', kind: 'workout', source: GARMIN, activity: HIIT, start: at(5), end: at(5) + 1800 }] } })).json();
+    expect(offered.groups[0].members[0]).toMatchObject({ activity_as: 'traditional_strength_training', activity_as_label: 'Strength training' });
+    const next = await session(5);
+    const s = await get(next);
+    expect(s.activity).toBe('traditional_strength_training');
+    expect((await garminOf(next)).details.activity_set).toMatchObject({ from: 'high_intensity_interval_training', to: 'traditional_strength_training', scope: 'tester' });
+
+    // Changed back for all of them: the rule goes with it.
+    const back = await patch(b, (await garminOf(b)).id, { activity: 'high_intensity_interval_training', activity_scope: 'tester' });
+    expect(back.json().also_changed.sort()).toEqual([d, next].sort());
+    const after = (await app.inject({ method: 'POST', url: '/v1/admin/benchmarks/check', headers: as('qc'), payload: { tester: TESTER, candidates: [{ key: 'y', kind: 'workout', source: GARMIN, activity: HIIT, start: at(7), end: at(7) + 1800 }] } })).json();
+    expect(after.groups[0].members[0].activity_as).toBeUndefined();
+  });
+
+  it('refuses a workout type where there is no workout, and a scope without a type', async () => {
+    const s = await get(a);
+    const garmin = s.recordings.find((x: { source_name: string }) => x.source_name === GARMIN);
+    expect((await patch(a, garmin.id, { activity: 'Strength Training!' })).statusCode).toBe(422);
+    expect((await patch(a, garmin.id, { activity_scope: 'tester' })).statusCode).toBe(422);
+    expect((await patch(a, garmin.id, { excluded: true })).statusCode).toBe(422);
+    const tags = (await app.inject({ method: 'GET', url: '/v1/admin/benchmarks/device-tags', headers: admin })).json();
+    expect(tags.activities[0]).toEqual({ key: 'traditional_strength_training', label: 'Strength training' });
+  });
+});
+
+describe('exporting the sessions picked on the list', () => {
+  it('exports exactly the ones picked, by reference or id, whatever the filters', async () => {
+    const items = (await app.inject({ method: 'GET', url: `/v1/admin/benchmarks?tester=${encodeURIComponent(TESTER)}&is_test=true&limit=100`, headers: admin })).json().items;
+    expect(items.length).toBeGreaterThan(3);
+    const [x, y, z] = items as { id: string; ref: string }[];
+    const r = await app.inject({ method: 'GET', url: `/v1/admin/benchmarks/export?refs=${x!.ref},${y!.id},${z!.ref.toLowerCase()}&kind=sleep`, headers: as('biz') });
+    expect(r.statusCode).toBe(200);
+    expect(r.headers['content-disposition']).toMatch(/^attachment; filename="luna-benchmarks-\d{4}-\d{2}-\d{2}\.xlsx"$/);
+    const files = unzipSync(r.rawPayload);
+    const sessions = strFromU8(files['xl/worksheets/sheet1.xml']!);
+    for (const s of [x!, y!, z!]) expect(sessions).toContain(`<t>${s.ref}</t>`);
+    const others = items.slice(3) as { ref: string }[];
+    for (const s of others) expect(sessions).not.toContain(`<t>${s.ref}</t>`);
+    expect(strFromU8(files['xl/worksheets/sheet5.xml']!)).toContain('Picked: 3 sessions picked on the list');
+
+    const missing = await app.inject({ method: 'GET', url: `/v1/admin/benchmarks/export?refs=${x!.ref},BM-99999999`, headers: admin });
+    expect(missing.statusCode).toBe(404);
+    expect(JSON.stringify(missing.json())).toContain('BM-99999999');
+    expect((await app.inject({ method: 'GET', url: '/v1/admin/benchmarks/export?refs=', headers: admin })).statusCode).toBe(422);
+    const many = Array.from({ length: 501 }, (_, i) => `BM-${i + 1}`).join(',');
+    expect((await app.inject({ method: 'GET', url: `/v1/admin/benchmarks/export?refs=${many}`, headers: admin })).statusCode).toBe(422);
   });
 });
 

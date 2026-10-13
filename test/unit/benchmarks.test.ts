@@ -5,7 +5,7 @@ import { zipSync, strToU8 } from 'fflate';
 import { buildNights, extractSessions, guessTester, openExport, parseDate, parseDevice, parseGpx, scanExport } from '../../src/pages/scripts/health-export.js';
 import {
   analyzeSession, buildStages, compareHeartRate, compareSleep, groupCandidates, heartRateQuality, looksLikeSameSession, mergeSeries, normalizeRecording, normalizeSeries,
-  sleepMetrics, type IncomingRecording, type Rec, type Series,
+  sleepMetrics, stepsDay, type IncomingRecording, type Rec, type Series,
 } from '../../src/modules/benchmarks/analyze.js';
 import { activityKey, activityLabel, guessTag, metricOf } from '../../src/modules/benchmarks/metrics.js';
 
@@ -195,6 +195,40 @@ describe('reading an Apple Health export', () => {
     const r = (start: number, end: number) => ({ source: 'Watch', start, end, value: 'HKCategoryValueSleepAnalysisAsleepCore', offsetMin: 330 });
     const nights = buildNights([r(0, 3600), r(3600 + 600, 7200), r(7200 + 3 * 3600, 7200 + 5 * 3600), r(90_000, 90_300)]);
     expect(nights.map((n: { start: number; end: number }) => [n.start, n.end])).toEqual([[0, 7200], [18_000, 25_200]]);
+  });
+
+  it('adds up each source’s steps per day, once each, and only for days that were over when the export was taken', async () => {
+    const lines = ['<?xml version="1.0" encoding="UTF-8"?>', '<HealthData locale="en_IN">', ' <ExportDate value="2026-10-01 09:00:00 +0530"/>'];
+    const step = (source: string, a: number, b: number, v: number) => lines.push(` <Record type="HKQuantityTypeIdentifierStepCount" sourceName="${source}" unit="count" creationDate="${at(b)}" startDate="${at(a)}" endDate="${at(b)}" value="${v}"/>`);
+    // Luna writes hourly totals; Garmin a few minutes at a time, twice over (it re-synced).
+    for (const day of [0, 1]) for (let h = 7; h < 20; h++) step('Luna', day * 86400 + h * 3600, day * 86400 + (h + 1) * 3600, 500);
+    for (let pass = 0; pass < 2; pass++) for (let m = 0; m < 60; m += 5) step('Connect', 86400 + 10 * 3600 + m * 60, 86400 + 10 * 3600 + (m + 5) * 60, 40);
+    // The export day (1 Oct, taken at 09:00) is not over: not offered. Steps months before are not either.
+    step('Luna', 2 * 86400 + 8 * 3600, 2 * 86400 + 9 * 3600, 300);
+    step('Luna', -90 * 86400, -90 * 86400 + 60, 10);
+    lines.push('</HealthData>');
+    const scan = await scanExport(await openExport(drip(lines.join('\n'), 333)));
+    const days = scan.stepDays.map((d: { source: string; day: string; steps: number; samples: number; kind: string }) => [d.kind, d.source, d.day, d.steps, d.samples]);
+    expect(days).toEqual([['steps', 'Luna', '2026-09-29', 6500, 13], ['steps', 'Connect', '2026-09-30', 480, 12], ['steps', 'Luna', '2026-09-30', 6500, 13]]);
+    const connect = scan.stepDays.find((d: { source: string }) => d.source === 'Connect');
+    expect(connect).toMatchObject({ key: 'd|Connect|2026-09-30', start: IST_MIDNIGHT + 86400, end: IST_MIDNIGHT + 2 * 86400, first: IST_MIDNIGHT + 86400 + 36000, offsetMin: 330 });
+    expect(scan.sources.find((x: { name: string }) => x.name === 'Connect').steps).toBe(12);
+
+    // Pass 2: the day's step samples alone, for the sources picked, with the day and a left-out mark.
+    const src = await openExport(drip(lines.join('\n'), 4096));
+    const day = scan.stepDays.filter((d: { day: string }) => d.day === '2026-09-30');
+    const [payload] = await extractSessions(src, [{ id: 0, kind: 'steps', start: day[0].start, end: day[0].end, members: day.map((d: object, i: number) => ({ ...d, excluded: i === 0 })) }], scan);
+    expect(payload).toMatchObject({ kind: 'steps', start: IST_MIDNIGHT + 86400, end: IST_MIDNIGHT + 2 * 86400, utc_offset_min: 330 });
+    const by = Object.fromEntries(payload.recordings.map((r: IncomingRecording) => [r.source, r]));
+    expect(Object.keys(by).sort()).toEqual(['Connect', 'Luna']);
+    expect(by.Connect).toMatchObject({ logged: true, excluded: true, day: { start: IST_MIDNIGHT + 86400, end: IST_MIDNIGHT + 2 * 86400 } });
+    expect(Object.keys(by.Luna.samples)).toEqual(['HKQuantityTypeIdentifierStepCount']);
+    expect(by.Connect.samples.HKQuantityTypeIdentifierStepCount.v).toHaveLength(12);
+    expect(by.Luna.excluded).toBeUndefined();
+
+    // What the server keeps of it: the day's total, its sample count, and the hours.
+    const luna = normalizeRecording(by.Luna, 'steps', { start: payload.start, end: payload.end });
+    expect(luna).toMatchObject({ logged: true, fingerprint: `steps|Luna|${IST_MIDNIGHT + 86400}|${IST_MIDNIGHT + 2 * 86400}`, details: { day: { samples: 13 } } });
   });
 
   it('thins a GPS track it cannot send whole', () => {
@@ -573,5 +607,47 @@ describe('which workouts in an export are one session', () => {
 
   it('keeps workouts that only touch apart', () => {
     expect(groupCandidates([c('a', 'Polar', 0, 1000), c('b', 'Luna', 900, 2000)])).toHaveLength(2);
+  });
+});
+
+describe('a day of steps', () => {
+  const D = 1_790_000_000 - (1_790_000_000 % 86400);
+  const rec = (id: string, tag: string, counts: number[], excluded = false): Rec => ({
+    id, source: id, tag, label: id, logged: true, activity: null, start: D, end: D + 86400, stages: null, route: null,
+    series: { steps: { label: 'Steps', unit: '', agg: 'sum', t0: D, t: counts.map((_, h) => h * 3600), d: counts.map(() => 3600), v: counts } },
+    details: excluded ? { excluded: { by: 'qc@x', at: '2026-10-13T00:00:00Z' } } : {},
+  });
+  const day = (f: (h: number) => number) => Array.from({ length: 24 }, (_, h) => (h >= 7 && h < 22 ? f(h) : 0));
+
+  it('spreads a sample over the hours it covers, and finds the first and last hour with steps', () => {
+    const d = stepsDay({ label: 'Steps', unit: '', agg: 'sum', t0: D + 7.5 * 3600, t: [0, 7200], d: [3600, 0], v: [600, 40] }, D, D + 86400);
+    expect(d.hourly.slice(6, 11)).toEqual([0, 300, 300, 40, 0]);
+    // 40 steps at 09:30 is under the 50 an hour needs to count as walking.
+    expect(d.first_at).toBe(D + 7 * 3600);
+    expect(d.last_at).toBe(D + 8 * 3600);
+  });
+
+  it('judges the day on 5% and 10%, and the hours one device missed', () => {
+    const luna = rec('luna', 'luna', day(() => 600));
+    const close = rec('garmin', 'garmin', day(() => 640));
+    let a = analyzeSession([luna, close], 'steps');
+    expect(a.activity).toBeNull();
+    expect(a.summary.pairs[0]!.rows.find((r) => r.key === 'steps')).toMatchObject({ test: 9000, reference: 9600, verdict: 'close' });
+    expect(a.summary.pairs[0]!.steps).toMatchObject({ hours: 15, quiet: [] });
+
+    const offEarly = rec('garmin', 'garmin', day((h) => (h < 10 ? 5 : 610)));
+    a = analyzeSession([luna, offEarly], 'steps');
+    const pair = a.summary.pairs[0]!;
+    expect(pair.steps!.quiet).toEqual([{ device: 'reference', from: D + 7 * 3600, to: D + 10 * 3600, test: 1800, reference: 15 }]);
+    expect(a.summary.findings.find((f) => f.title === 'garmin may not have been worn from 07:00 to 10:00')).toBeDefined();
+    expect(pair.rows.find((r) => r.key === 'first_steps')).toMatchObject({ diff: -3 * 3600, verdict: 'differs' });
+  });
+
+  it('compares nothing with a device that was left out, and says so', () => {
+    const a = analyzeSession([rec('luna', 'luna', day(() => 600)), rec('garmin', 'garmin', day(() => 600), true)], 'steps');
+    expect(a.summary.pairs).toEqual([]);
+    expect(a.summary.why).toBe('Every other device is left out');
+    expect(a.summary.recordings.find((r) => r.id === 'garmin')).toMatchObject({ excluded: true });
+    expect(a.metrics.get('garmin')!.steps!.value).toBe(9000);
   });
 });

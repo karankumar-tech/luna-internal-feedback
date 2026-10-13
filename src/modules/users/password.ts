@@ -40,21 +40,39 @@ export async function verifyPassword(password: string, stored: string): Promise<
   } catch { return false; }
 }
 
-export const PASSWORD_MIN_LENGTH = 10;
+export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 128;
 
-/** Rules kept deliberately mild: length does the work, character classes mostly annoy people. */
+/**
+ * Rules kept deliberately few: most people could not get past the earlier ones (10 characters, a
+ * letter and a digit, no part of their name or email). Length does the work; sign-in is locked after
+ * a few wrong tries, so what is left to refuse is what anyone would guess first.
+ */
 export const PASSWORD_RULES = [
-  `at least ${PASSWORD_MIN_LENGTH} characters`,
-  'at least one letter and one digit',
-  'not your email address, and not an obvious word like "password"',
+  `at least ${PASSWORD_MIN_LENGTH} characters, anything you like`,
+  'not something anyone would guess first, like "password123", "12345678" or your email address',
   'different from your last 5 passwords',
 ] as const;
 
-const OBVIOUS = [
-  'password', 'passw0rd', 'qwerty', 'welcome', 'letmein', 'admin123', 'changeme',
-  '12345678', '123456789', '1234567890', 'iloveyou', 'abc123', 'luna1234', 'lunaring',
-];
+/** Words that, with only digits and symbols around them, are what anyone tries first. */
+const COMMON_WORDS = new Set([
+  'password', 'passw', 'passwd', 'pass', 'pwd', 'qwerty', 'qwertyuiop', 'asdf', 'asdfgh', 'asdfghjkl', 'zxcvbnm', 'welcome', 'letmein',
+  'admin', 'administrator', 'changeme', 'iloveyou', 'abc', 'abcd', 'abcdef', 'test', 'user', 'login', 'secret', 'default',
+]);
+
+/** Look-alikes between two letters read as the letter: "p@ssw0rd" is "password". */
+const LEET: [RegExp, string][] = [[/(?<=[a-z])[@4](?=[a-z])/g, 'a'], [/(?<=[a-z])0(?=[a-z])/g, 'o'], [/(?<=[a-z])3(?=[a-z])/g, 'e'], [/(?<=[a-z])[$5](?=[a-z])/g, 's'], [/(?<=[a-z])[1!](?=[a-z])/g, 'i']];
+/** "Password@123" -> "password"; "P@ssw0rd!" -> "password"; "12345678" -> "". */
+const lettersOf = (lower: string) => LEET.reduce((s, [re, to]) => s.replace(re, to), lower).replace(/[^a-z]/g, '');
+
+/** Every character one step after the last (12345678, abcdefgh) or one step before it. */
+function isRun(value: string): boolean {
+  if (value.length < 4) return false;
+  const step = value.charCodeAt(1) - value.charCodeAt(0);
+  if (Math.abs(step) !== 1) return false;
+  for (let i = 2; i < value.length; i++) if (value.charCodeAt(i) - value.charCodeAt(i - 1) !== step) return false;
+  return true;
+}
 
 export interface PasswordProblem { path: string; message: string }
 
@@ -65,20 +83,20 @@ export function checkPasswordStrength(password: string, context: { email?: strin
 
   if (value.length < PASSWORD_MIN_LENGTH) problems.push({ path: 'password', message: `must be at least ${PASSWORD_MIN_LENGTH} characters` });
   if (value.length > PASSWORD_MAX_LENGTH) problems.push({ path: 'password', message: `must be at most ${PASSWORD_MAX_LENGTH} characters` });
+  // Refused rather than trimmed: typed again without the space at sign-in, it would not match.
   if (value.trim() !== value) problems.push({ path: 'password', message: 'must not start or end with a space' });
-  if (!/[a-zA-Z]/.test(value) || !/\d/.test(value)) problems.push({ path: 'password', message: 'must contain at least one letter and one digit' });
 
   const lower = value.toLowerCase();
-  if (OBVIOUS.some((w) => lower.includes(w))) problems.push({ path: 'password', message: 'is too easy to guess; avoid common words like "password" or "qwerty"' });
+  const letters = lettersOf(lower);
+  const guessable = /^(.)\1+$/.test(value) || isRun(lower)
+    // A common word dressed up with digits and symbols: "Password@123", "qwerty12345".
+    || COMMON_WORDS.has(letters) || (letters === '' && (isRun(lower.replace(/\D/g, '')) || /^(\d)\1+$/.test(lower.replace(/\D/g, ''))));
+  if (guessable) problems.push({ path: 'password', message: 'is too easy to guess; avoid "password123", "qwerty" or "12345678"' });
 
-  // The local part of the email, and any name word of 4+ characters.
-  const local = (context.email ?? '').split('@')[0]?.toLowerCase() ?? '';
-  if (local.length >= 4 && lower.includes(local)) problems.push({ path: 'password', message: 'must not contain your email address' });
-  for (const word of (context.name ?? '').toLowerCase().split(/\s+/)) {
-    if (word.length >= 4 && lower.includes(word)) { problems.push({ path: 'password', message: 'must not contain your name' }); break; }
-  }
-
-  if (/^(.)\1+$/.test(value)) problems.push({ path: 'password', message: 'must not be a single repeated character' });
+  // The email itself, or its part before the @, as the whole password. Adding to it is fine.
+  const email = (context.email ?? '').trim().toLowerCase();
+  const local = email.split('@')[0] ?? '';
+  if (email && (lower === email || (local.length >= 3 && lower === local))) problems.push({ path: 'password', message: 'must not be your email address' });
   return problems;
 }
 

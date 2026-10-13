@@ -49,24 +49,28 @@ describe('password rules', () => {
     expect(ok('Tr0ubador-Fence')).toBe(true);
   });
 
-  it('requires length and a mix of letters and digits', () => {
+  it('asks for length only: no letters-and-digits mix, no name or email rule', () => {
     expect(ok('short1')).toBe(false);
-    expect(ok('a'.repeat(PASSWORD_MIN_LENGTH))).toBe(false);      // no digit
-    expect(ok('1'.repeat(PASSWORD_MIN_LENGTH))).toBe(false);      // no letter
-    expect(ok('aaaaaaaaaaaa')).toBe(false);                        // repeated character
+    expect(ok('a'.repeat(PASSWORD_MIN_LENGTH))).toBe(false);      // one character repeated
+    expect(ok('1'.repeat(PASSWORD_MIN_LENGTH))).toBe(false);
+    expect(ok('sunflower')).toBe(true);                            // letters only
+    expect(ok('58273914')).toBe(true);                             // digits only, not a run
+    expect(ok('Navay@2026', { email: 'navay@gonoise.com', name: 'Navay' })).toBe(true);
+    expect(ok('Luna@2026')).toBe(true);
+    expect('Navay@26'.length).toBe(PASSWORD_MIN_LENGTH);
+    expect(ok('Navay@26')).toBe(true);
   });
 
-  it('rejects obvious choices', () => {
-    for (const p of ['password123', 'qwerty12345', 'letmein12345', 'Welcome1234']) {
+  it('rejects what anyone would guess first', () => {
+    for (const p of ['password123', 'Password@123', 'P@ssw0rd!!', 'qwerty12345', 'letmein12345', 'Welcome1234', '12345678', '87654321', 'abcdefgh', '00000000', 'admin@1234']) {
       expect(ok(p), p).toBe(false);
     }
   });
 
-  it('rejects a password built from the account it belongs to', () => {
-    expect(ok('karan1234567', { email: 'karan@gonoise.com' })).toBe(false);
-    expect(ok('kumar99887766', { email: 'k@gonoise.com', name: 'Karan Kumar' })).toBe(false);
-    // A short name fragment is not enough to trip it.
-    expect(ok('a-quiet-harbour-9', { email: 'a@b.com', name: 'Al' })).toBe(true);
+  it('rejects the email address as the whole password, not a password built on it', () => {
+    expect(ok('karan@gonoise.com', { email: 'karan@gonoise.com' })).toBe(false);
+    expect(ok('KaranKumar', { email: 'karankumar@gonoise.com' })).toBe(false);
+    expect(ok('karan1234567', { email: 'karan@gonoise.com' })).toBe(true);
   });
 
   it('rejects leading or trailing spaces', () => {
@@ -74,7 +78,7 @@ describe('password rules', () => {
   });
 
   it('names every problem at once so the form can show them together', () => {
-    const problems = checkPasswordStrength('abc', { email: 'abc@x.com' });
+    const problems = checkPasswordStrength(' abc', { email: 'abc@x.com' });
     expect(problems.length).toBeGreaterThanOrEqual(2);
     expect(problems.every((p) => p.path === 'password')).toBe(true);
   });

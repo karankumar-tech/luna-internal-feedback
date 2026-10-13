@@ -98,6 +98,13 @@
   .tip .r { display: flex; align-items: center; gap: 8px; } .tip .r i { width: 12px; height: 3px; border-radius: 2px; display: inline-block; }
   .tip .r b { font-family: var(--mono); font-weight: 500; min-width: 44px; } .tip .r span { color: #BDBDBD; }
   .multi { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px 28px; }
+  /* a workout type a person may correct, and how far the change reaches */
+  .acts { display: flex; flex-direction: column; gap: 4px; margin-top: 3px; font-family: var(--sans); white-space: normal; }
+  .acts select { padding: 3px 8px; font-size: 12px; line-height: 16px; max-width: 190px; }
+  .acts .ask { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 11px; color: var(--gray-dark); max-width: 300px; }
+  /* hours one device missed: the theme's yellow, which no device line uses */
+  .chart rect.quiet { fill: var(--yellow); opacity: .35; }
+  tr.out td { color: var(--gray-dark); }
   .multi h3 { margin-bottom: 2px; } .multi .legend { margin-bottom: 6px; }
 
   .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
@@ -155,6 +162,12 @@
   <section class="card" id="devicesCard">
     <div class="card-head"><div><h2>Devices</h2><div class="sub" id="devicesSub">What each device recorded. Set the brand if the guess is wrong: the device tagged Luna is the one under test.</div></div></div>
     <div class="table-scroll" id="devices"></div>
+  </section>
+
+  <section class="card" id="hourCard" hidden>
+    <div class="card-head"><div><h2>Steps hour by hour</h2><div class="sub" id="hourSub"></div></div></div>
+    <div class="legend" id="hourLegend" style="margin-bottom:8px"></div>
+    <div class="chart" id="hourChart"></div>
   </section>
 
   <section class="card" id="nearbyCard" hidden>
@@ -291,7 +304,7 @@
   // (pink, red and yellow do not). Colour is given by role, so the first reference is always blue.
   const LUNA_COLOR = '#E8642A', PHONE_COLOR = '#9E9E9E';
   const REFERENCE_COLORS = ['#2E64E4', '#1BAF7A', '#1A1A18', '#7A4FD6'];
-  const ACTIVITY = { traditional_strength_training: 'Strength training', functional_strength_training: 'Functional strength', high_intensity_interval_training: 'HIIT', other: 'Other workout' };
+  const ACTIVITY = { traditional_strength_training: 'Strength training', functional_strength_training: 'Functional strength', high_intensity_interval_training: 'HIIT', core_training: 'Core training', other: 'Other workout' };
   const STAGES = [
     { key: 'awake', label: 'Awake', level: 0, color: '#E8A33D' },
     { key: 'rem', label: 'REM', level: 1, color: '#7FC6E8' },
@@ -300,7 +313,7 @@
     { key: 'deep', label: 'Deep', level: 3, color: '#1B2A6B' },
     { key: 'in_bed', label: 'In bed', level: 0, color: '#D9D9D9' },
   ];
-  const state = { s: null, canManage: false, tags: [], pair: 0, hrView: 'lines', hrDetail: 'avg', colors: new Map() };
+  const state = { s: null, canManage: false, tags: [], activities: [], pair: 0, hrView: 'lines', hrDetail: 'avg', colors: new Map() };
 
   let toastT; const toast = (m) => { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', 3200); };
   async function api(path, opts = {}) {
@@ -322,10 +335,13 @@
   const nf = (n, digits = 0) => new Intl.NumberFormat('en-IN', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
   const signed = (n, digits = 0) => (n > 0 ? '+' : n < 0 ? '−' : '') + nf(Math.abs(n), digits);
   const isSleep = () => state.s.kind === 'sleep';
+  const isSteps = () => state.s.kind === 'steps';
+  /** A night and a day of steps are read in minutes; a workout to the second. */
+  const coarse = () => state.s.kind !== 'workout';
   /** 1216 -> "20:16"; for a night, "7 h 12 min". */
   function duration(s) {
     s = Math.round(s);
-    if (isSleep()) { const m = Math.round(s / 60); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${pad(m % 60)} min`; }
+    if (coarse()) { const m = Math.round(s / 60); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${pad(m % 60)} min`; }
     const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
     return h ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
   }
@@ -333,7 +349,7 @@
   /** A value in its unit, as a person would write it. */
   function value(v, unit) {
     if (v === null || v === undefined) return '—';
-    if (unit === 'clock') return clock(v, !isSleep());
+    if (unit === 'clock') return clock(v, !coarse());
     if (unit === 's') return duration(v);
     if (unit === 's/km') return `${Math.floor(v / 60)}:${pad(Math.round(v % 60))} /km`;
     if (unit === 'bpm') return `${nf(v)} bpm`;
@@ -347,8 +363,8 @@
   function difference(row) {
     if (row.diff === null) return '—';
     const d = row.diff, pct = row.pct !== null ? ` (${signed(row.pct, 1)}%)` : '';
-    if (row.unit === 'clock') return d === 0 ? 'same moment' : `${span(d)} ${d < 0 ? 'earlier' : 'later'}`;
-    if (row.unit === 's') return d === 0 ? 'same' : `${d > 0 ? '+' : '−'}${span(d)}${isSleep() ? '' : pct}`;
+    if (row.unit === 'clock') return d === 0 ? (isSteps() ? 'same hour' : 'same moment') : `${span(d)} ${d < 0 ? 'earlier' : 'later'}`;
+    if (row.unit === 's') return d === 0 ? 'same' : `${d > 0 ? '+' : '−'}${span(d)}${coarse() ? '' : pct}`;
     if (row.unit === 's/km') return `${signed(d)} s/km${pct}`;
     if (row.unit === 'bpm') return `${signed(d)} bpm`;
     if (row.unit === 'km') return (Math.abs(d) < 1 ? `${signed(d * 1000)} m` : `${signed(d, 2)} km`) + pct;
@@ -357,10 +373,12 @@
     return `${signed(d, Math.abs(d) >= 100 ? 0 : 1)} ${row.unit}${pct}`;
   }
   const activityLabel = (key) => { if (!key) return 'Workout'; if (ACTIVITY[key]) return ACTIVITY[key]; const s = key.replace(/_/g, ' '); return s.charAt(0).toUpperCase() + s.slice(1); };
+  /** A workout type inside a sentence: "strength training", but "HIIT". */
+  const inText = (key) => { const l = activityLabel(key); return l === l.toUpperCase() ? l : l.charAt(0).toLowerCase() + l.slice(1); };
   const recById = (id) => state.s.recordings.find((r) => r.id === id);
   const colorOf = (rec) => state.colors.get(rec.id);
   const nameOf = (rec) => rec.device_label;
-  const METRIC_ORDER = ['duration', 'time_in_bed', 'total_sleep', 'sleep_latency', 'waso', 'awakenings', 'sleep_efficiency', 'deep_sleep', 'core_sleep', 'rem_sleep', 'unstaged_sleep', 'distance', 'pace', 'max_pace', 'speed', 'active_energy', 'basal_energy', 'steps', 'cadence', 'heart_rate', 'vo2_max'];
+  const METRIC_ORDER = ['duration', 'time_in_bed', 'total_sleep', 'sleep_latency', 'waso', 'awakenings', 'sleep_efficiency', 'deep_sleep', 'core_sleep', 'rem_sleep', 'unstaged_sleep', 'distance', 'pace', 'max_pace', 'speed', 'active_energy', 'basal_energy', 'steps', 'first_steps', 'last_steps', 'cadence', 'heart_rate', 'vo2_max'];
   const PLATFORM = { ios: 'iOS', android: 'Android' };
   /** "fw 1.0.16 · app 2.0.6 · iOS"; empty when nothing was entered. */
   const buildText = (b) => (b ? [b.firmware_version && `fw ${b.firmware_version}`, b.app_version && `app ${b.app_version}`, b.platform && PLATFORM[b.platform]].filter(Boolean).join(' · ') : '');
@@ -563,11 +581,11 @@
 
   function renderHeader() {
     const s = state.s, start = epoch(s.started_at), end = epoch(s.ended_at);
-    const what = s.kind === 'sleep' ? 'Sleep' : activityLabel(s.activity);
-    const names = s.recordings.filter((r) => r.logged).map(nameOf);
+    const what = s.kind === 'sleep' ? 'Sleep' : s.kind === 'steps' ? 'Daily steps' : activityLabel(s.activity);
+    const names = s.recordings.filter((r) => r.logged && !r.details.excluded).map(nameOf);
     $('title').textContent = s.title || `${what}: ${names.join(' vs ') || 'no device'}`;
     document.title = `${s.ref} · ${s.title || what} · Luna Benchmarks`;
-    $('over').textContent = `${s.ref} · ${what} · ${day(start)}, ${clock(start)} to ${clock(end)}`;
+    $('over').textContent = isSteps() ? `${s.ref} · ${what} · ${day(start)}, midnight to midnight` : `${s.ref} · ${what} · ${day(start)}, ${clock(start)} to ${clock(end)}`;
     const meta = $('meta'); meta.replaceChildren();
     meta.appendChild(el('div', null, `Worn by ${s.tester}${s.is_test ? ' · test data' : ''}`));
     meta.appendChild(el('div', null, buildText(s) ? `Luna ${buildText(s)}` : 'Luna build not entered'));
@@ -599,7 +617,17 @@
     const host = $('tiles'); host.replaceChildren();
     const p = pairs()[state.s.summary.primary ?? 0];
     const tiles = [];
-    if (p && (p.hr || p.sleep)) {
+    if (p && p.steps) {
+      const test = recById(p.test), ref = recById(p.reference);
+      const row = (key) => p.rows.find((r) => r.key === key && r.diff !== null);
+      const total = row('steps');
+      if (total) tiles.push(tile('Steps, the whole day', total.pct !== null ? { value: signed(total.pct, 1), unit: '%' } : { value: signed(total.diff) }, `${nf(total.test)} on ${nameOf(test)}, ${nf(total.reference)} on ${nameOf(ref)}.`, true));
+      if (p.steps.r !== null) tiles.push(tile('Hour by hour', { value: p.steps.r.toFixed(2) }, `Correlation of the two through the day. In a typical hour they are ${nf(p.steps.hourly_gap)} steps apart.`));
+      for (const key of ['first_steps', 'last_steps']) {
+        const r = row(key); if (!r) continue;
+        tiles.push(tile(r.label, { value: value(r.test, 'clock') }, `${nameOf(test)}; ${value(r.reference, 'clock')} on ${nameOf(ref)}.`));
+      }
+    } else if (p && (p.hr || p.sleep)) {
       const test = recById(p.test), ref = recById(p.reference);
       const row = (key) => p.rows.find((r) => r.key === key && r.diff !== null);
       if (p.hr) {
@@ -624,7 +652,7 @@
       }
     } else {
       const rec = state.s.recordings.find((r) => r.logged) || state.s.recordings[0];
-      if (rec) for (const key of isSleep() ? ['total_sleep', 'time_in_bed', 'sleep_efficiency', 'deep_sleep', 'sleep_latency'] : ['duration', 'heart_rate', 'active_energy', 'distance', 'steps']) {
+      if (rec) for (const key of isSleep() ? ['total_sleep', 'time_in_bed', 'sleep_efficiency', 'deep_sleep', 'sleep_latency'] : isSteps() ? ['steps', 'first_steps', 'last_steps'] : ['duration', 'heart_rate', 'active_energy', 'distance', 'steps']) {
         const m = rec.metrics[key]; if (!m || tiles.length >= 4) continue;
         const text = value(m.value, m.unit), cut = text.lastIndexOf(' ');
         const big = m.unit === 's' || cut === -1 ? { value: text } : { value: text.slice(0, cut), unit: text.slice(cut + 1) };
@@ -647,7 +675,50 @@
   ];
   const onFoot = (r) => /running|walking|hiking/.test(r.activity || '');
   const manualOf = (r, f) => (r.details.manual && r.details.manual[f.field] != null ? r.details.manual[f.field] : null);
-  const canEnter = (r, f) => state.canManage && !isSleep() && r.logged && (f.luna ? r.device_tag === 'luna' : onFoot(r)) && (manualOf(r, f) !== null || !r.metrics[f.metric]);
+  const canEnter = (r, f) => state.canManage && state.s.kind === 'workout' && r.logged && (f.luna ? r.device_tag === 'luna' : onFoot(r)) && (manualOf(r, f) !== null || !r.metrics[f.metric]);
+
+  /**
+   * The workout type a device logged, which a person may correct (testers pick HIIT on Garmin for a
+   * strength session). After picking a type, they say how far it reaches: this workout, or every one
+   * this tester's device logged as the same type, stored and imported from now on.
+   */
+  function activityEditor(host, r) {
+    const was = r.activity || 'other';
+    const set = r.details.activity_set;
+    const from = (set && set.from) || was;
+    const box = el('div', 'acts');
+    const sel = el('select'); sel.setAttribute('aria-label', `Workout type of ${nameOf(r)}`);
+    const keys = state.activities.map((a) => a.key);
+    for (const k of [...new Set([was, from, ...keys])]) { const o = el('option', null, (state.activities.find((a) => a.key === k) || {}).label || activityLabel(k)); o.value = k; sel.appendChild(o); }
+    sel.value = was;
+    box.appendChild(sel);
+    if (set && set.from !== set.to) box.appendChild(el('small', null, `${nameOf(r)} logged it as ${inText(set.from)}${set.scope === 'tester' ? `; all of ${state.s.tester}'s are taken as ${inText(set.to)}` : ''}`));
+    sel.addEventListener('change', () => {
+      if (sel.value === was) return;
+      const to = sel.value;
+      const ask = el('div', 'ask');
+      ask.appendChild(document.createTextNode(`${activityLabel(to)}: `));
+      const one = el('button', 'btn small', 'This workout'); one.type = 'button';
+      const all = el('button', 'btn small', `All of ${state.s.tester}'s ${nameOf(r)} ${inText(from)} workouts`); all.type = 'button';
+      all.title = `Every workout ${state.s.tester}'s ${nameOf(r)} logged as ${inText(from)} becomes ${inText(to)}: the stored ones, and the ones imported from now on.`;
+      const no = el('button', 'btn small ghost', 'Cancel'); no.type = 'button';
+      one.addEventListener('click', () => patchActivity(r, to, 'session'));
+      all.addEventListener('click', () => patchActivity(r, to, 'tester'));
+      no.addEventListener('click', () => render());
+      ask.append(one, all, no);
+      for (const x of box.querySelectorAll('.ask')) x.remove();
+      box.appendChild(ask);
+    });
+    host.appendChild(box);
+  }
+  async function patchActivity(r, to, scope) {
+    await change(async () => {
+      const res = await api(`/v1/admin/benchmarks/${state.s.id}/recordings/${r.id}`, { method: 'PATCH', body: { activity: to, activity_scope: scope } });
+      const also = res.also_changed || [];
+      setTimeout(() => toast(also.length ? `Saved here and on ${also.length} other session${also.length === 1 ? '' : 's'}: ${also.slice(0, 6).join(', ')}${also.length > 6 ? '…' : ''}` : scope === 'tester' ? `Saved. ${state.s.tester}'s next imports follow it.` : 'Saved'), 0);
+      return res;
+    });
+  }
   /** "4:35" -> 275 seconds; NaN when it is not minutes and seconds. */
   const parsePace = (text) => { const m = /^(\d{1,2})[:.]([0-5]\d)$/.exec(text.trim()); return m ? Number(m[1]) * 60 + Number(m[2]) : NaN; };
   function editManual(host, r, f) {
@@ -674,10 +745,14 @@
     const host = $('devices'); host.replaceChildren();
     const p = pairs()[state.s.summary.primary ?? 0];
     const t = el('table'); const head = el('tr');
-    for (const h of ['Device', 'Brand', 'Written to Health by', 'Role', 'Heart rate readings', 'Recorded', '']) head.appendChild(el('th', null, h));
+    for (const h of ['Device', 'Brand', 'Written to Health by', 'Role', isSteps() ? 'Steps' : 'Heart rate readings', isSteps() ? 'Hours with steps' : 'Recorded', '']) head.appendChild(el('th', null, h));
     t.appendChild(head);
+    $('devicesSub').textContent = isSteps()
+      ? 'Each device’s steps that day. Luna is taken to be worn all day. Leave a device out if it was not worn the whole day: its count stays here, but it is not compared.'
+      : 'What each device recorded. Set the brand if the guess is wrong: the device tagged Luna is the one under test.';
     for (const r of state.s.recordings) {
-      const tr = el('tr');
+      const out = r.details.excluded;
+      const tr = el('tr', out ? 'out' : null);
       const name = el('td'); const sw = el('span', 'sw'); sw.style.background = colorOf(r); name.appendChild(sw);
       if (state.canManage) {
         const inp = el('input', 'devname'); inp.type = 'text'; inp.value = r.device_label; inp.maxLength = 80; inp.setAttribute('aria-label', 'Device name');
@@ -707,12 +782,32 @@
 
       const hw = r.details.device ? [r.details.device.name, r.details.device.hardware].filter(Boolean).join(', ') : '';
       const src = el('td', 'rowlabel'); src.style.fontWeight = '400'; src.appendChild(document.createTextNode(r.source_name + (r.source_version ? ` ${r.source_version}` : ''))); if (hw) src.appendChild(el('small', null, hw)); tr.appendChild(src);
-      const role = p && p.test === r.id ? ['Under test', 'role test'] : p && p.reference === r.id ? ['Reference', 'role'] : !r.logged ? ['Background', 'role'] : ['', 'role'];
+      const role = out ? ['Left out', 'role'] : p && p.test === r.id ? ['Under test', 'role test'] : p && p.reference === r.id ? ['Reference', 'role'] : !r.logged ? ['Background', 'role'] : ['', 'role'];
       tr.appendChild(el('td')).appendChild(el('span', role[1], role[0] || '—'));
-      const q = r.details.hr;
-      const hr = el('td', 'val'); hr.textContent = q ? `${nf(q.samples)}, every ${nf(q.interval_s, q.interval_s % 1 ? 1 : 0)} s` : 'none'; if (q) hr.appendChild(el('small', null, `covers ${nf(q.coverage_pct)}% of the session`)); tr.appendChild(hr);
+      if (isSteps()) {
+        const m = r.metrics.steps, d = r.details.steps;
+        const st = el('td', 'val', m ? nf(m.value) : 'none');
+        if (out) { const note = el('small', null, out.at_import ? 'left out at import' : 'left out'); note.title = `Not worn all day, said ${out.by || 'someone'}${out.at_import ? ' when importing' : ''}. Its count is not compared.`; st.appendChild(note); }
+        tr.appendChild(st);
+        const hrs = d ? d.hourly.filter((x) => x >= 50).length : 0;
+        const rec = el('td', 'val', d && d.first_at !== null ? `${clock(d.first_at)} to ${clock(d.last_at + 3600)}` : '—');
+        if (d) rec.appendChild(el('small', null, `${hrs} hour${hrs === 1 ? '' : 's'} with 50 steps or more`));
+        tr.appendChild(rec);
+      } else {
+        const q = r.details.hr;
+        const hr = el('td', 'val'); hr.textContent = q ? `${nf(q.samples)}, every ${nf(q.interval_s, q.interval_s % 1 ? 1 : 0)} s` : 'none'; if (q) hr.appendChild(el('small', null, `covers ${nf(q.coverage_pct)}% of the session`)); tr.appendChild(hr);
+      }
       const rec = el('td', 'val');
-      if (r.logged) { rec.textContent = `${clock(epoch(r.started_at), !isSleep())} to ${clock(epoch(r.ended_at), !isSleep())}`; rec.appendChild(el('small', null, isSleep() ? 'logged the night' : `logged as ${activityLabel(r.activity).toLowerCase()}`)); }
+      if (isSteps()) { /* the hours above say when it counted */ }
+      else if (r.logged) {
+        rec.textContent = `${clock(epoch(r.started_at), !isSleep())} to ${clock(epoch(r.ended_at), !isSleep())}`;
+        if (isSleep()) rec.appendChild(el('small', null, 'logged the night'));
+        else if (state.canManage) activityEditor(rec, r);
+        else {
+          const set = r.details.activity_set;
+          rec.appendChild(el('small', null, `logged as ${inText(r.activity)}${set && set.from !== set.to ? ` (changed from ${inText(set.from)})` : ''}`));
+        }
+      }
       else { rec.textContent = 'samples only'; rec.appendChild(el('small', null, 'did not log the session itself')); }
       for (const f of MANUAL) {
         if (!canEnter(r, f)) continue;
@@ -720,8 +815,15 @@
         const b = el('button', 'btn small ghost', d !== null ? 'Edit' : `Enter ${f.name}`); b.type = 'button'; b.addEventListener('click', () => editManual(line, r, f)); line.appendChild(b);
         rec.appendChild(line);
       }
-      tr.appendChild(rec);
+      if (!isSteps()) tr.appendChild(rec);
       const act = el('td', 'num');
+      // Luna is taken to be worn all day; any other device can be left out of a day, and taken back in.
+      if (state.canManage && isSteps() && r.device_tag !== 'luna') {
+        const b = el('button', 'btn small', out ? 'Compare again' : 'Leave out'); b.type = 'button';
+        b.title = out ? 'Compare its steps with Luna’s again' : 'It was not worn the whole day: keep its count here, but do not compare it';
+        b.addEventListener('click', () => change(() => api(`/v1/admin/benchmarks/${state.s.id}/recordings/${r.id}`, { method: 'PATCH', body: { excluded: !out } }), out ? `${nameOf(r)} is compared again` : `${nameOf(r)} is left out of this day`));
+        act.appendChild(b);
+      }
       if (state.canManage && state.s.recordings.length > 1) { const b = el('button', 'btn small ghost', 'Remove'); b.type = 'button'; b.addEventListener('click', () => removeRecording(r)); act.appendChild(b); }
       tr.appendChild(act);
       t.appendChild(tr);
@@ -994,6 +1096,60 @@
     mh.appendChild(t);
   }
 
+  /** A day of steps as columns, hour by hour: where the counts part, and whether a device was worn at all. */
+  function renderHours() {
+    const recs = isSteps() ? state.s.recordings.filter((r) => r.details.steps && r.details.steps.hourly && r.details.steps.hourly.length) : [];
+    $('hourCard').hidden = !recs.length;
+    if (!recs.length) return;
+    const p = currentPair();
+    const quiet = (p && p.steps && p.steps.quiet) || [];
+    const lg = $('hourLegend'); lg.replaceChildren();
+    for (const r of recs) lg.appendChild(legendItem(colorOf(r), nameOf(r) + (r.details.excluded ? ' (left out)' : ''), 'box'));
+    if (quiet.length) { const q = legendItem(null, 'one device hardly counted', 'box'); q.querySelector('i').style.background = 'var(--yellow)'; q.querySelector('i').style.opacity = '.6'; lg.appendChild(q); }
+    $('hourSub').textContent = quiet.length
+      ? `Steps in each hour of the day. Shaded hours are where one device counted a walk and the other almost nothing: a device that was not worn then. Leave it out under Devices if so.`
+      : 'Steps in each hour of the day, by device. Where the columns part is where the counts differ.';
+    const day0 = epoch(state.s.started_at);
+    const host = $('hourChart');
+    responsive(host, (width) => {
+      for (const c of [...host.children]) if (!c.classList.contains('tip')) c.remove();
+      const n = Math.max(...recs.map((r) => r.details.steps.hourly.length));
+      const W = Math.max(320, width), H = 230, padL = 46, padR = 6, padT = 8, padB = 24;
+      const { ticks, hi } = niceTicks(0, Math.max(10, ...recs.flatMap((r) => r.details.steps.hourly)), 4);
+      const cw = (W - padL - padR) / n, gw = Math.max(2, cw * 0.78), bw = gw / recs.length;
+      const Y = (v) => padT + (H - padT - padB) * (1 - v / hi);
+      const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, height: H, role: 'img', 'aria-label': 'Steps per hour by device' });
+      for (const q of quiet) {
+        const a = padL + ((q.from - day0) / 3600) * cw, b = padL + ((q.to - day0) / 3600) * cw;
+        svg.appendChild(svgEl('rect', { x: a, y: padT, width: b - a, height: H - padT - padB, class: 'quiet' }));
+      }
+      for (const v of ticks) {
+        svg.appendChild(svgEl('line', { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v), stroke: v ? 'rgba(0,0,0,.06)' : 'rgba(0,0,0,.25)' }));
+        const t = svgEl('text', { x: padL - 8, y: Y(v) + 4, 'text-anchor': 'end' }); t.textContent = nf(v); svg.appendChild(t);
+      }
+      for (let h = 0; h < n; h++) {
+        recs.forEach((r, i) => {
+          const v = r.details.steps.hourly[h] || 0; if (!v) return;
+          const x = padL + h * cw + (cw - gw) / 2 + i * bw, y = Y(v);
+          svg.appendChild(svgEl('rect', { x, y, width: Math.max(1, bw - 1), height: Y(0) - y, rx: Math.min(2, bw / 3), fill: colorOf(r), opacity: r.details.excluded ? 0.35 : 1 }));
+        });
+        if (h % 3 === 0) { const t = svgEl('text', { x: padL + h * cw + cw / 2, y: H - 6, 'text-anchor': 'middle' }); t.textContent = pad(h); svg.appendChild(t); }
+      }
+      const tip = chartTip(host);
+      for (let h = 0; h < n; h++) {
+        const hit = svgEl('rect', { x: padL + h * cw, y: padT, width: cw, height: H - padT - padB, fill: 'transparent' });
+        hit.addEventListener('pointermove', () => {
+          tip.replaceChildren(el('div', 't', `${pad(h)}:00 to ${pad(h + 1)}:00`));
+          for (const r of recs) { const row = el('div', 'r'); const k = el('i'); k.style.background = colorOf(r); row.appendChild(k); row.appendChild(el('b', null, nf(r.details.steps.hourly[h] || 0))); row.appendChild(el('span', null, nameOf(r) + (r.details.excluded ? ', left out' : ''))); tip.appendChild(row); }
+          placeTip(host, tip, padL + h * cw + cw, padT);
+        });
+        hit.addEventListener('pointerleave', () => { tip.style.display = 'none'; });
+        svg.appendChild(hit);
+      }
+      host.insertBefore(svg, host.firstChild);
+    });
+  }
+
   function renderOverTime() {
     const host = $('over2'); host.replaceChildren();
     const recs = state.s.recordings;
@@ -1102,16 +1258,18 @@
     for (const r of state.s.recordings) {
       const parts = [];
       const counts = Object.values(r.series).map((s) => `${nf(s.t.length)} ${s.label.toLowerCase()} sample${s.t.length === 1 ? '' : 's'}`);
-      parts.push(r.logged ? (isSleep() ? 'Logged the night itself.' : 'Logged the workout itself.') : 'Did not log the session; these are samples it wrote to Apple Health during it.');
+      parts.push(isSteps() ? (r.details.excluded ? 'Left out of the comparison: not worn the whole day.' : 'Counted steps that day.') : r.logged ? (isSleep() ? 'Logged the night itself.' : 'Logged the workout itself.') : 'Did not log the session; these are samples it wrote to Apple Health during it.');
       if (counts.length) parts.push(`Wrote ${counts.join(', ')}.`);
       const pr = r.details.profile; if (pr && (pr.weight_kg || pr.height_cm)) parts.push(`Body profile it wrote to Health: ${[pr.weight_kg && pr.weight_kg + ' kg', pr.height_cm && pr.height_cm + ' cm'].filter(Boolean).join(', ')}.`);
       if (r.route) parts.push(`GPS route of ${nf(r.route.points)} points.`);
       li(`${nameOf(r)} (${r.source_name}${r.source_version ? ' ' + r.source_version : ''}).`, parts.join(' '));
     }
     li('Source.', 'An Apple Health export, read in the browser. Samples an app synced more than once are counted once. The export file is not kept.');
-    if (!isSleep()) li('Heart rate.', 'Agreement compares half-minute averages over the time both devices were recording. Averages weigh every 10 seconds equally, so a burst of readings does not count for more.');
+    if (isSteps()) li('Steps.', 'Each device’s own step samples, added up from midnight to midnight in the wearer’s time zone; a sample that crosses midnight counts for its part of the day. Hour by hour, a sample spread over several hours counts in each for its share. Luna is taken to be worn all day. A device left out keeps its count here but is not compared.');
+    else if (!isSleep()) li('Heart rate.', 'Agreement compares half-minute averages over the time both devices were recording. Averages weigh every 10 seconds equally, so a burst of readings does not count for more.');
     else li('Sleep.', 'Stages are laid on 30-second steps. Time to fall asleep needs the device to record being in bed or awake before the first sleep. Outside its own recording a device counts as awake.');
-    li('Verdicts.', isSleep() ? 'Match means within about 10 minutes (3 points of efficiency, 3 bpm). Close means within about 30 minutes (7 points, 7 bpm). Differs is a larger gap.' : 'Match means within about 2%, 3 bpm, or a minute on start and end. Close means within about 5%, 7 bpm, or three minutes. Differs is a larger gap. Not comparable means the inputs differ, such as body weight for calories.');
+    li('Verdicts.', isSteps() ? 'Steps match within 5% over the day and are close within 10%. The first and last hour with 50 steps or more match when they are the same hour, and are close an hour apart. Shaded hours are where one device counted 200 steps or more and the other under a tenth of that.'
+      : isSleep() ? 'Match means within about 10 minutes (3 points of efficiency, 3 bpm). Close means within about 30 minutes (7 points, 7 bpm). Differs is a larger gap.' : 'Match means within about 2%, 3 bpm, or a minute on start and end. Close means within about 5%, 7 bpm, or three minutes. Differs is a larger gap. Not comparable means the inputs differ, such as body weight for calories.');
     li('Times.', `Shown in the wearer's time zone (UTC${offset() >= 0 ? '+' : '−'}${pad(Math.floor(Math.abs(offset()) / 60))}:${pad(Math.abs(offset()) % 60)}).`);
   }
 
@@ -1229,7 +1387,7 @@
   function render() {
     assignColors();
     if (state.pair >= pairs().length) state.pair = state.s.summary.primary ?? 0;
-    renderHeader(); renderTiles(); renderDevices(); renderNearby(); renderCompare(); renderAll(); renderSleep(); renderHeartRate(); renderOverTime(); renderRoute(); renderFindings(); renderShots(); renderEdit(); renderMethod();
+    renderHeader(); renderTiles(); renderDevices(); renderHours(); renderNearby(); renderCompare(); renderAll(); renderSleep(); renderHeartRate(); renderOverTime(); renderRoute(); renderFindings(); renderShots(); renderEdit(); renderMethod();
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -1273,7 +1431,7 @@
   $('shotsCard').addEventListener('dragover', (e) => { if (!hasFiles(e)) return; e.preventDefault(); $('shotsCard').classList.add('over'); });
   $('shotsCard').addEventListener('dragleave', (e) => { if (!$('shotsCard').contains(e.relatedTarget)) $('shotsCard').classList.remove('over'); });
   $('shotsCard').addEventListener('drop', (e) => { if (!hasFiles(e)) return; e.preventDefault(); $('shotsCard').classList.remove('over'); addShots(e.dataTransfer.files); });
-  $('pairSel').addEventListener('change', () => { state.pair = Number($('pairSel').value) || 0; renderCompare(); renderAll(); renderHeartRate(); renderSleep(); });
+  $('pairSel').addEventListener('change', () => { state.pair = Number($('pairSel').value) || 0; renderCompare(); renderAll(); renderHours(); renderHeartRate(); renderSleep(); });
   $('hrView').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; state.hrView = b.dataset.view; renderHeartRate(); });
   $('hrDetail').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; state.hrDetail = b.dataset.detail; renderHeartRate(); });
 
@@ -1286,7 +1444,7 @@
       api('/v1/admin/benchmarks/' + encodeURIComponent(REF)),
     ]);
     state.canManage = Boolean(me && me.permissions && me.permissions.manage_benchmarks);
-    state.tags = tags.items; state.s = session; state.pair = session.summary.primary ?? 0;
+    state.tags = tags.items; state.activities = tags.activities || []; state.s = session; state.pair = session.summary.primary ?? 0;
     render();
     $('btnExport').hidden = false;
   }

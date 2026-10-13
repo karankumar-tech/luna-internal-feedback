@@ -6,8 +6,8 @@
  */
 import { formatInZone, todayInZone } from '../../lib/time.js';
 import { excelDuration, excelTime, fmtText, workbook, type Cell, type CellInput, type Sheet } from '../../lib/xlsx.js';
-import { bucketMeans, ZONE_LABELS, type HrAgreement, type Kind, type MetricValue, type Pair, type Row, type SleepAgreement, type Stage, type Summary, type Verdict } from './analyze.js';
-import { activityLabel, tagLabel } from './metrics.js';
+import { bucketMeans, ZONE_LABELS, type HrAgreement, type Kind, type MetricValue, type Pair, type Row, type SleepAgreement, type Stage, type StepsAgreement, type Summary, type Verdict } from './analyze.js';
+import { activityInText, activityLabel, tagLabel } from './metrics.js';
 import type { RecordingRow, SessionRow } from './benchmarks.repo.js';
 
 export interface ExportFile { filename: string; body: Uint8Array }
@@ -42,8 +42,9 @@ class Clock {
   constructor(readonly kind: Kind, readonly offsetMin: number, readonly start: number) {}
 
   at(seconds: number | null | undefined, fmt = DATE_TIME): Cell { return { v: seconds == null ? null : excelTime(seconds, this.offsetMin), fmt }; }
-  /** A night is read in minutes, a workout to the second. */
-  length(seconds: number | null | undefined): Cell { return { v: seconds == null ? null : excelDuration(seconds), fmt: this.kind === 'sleep' ? '[h]:mm' : '[h]:mm:ss' }; }
+  /** A night or a day is read in minutes, a workout to the second. */
+  get coarse(): boolean { return this.kind !== 'workout'; }
+  length(seconds: number | null | undefined): Cell { return { v: seconds == null ? null : excelDuration(seconds), fmt: this.coarse ? '[h]:mm' : '[h]:mm:ss' }; }
   /** Time since the session started; blank before it, where a length cannot be negative. */
   since(seconds: number): Cell { return seconds < this.start ? { v: null } : { v: excelDuration(seconds - this.start), fmt: '[h]:mm:ss' }; }
 
@@ -51,7 +52,7 @@ class Clock {
   value(v: number | null | undefined, unit: string): Cell {
     if (v === null || v === undefined) return { v: null };
     if (unit === 's') return this.length(v);
-    if (unit === 'clock') return this.at(v, this.kind === 'sleep' ? 'd mmm hh:mm' : 'hh:mm:ss');
+    if (unit === 'clock') return this.at(v, this.kind === 'sleep' ? 'd mmm hh:mm' : this.kind === 'steps' ? 'hh:mm' : 'hh:mm:ss');
     if (unit === 's/km') return { v: excelDuration(v), fmt: '[m]:ss' };
     if (unit === '%') return pctCell(v);
     return { v, fmt: numberFormat(unit) };
@@ -60,7 +61,7 @@ class Clock {
   /** Under test minus reference. Lengths and moments in minutes for a night, in seconds for a workout. */
   difference(d: number | null, unit: string): Cell {
     if (d === null) return { v: null };
-    if (unit === 's' || unit === 'clock') return this.kind === 'sleep' ? { v: d / 60, fmt: numberFormat('min', true, 0) } : { v: d, fmt: numberFormat('s', true, 0) };
+    if (unit === 's' || unit === 'clock') return this.coarse ? { v: d / 60, fmt: numberFormat('min', true, 0) } : { v: d, fmt: numberFormat('s', true, 0) };
     if (unit === 's/km') return { v: d, fmt: numberFormat('s/km', true, 0) };
     if (unit === '%') return { v: d, fmt: numberFormat('points', true, 1) };
     return { v: d, fmt: numberFormat(unit, true) };
@@ -73,11 +74,12 @@ const VERDICT: Record<Verdict, string> = { match: 'Match', close: 'Close', diffe
 const verdictText = (v: Verdict, test: string, reference: string) => (v === 'only_test' ? `${test} only` : v === 'only_reference' ? `${reference} only` : VERDICT[v]);
 
 const STAGE_LABEL: Record<Stage, string> = { awake: 'Awake', rem: 'REM', core: 'Light (core)', deep: 'Deep', asleep: 'Asleep, no stage given', in_bed: 'In bed' };
-const METRIC_ORDER = ['duration', 'time_in_bed', 'total_sleep', 'sleep_latency', 'waso', 'awakenings', 'sleep_efficiency', 'deep_sleep', 'core_sleep', 'rem_sleep', 'unstaged_sleep', 'distance', 'pace', 'max_pace', 'speed', 'active_energy', 'basal_energy', 'steps', 'cadence', 'heart_rate', 'vo2_max'];
+const METRIC_ORDER = ['duration', 'time_in_bed', 'total_sleep', 'sleep_latency', 'waso', 'awakenings', 'sleep_efficiency', 'deep_sleep', 'core_sleep', 'rem_sleep', 'unstaged_sleep', 'distance', 'pace', 'max_pace', 'speed', 'active_energy', 'basal_energy', 'steps', 'first_steps', 'last_steps', 'cadence', 'heart_rate', 'vo2_max'];
 const metricRank = (key: string) => { const i = METRIC_ORDER.indexOf(key); return i === -1 ? METRIC_ORDER.length : i; };
 const metricLabel = (key: string, m: { label: string }) => (key === 'heart_rate' ? 'Average heart rate' : m.label);
 
-const whatOf = (s: { kind: Kind; activity: string | null }) => (s.kind === 'sleep' ? 'Sleep' : activityLabel(s.activity));
+const whatOf = (s: { kind: Kind; activity: string | null }) => (s.kind === 'sleep' ? 'Sleep' : s.kind === 'steps' ? 'Daily steps' : activityLabel(s.activity));
+const KIND_LABEL: Record<Kind, string> = { workout: 'Workout', sleep: 'Sleep', steps: 'Daily steps' };
 const linkOf = (baseUrl: string, ref: string) => `${baseUrl.replace(/\/+$/, '')}/b/${encodeURIComponent(ref)}`;
 const offsetLabel = (min: number) => `UTC${min < 0 ? '−' : '+'}${String(Math.floor(Math.abs(min) / 60)).padStart(2, '0')}:${String(Math.abs(min) % 60).padStart(2, '0')}`;
 /** The session's own day, as a file name part: 2026-09-30. */
@@ -136,6 +138,19 @@ function hrAgreementRows(c: Clock, a: HrAgreement, test: string, reference: stri
   return out;
 }
 
+function stepsAgreementRows(a: StepsAgreement, test: string, reference: string, dayStart: number): [string, CellInput, string][] {
+  const hour = (at: number) => `${String(Math.round((at - dayStart) / 3600)).padStart(2, '0')}:00`;
+  return [
+    ['Hours with steps', a.hours, 'Hours of the day where either device counted any.'],
+    ['Correlation, hour by hour', { v: a.r, fmt: '0.00' }, '1: the two rise and fall together through the day. 0: no relation.'],
+    ['Typical gap in an hour', { v: a.hourly_gap, fmt: numberFormat('steps', false, 0) }, 'The average gap between the two, over the hours with steps.'],
+    ...a.quiet.map((q): [string, CellInput, string] => [
+      `${hour(q.from)} to ${hour(q.to)}`, `${q.device === 'reference' ? reference : test} counted almost nothing`,
+      `${test} ${q.test.toLocaleString('en-US')} steps, ${reference} ${q.reference.toLocaleString('en-US')}.${q.device === 'reference' ? ` Was ${reference} worn then?` : ''}`,
+    ]),
+  ];
+}
+
 function sleepAgreementRows(c: Clock, a: SleepAgreement, test: string, reference: string): [string, CellInput, string][] {
   return [
     ['Night compared', c.length(a.epochs * 30), 'In 30-second steps, over the whole night either device recorded.'],
@@ -158,7 +173,8 @@ export function sessionWorkbook(s: SessionRow, recordings: RecordingRow[], opts:
   const pairs = summary?.pairs ?? [];
   const name = (r: RecordingRow) => r.device_label || r.source_name;
   const byId = new Map(recordings.map((r) => [r.id, r]));
-  const roleOf = (r: RecordingRow) => pairs.some((p) => p.test === r.id) ? 'Under test'
+  const roleOf = (r: RecordingRow) => r.details.excluded ? 'Left out'
+    : pairs.some((p) => p.test === r.id) ? 'Under test'
     : pairs.some((p) => p.reference === r.id) ? 'Reference'
     : r.logged ? 'Not compared' : 'Background';
   const sheets: { sheet: Sheet; about: string }[] = [];
@@ -176,11 +192,30 @@ export function sessionWorkbook(s: SessionRow, recordings: RecordingRow[], opts:
     header: ['Under test', 'Reference', 'Measure', 'Value', 'What it means'],
     rows: pairs.flatMap((p) => {
       const [t, r] = pairNames(summary, p);
-      const lines = [...(p.hr ? hrAgreementRows(c, p.hr, t, r) : []), ...(p.sleep ? sleepAgreementRows(c, p.sleep, t, r) : [])];
+      const lines = [...(p.hr ? hrAgreementRows(c, p.hr, t, r) : []), ...(p.sleep ? sleepAgreementRows(c, p.sleep, t, r) : []), ...(p.steps ? stepsAgreementRows(p.steps, t, r, s.started_at) : [])];
       return lines.map(([label, value, means]): CellInput[] => [t, r, label, value, { v: means, wrap: true }]);
     }),
     widths: [undefined, undefined, undefined, 14, 70],
-  }, s.kind === 'sleep' ? 'How well the two nights agree, 30 seconds at a time.' : 'How closely the heart rate lines agree, half-minute by half-minute.');
+  }, s.kind === 'sleep' ? 'How well the two nights agree, 30 seconds at a time.' : s.kind === 'steps' ? 'How closely the two step counts follow each other through the day, hour by hour.' : 'How closely the heart rate lines agree, half-minute by half-minute.');
+
+  // A day of steps, hour by hour: where the counts part, and whether a device was worn at all.
+  const daily = recordings.filter((r) => r.details.steps?.hourly.length);
+  if (s.kind === 'steps' && daily.length) {
+    const lead = pairs.find((p) => p.steps && daily.some((r) => r.id === p.test) && daily.some((r) => r.id === p.reference));
+    const ti = lead ? daily.findIndex((r) => r.id === lead.test) : -1, ri = lead ? daily.findIndex((r) => r.id === lead.reference) : -1;
+    const hours = Math.max(...daily.map((r) => r.details.steps!.hourly.length));
+    const rows: CellInput[][] = [];
+    for (let h = 0; h < hours; h++) {
+      const values = daily.map((r) => r.details.steps!.hourly[h] ?? 0);
+      rows.push([c.at(s.started_at + h * 3600, 'hh:mm'), ...values, ...(lead ? [{ v: values[ti]! - values[ri]!, fmt: '+#,##0;-#,##0;0' }] : [])]);
+    }
+    rows.push([{ v: 'Day', bold: true }, ...daily.map((r) => ({ v: r.details.steps!.hourly.reduce((a, b) => a + b, 0), bold: true })), ...(lead ? [{ v: null }] : [])]);
+    add({
+      name: 'Steps by hour',
+      header: ['Hour from', ...daily.map((r) => `${name(r)}${r.details.excluded ? ' (left out)' : ''}`), ...(lead ? [`${name(byId.get(lead.test)!)} minus ${name(byId.get(lead.reference)!)}`] : [])],
+      rows,
+    }, 'Each device’s steps in each hour of the day. A device with no steps through hours the other was walking was probably not worn then.');
+  }
 
   // The stage table: minutes of the night by what each device said.
   const tables: CellInput[][] = [];
@@ -216,21 +251,26 @@ export function sessionWorkbook(s: SessionRow, recordings: RecordingRow[], opts:
   add({
     name: 'Devices',
     header: ['Device', 'Brand', 'Role', 'Logged the session', 'Recorded as', 'Started', 'Ended', 'Length', 'Written to Health by', 'App version', 'Hardware',
-      'Heart rate readings', 'One reading every', 'Heart rate covers', 'First reading after', 'No heart rate for', 'Same value held 40 s+', 'Body weight in its app', 'Entered by hand'],
+      'Heart rate readings', 'One reading every', 'Heart rate covers', 'First reading after', 'No heart rate for', 'Same value held 40 s+', 'Body weight in its app', 'Entered by hand', 'Changed by hand'],
     rows: recordings.map((r): CellInput[] => {
       const q = r.details.hr ?? null;
       const d = r.details.device ?? {};
       const manual = r.details.manual;
       const mmss = (v: number) => `${Math.floor(v / 60)}:${String(Math.round(v % 60)).padStart(2, '0')} /km`;
       const typed = manual ? [manual.distance_km != null ? `distance ${manual.distance_km} km` : '', manual.active_kcal != null ? `active calories ${manual.active_kcal} kcal` : '', manual.max_pace_s != null ? `max pace ${mmss(manual.max_pace_s)}` : ''].filter(Boolean).join(', ') + (manual.by ? ` (by ${manual.by})` : '') : '';
+      const set = r.details.activity_set, out = r.details.excluded;
+      const changed = [
+        set && set.from !== set.to ? `logged as ${activityInText(set.from)}, changed to ${activityInText(set.to)}${set.by ? ` by ${set.by}` : ''}` : '',
+        out ? `left out of the comparison${out.at_import ? ' at import' : ''}${out.by ? ` by ${out.by}` : ''}: not worn all day` : '',
+      ].filter(Boolean).join('; ');
       return [
         name(r), tagLabel(r.device_tag), roleOf(r), r.logged ? 'Yes' : 'No, readings only',
-        r.logged ? (s.kind === 'sleep' ? 'Night' : activityLabel(r.activity)) : '',
+        r.logged ? (s.kind === 'sleep' ? 'Night' : s.kind === 'steps' ? 'Day of steps' : activityLabel(r.activity)) : '',
         r.logged ? c.at(r.started_at) : null, r.logged ? c.at(r.ended_at) : null, r.logged ? c.length(r.ended_at - r.started_at) : null,
         r.source_name, r.source_version ?? '', [d.name, d.manufacturer, d.model, d.hardware].filter(Boolean).join(', '),
         q?.samples ?? 0, q ? { v: q.interval_s, fmt: numberFormat('s', false, 1) } : null, q ? pctCell(q.coverage_pct) : null,
         q ? { v: q.first_after_s, fmt: numberFormat('s', false, 0) } : null, q ? c.length(q.gap_s) : null, q ? c.length(q.held_s) : null,
-        r.details.profile?.weight_kg ? { v: r.details.profile.weight_kg, fmt: numberFormat('kg') } : null, typed,
+        r.details.profile?.weight_kg ? { v: r.details.profile.weight_kg, fmt: numberFormat('kg') } : null, typed, changed,
       ];
     }),
   }, 'Each device: its brand, its role in the comparison, when it recorded and how complete its heart rate is.');
@@ -396,9 +436,9 @@ export function listWorkbook(sessions: SessionRow[], opts: ExportOptions & { fil
     const what = whatOf(s);
     const start = c.at(s.started_at);
     sessionRows.push([
-      s.ref, start, c.at(s.ended_at), c.length(s.ended_at - s.started_at), s.kind === 'sleep' ? 'Sleep' : 'Workout', what, s.title ?? '', s.tester,
+      s.ref, start, c.at(s.ended_at), c.length(s.ended_at - s.started_at), KIND_LABEL[s.kind], what, s.title ?? '', s.tester,
       s.firmware_version ?? '', s.app_version ?? '', s.platform ? PLATFORM[s.platform]! : '',
-      recs.filter((r) => r.logged).map((r) => r.label).join(', '), recs.filter((r) => !r.logged).map((r) => r.label).join(', '),
+      recs.filter((r) => r.logged && !r.excluded).map((r) => r.label).join(', '), recs.filter((r) => !r.logged || r.excluded).map((r) => `${r.label}${r.excluded ? ' (left out)' : ''}`).join(', '),
       leadTest, leadRef,
       lead?.hr ? bpmCell(lead.hr.typical_gap) : null, lead?.hr ? bpmCell(lead.hr.bias, true) : null, lead?.hr ? { v: lead.hr.r, fmt: '0.00' } : null, lead?.hr ? VERDICT[lead.hr.verdict] : '',
       lead?.sleep ? pctCell(lead.sleep.sleep_wake_pct) : null, lead?.sleep ? pctCell(lead.sleep.stage_pct) : null,
@@ -407,14 +447,15 @@ export function listWorkbook(sessions: SessionRow[], opts: ExportOptions & { fil
     for (const p of pairs) {
       const [t, r] = pairNames(summary, p);
       for (const row of p.rows) comparison.push([s.ref, start, what, s.tester, t, r, ...comparisonCells(c, row, t, r)]);
-      if (p.hr || p.sleep) {
-        const a = p.hr, z = p.sleep;
+      if (p.hr || p.sleep || p.steps) {
+        const a = p.hr, z = p.sleep, st = p.steps;
         agreement.push([
           s.ref, start, what, t, r,
           a ? bpmCell(a.typical_gap) : null, a ? bpmCell(a.median_gap) : null, a ? bpmCell(a.bias, true) : null, a ? { v: a.r, fmt: '0.00' } : null,
           a ? pctCell(a.within_5) : null, a ? pctCell(a.within_10) : null, a ? bpmCell(a.max_gap, true) : null, a ? bpmCell(a.loa_low, true) : null, a ? bpmCell(a.loa_high, true) : null,
           a?.warmup ? bpmCell(a.warmup.bias, true) : null, a?.steady ? bpmCell(a.steady.bias, true) : null, a?.lag_s != null ? { v: a.lag_s, fmt: numberFormat('s', true, 0) } : null, a ? VERDICT[a.verdict] : '',
           z ? pctCell(z.sleep_wake_pct) : null, z ? pctCell(z.stage_pct) : null, z ? pctCell(z.sensitivity) : null, z ? pctCell(z.specificity) : null, z ? { v: z.kappa, fmt: '0.00' } : null,
+          st ? { v: st.r, fmt: '0.00' } : null, st ? { v: st.hourly_gap, fmt: numberFormat('steps', false, 0) } : null, st ? st.quiet.length : null,
         ]);
       }
     }
@@ -430,15 +471,16 @@ export function listWorkbook(sessions: SessionRow[], opts: ExportOptions & { fil
     { sheet: { name: 'Comparison', header: ['Session', 'Started', 'What', 'Worn by', 'Under test', 'Reference', 'Measure', 'Reference value', 'Under test value', 'Difference', 'Difference %', 'Verdict', 'Note'], rows: comparison },
       about: 'Every number two devices both reported, session by session. Difference is the device under test minus the reference. Filter on Measure to line up, say, every distance.' },
     { sheet: { name: 'Agreement', header: ['Session', 'Started', 'What', 'Under test', 'Reference', 'Typical gap', 'Gap on the middle half-minute', 'Lean', 'Correlation', 'Within 5 bpm', 'Within 10 bpm', 'Widest gap',
-      '95% of gaps from', '95% of gaps to', 'Lean, first 3 min', 'Lean after that', 'Trails by', 'Heart rate verdict', 'Asleep or awake: the same', 'Same stage', 'Reference sleep also sleep', 'Reference awake also awake', 'Kappa'], rows: agreement },
-      about: 'Heart rate agreement (half-minute by half-minute) and sleep agreement (30 seconds at a time), one line per pair of devices.' },
+      '95% of gaps from', '95% of gaps to', 'Lean, first 3 min', 'Lean after that', 'Trails by', 'Heart rate verdict', 'Asleep or awake: the same', 'Same stage', 'Reference sleep also sleep', 'Reference awake also awake', 'Kappa',
+      'Steps, hour-by-hour correlation', 'Steps, typical gap in an hour', 'Stretches one device counted almost nothing'], rows: agreement },
+      about: 'Heart rate agreement (half-minute by half-minute), sleep agreement (30 seconds at a time) and daily steps agreement (hour by hour), one line per pair of devices.' },
     { sheet: { name: 'Findings', header: ['Session', 'Started', 'What', 'Level', 'Finding', 'Detail'], rows: findings, widths: [undefined, undefined, undefined, undefined, undefined, 90] },
       about: 'What stands out in each session, worked out by fixed rules.' },
   ];
   const about: CellInput[][] = [[{ v: 'Luna benchmarks', bold: true }], []];
   const kv = (label: string, value: CellInput) => about.push([{ v: label, bold: true }, value]);
   kv('Number of sessions', sessions.length);
-  kv('Filters', opts.filters.length ? opts.filters.map(([k, v]) => `${k}: ${v}`).join('; ') : 'none');
+  kv('Filters', { v: opts.filters.length ? opts.filters.map(([k, v]) => `${k}: ${v}`).join('; ') : 'none', wrap: true });
   kv('Exported', formatInZone(now, opts.timeZone));
   kv('Readings', 'Each session’s heart rate, stages and other readings are in its own export, from its page.');
   about.push([], [{ v: 'In this file', bold: true }]);

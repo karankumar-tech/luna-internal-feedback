@@ -1,7 +1,7 @@
 // Reads an Apple Health export where it is: in the browser, as a stream, without uploading it.
 // The export (export.zip, or the export.xml inside it) is often hundreds of megabytes, far more than
 // a request may carry, and almost all of it is irrelevant. So the page reads it twice:
-//   1. scanExport()      lists every workout and every night in the file (small).
+//   1. scanExport()      lists every workout, every night and each source's daily steps (small).
 //   2. extractSessions() collects the samples recorded during the sessions someone chose to import.
 // Only that second, small result is sent to the server. Nothing here depends on the DOM, so the
 // same file runs under Node for the tests.
@@ -23,6 +23,9 @@ export const SLEEP_TYPES = /HeartRate|RespiratoryRate|OxygenSaturation|Temperatu
 
 const QUANTITY_PREFIX = 'HKQuantityTypeIdentifier';
 const SLEEP_TYPE = 'HKCategoryTypeIdentifierSleepAnalysis';
+export const STEP_TYPE = QUANTITY_PREFIX + 'StepCount';
+/** Days of steps offered for import: the ones that ended in the last six weeks before the export. */
+export const STEP_DAYS = 42;
 /** Sleep records of one source closer together than this belong to the same night. */
 const NIGHT_GAP_S = 90 * 60;
 /** Shorter than this is not a night or a nap worth comparing. */
@@ -290,9 +293,33 @@ export function guessTester(sourceNames) {
   return '';
 }
 
+/** "2026-09-28" with an offset of 330 minutes -> that day's midnight there, in seconds since the epoch. */
+export function midnightOf(day, offsetMin) {
+  return Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10)) / 1000 - offsetMin * 60;
+}
+
 /**
- * Lists every workout and night in the export, per source.
- * Returns { exportDate, offsetMin, workouts, nights, sources, profiles, vo2max, tester }.
+ * Each source's steps per day of the wearer's clock, from the day each sample starts on: what the
+ * import table shows and what decides whether a stored day has more to take. Only whole days: the
+ * day the export was taken is not over yet.
+ */
+function stepDayList(byKey, exportDate) {
+  const out = [];
+  for (const d of byKey.values()) {
+    const start = midnightOf(d.day, d.offsetMin), end = start + 86400;
+    if (exportDate !== null && end > exportDate) continue;
+    if (!(d.steps > 0)) continue;
+    out.push({
+      key: `d|${d.source}|${d.day}`, kind: 'steps', source: d.source, sourceVersion: d.sourceVersion, device: d.device, offsetMin: d.offsetMin,
+      day: d.day, start, end, steps: Math.round(d.steps), samples: d.samples, first: d.first, last: d.last,
+    });
+  }
+  return out.sort((a, b) => a.start - b.start || a.source.localeCompare(b.source));
+}
+
+/**
+ * Lists every workout and night in the export, per source, and each source's steps per day.
+ * Returns { exportDate, offsetMin, workouts, nights, stepDays, sources, profiles, vo2max, tester }.
  */
 export async function scanExport(src, opts = {}) {
   const workouts = [];
@@ -300,6 +327,7 @@ export async function scanExport(src, opts = {}) {
   const sources = new Map();
   const profiles = {};
   const vo2max = {};
+  const stepDays = new Map();
   let exportDate = null;
   let offsetMin = null;
   let cur = null;
@@ -323,7 +351,29 @@ export async function scanExport(src, opts = {}) {
       if (!s) { s = { name: source, records: 0, heartRate: 0, sleep: 0 }; sources.set(source, s); }
       s.records += 1;
       if (type === QUANTITY_PREFIX + 'HeartRate') s.heartRate += 1;
-      else if (type === SLEEP_TYPE) {
+      else if (type === STEP_TYPE) {
+        const startText = attr(body, 'startDate');
+        if (!startText) return;
+        const start = parseDate(startText);
+        // Steps from long before the export are never offered; the ExportDate comes first in the file.
+        if (!Number.isFinite(start) || (exportDate !== null && start < exportDate - (STEP_DAYS + 2) * 86400)) return;
+        const value = Number(attr(body, 'value'));
+        if (!Number.isFinite(value)) return;
+        const endText = attr(body, 'endDate');
+        const end = endText ? parseDate(endText) : start;
+        const day = startText.slice(0, 10);
+        const k = source + '|' + day;
+        let d = stepDays.get(k);
+        if (!d) { d = { source, day, offsetMin: offsetOf(startText), sourceVersion: attr(body, 'sourceVersion'), device: parseDevice(attr(body, 'device')), steps: 0, samples: 0, first: start, last: end, seen: new Set() }; stepDays.set(k, d); }
+        // Apps re-sync: the same sample can be in the export several times. Counted as pass 2 counts it.
+        const id = start + '|' + end + '|' + value;
+        if (d.seen.has(id)) return;
+        d.seen.add(id);
+        s.steps = (s.steps || 0) + 1;
+        d.steps += value; d.samples += 1;
+        if (start < d.first) d.first = start;
+        if (end > d.last) d.last = end;
+      } else if (type === SLEEP_TYPE) {
         s.sleep += 1;
         const a = parseAttrs(body);
         sleep.push({ source, sourceVersion: a.sourceVersion, start: parseDate(a.startDate), end: parseDate(a.endDate), value: a.value, offsetMin: offsetOf(a.startDate) });
@@ -402,9 +452,12 @@ export async function scanExport(src, opts = {}) {
   const sourceList = [...sources.values()].sort((a, b) => b.records - a.records);
   const lastOffset = unique.length ? unique[unique.length - 1].offsetMin : nights.length ? nights[nights.length - 1].offsetMin : 0;
   for (const list of Object.values(vo2max)) list.sort((a, b) => a.at - b.at);
+  // Without an export date, the last six weeks before the newest day of steps.
+  let days = stepDayList(stepDays, exportDate);
+  if (days.length) { const newest = days[days.length - 1].start; days = days.filter((d) => d.start > newest - STEP_DAYS * 86400); }
   return {
     exportDate, offsetMin: offsetMin ?? lastOffset,
-    workouts: unique, nights, sources: sourceList, profiles, vo2max,
+    workouts: unique, nights, stepDays: days, sources: sourceList, profiles, vo2max,
     tester: guessTester(sourceList.map((s) => s.name)),
   };
 }
@@ -499,6 +552,7 @@ export async function extractSessions(src, sessions, scan, opts = {}) {
     if (name !== 'Record' || closing) return;
     const type = attr(body, 'type');
     if (!type || !type.startsWith(QUANTITY_PREFIX) || !WORKOUT_TYPES.test(type)) return;
+    const isSteps = type === STEP_TYPE;
     const s = parseDate(attr(body, 'startDate'));
     if (!(s <= hi)) return;
     const endText = attr(body, 'endDate');
@@ -512,6 +566,8 @@ export async function extractSessions(src, sessions, scan, opts = {}) {
       const w = windows[i];
       if (w.b < s) continue;
       if (w.kind === 'sleep' && !SLEEP_TYPES.test(type)) continue;
+      // A day of steps is the steps alone: the day's heart rate is not part of it.
+      if (w.kind === 'steps' && !isSteps) continue;
       if (!parsed) {
         const value = Number(attr(body, 'value'));
         if (!Number.isFinite(value)) return;
@@ -546,6 +602,12 @@ export async function extractSessions(src, sessions, scan, opts = {}) {
         logged: true,
         samples: samplesOf(rec),
       };
+      if (member.kind === 'steps') {
+        recording.day = { start: member.start, end: member.end };
+        if (member.excluded) recording.excluded = true;
+        recordings.push(recording);
+        continue;
+      }
       if (member.kind === 'workout') {
         recording.workout = {
           activity: member.activity, start: member.start, end: member.end,
@@ -570,8 +632,9 @@ export async function extractSessions(src, sessions, scan, opts = {}) {
     }
     // A source that logged nothing itself but has samples inside the session (the phone counting
     // steps during a run, a band that writes heart rate without a workout) is still a recording.
+    // Not for a day of steps: every source with steps that day is one of its members, or left aside.
     for (const [source, rec] of w.bySource) {
-      if (loggedSources.has(source)) continue;
+      if (loggedSources.has(source) || session.kind === 'steps') continue;
       const samples = samplesOf(rec, w.start, w.end);
       if (!Object.keys(samples).length) continue;
       const recording = { source, source_version: rec.version || null, device: rec.device || null, logged: false, samples };

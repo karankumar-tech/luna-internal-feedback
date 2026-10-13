@@ -142,7 +142,8 @@ export class BenchmarksRepo {
    * samples, so a tester's whole history is one small query. `isTest` as the list takes it.
    */
   async progressRows(isTest: boolean | undefined): Promise<ProgressSession[]> {
-    const cond = isTest === undefined ? '' : `where s.is_test = ${isTest ? 'true' : 'false'}`;
+    // Days of steps are benchmarks of the step count, not sessions a tester did: they do not count towards streaks or goals.
+    const cond = `where s.kind <> 'steps'${isTest === undefined ? '' : ` and s.is_test = ${isTest ? 'true' : 'false'}`}`;
     const r = await this.db.query<{
       id: string; ref: string; kind: Kind; activity: string | null; title: string | null; tester: string; started_at: number; ended_at: number;
       utc_offset_min: number; uploaded_at: number; devices: { tag: string; label: string | null; logged: boolean; metrics: Record<string, MetricValue>; hr: HrQuality | null }[] | null;
@@ -189,11 +190,11 @@ export class BenchmarksRepo {
     return r.rows;
   }
 
-  /** Recordings already stored for these fingerprints, with the session each belongs to. */
-  async byFingerprints(fingerprints: string[], q: Queryable = this.db): Promise<{ fingerprint: string; session_id: string; ref: string; device_tag: string }[]> {
+  /** Recordings already stored for these fingerprints, with the session each belongs to. `samples`: a day of steps' sample count. */
+  async byFingerprints(fingerprints: string[], q: Queryable = this.db): Promise<{ id: string; fingerprint: string; session_id: string; ref: string; device_tag: string; samples: number | null }[]> {
     if (!fingerprints.length) return [];
-    const r = await q.query<{ fingerprint: string; session_id: string; ref: string; device_tag: string }>(
-      `select r.fingerprint, r.session_id, s.ref, r.device_tag
+    const r = await q.query<{ id: string; fingerprint: string; session_id: string; ref: string; device_tag: string; samples: number | null }>(
+      `select r.id, r.fingerprint, r.session_id, s.ref, r.device_tag, (r.details->'day'->>'samples')::int as samples
          from luna_feedback.benchmark_recordings r
          join luna_feedback.benchmark_sessions s on s.id = r.session_id
         where r.fingerprint = any($1::text[])`,
@@ -320,6 +321,86 @@ export class BenchmarksRepo {
       sets.push(`build_set_at = case when ${BUILD_FIELDS.map((k) => (at[k] ? `$${at[k]}::text is not null` : `${k} is not null`)).join(' or ')} then now() end`);
     }
     await this.db.query(`update luna_feedback.benchmark_sessions set ${sets.join(', ')}, updated_at = now() where id = $1`, args);
+  }
+
+  /** Sessions picked by reference ("BM-0007") or id, newest first. Unknown ones are left out. */
+  async byRefs(refs: string[]): Promise<SessionRow[]> {
+    if (!refs.length) return [];
+    const ids = refs.filter((x) => UUID.test(x)), named = refs.filter((x) => !UUID.test(x)).map((x) => x.toUpperCase());
+    const r = await this.db.query<SessionRow>(
+      `select ${SESSION_COLS} from luna_feedback.benchmark_sessions
+        where id = any($1::uuid[]) or ref = any($2::text[])
+        order by started_at desc, ref_no desc`,
+      [ids, named],
+    );
+    return r.rows;
+  }
+
+  /** A later export with more of a day's step samples: the readings are replaced, a person's choices on the recording kept. */
+  async replaceDay(c: Queryable, id: string, series: Record<string, Series>, day: Details['day']): Promise<void> {
+    await c.query(
+      `update luna_feedback.benchmark_recordings set series = $2, details = jsonb_set(details, '{day}', $3::jsonb) where id = $1`,
+      [id, JSON.stringify(series), JSON.stringify(day)],
+    );
+  }
+
+  /** Leaves a recording out of the comparison, or (null) takes it back in. */
+  async setExcluded(c: Queryable, id: string, excluded: Details['excluded']): Promise<void> {
+    await c.query(
+      `update luna_feedback.benchmark_recordings
+          set details = case when $2::jsonb is null then details - 'excluded' else jsonb_set(details, '{excluded}', $2::jsonb) end
+        where id = $1`,
+      [id, excluded ? JSON.stringify(excluded) : null],
+    );
+  }
+
+  /** One recording's workout type, with what it was changed from. A null `set` clears the record of the change. */
+  async setActivity(c: Queryable, id: string, activity: string, set: Details['activity_set']): Promise<void> {
+    await c.query(
+      `update luna_feedback.benchmark_recordings
+          set activity = $2,
+              details = case when $3::jsonb is null then details - 'activity_set' else jsonb_set(details, '{activity_set}', $3::jsonb) end
+        where id = $1`,
+      [id, activity, set ? JSON.stringify(set) : null],
+    );
+  }
+
+  /**
+   * Every workout of this tester that this source logged as `from` (as recorded, before anyone changed
+   * it) becomes `to`. One that a person set by hand on its own session is left as they set it, except
+   * `keep`, the recording the change was made on. Returns the sessions that changed.
+   */
+  async setActivityForTester(c: Queryable, q: { tester: string; source: string; from: string; to: string; by: string | null; at: string; keep: string }): Promise<string[]> {
+    const r = await c.query<{ session_id: string }>(
+      `update luna_feedback.benchmark_recordings r
+          set activity = $4,
+              details = jsonb_set(r.details, '{activity_set}', jsonb_build_object('from', $3::text, 'to', $4::text, 'scope', 'tester', 'by', $5::text, 'at', $6::text))
+         from luna_feedback.benchmark_sessions s
+        where s.id = r.session_id and s.tester_key = lower(btrim($1)) and s.kind = 'workout' and r.source_name = $2 and r.logged
+          and coalesce(r.details->'activity_set'->>'from', r.activity) = $3
+          and (r.id = $7 or coalesce(r.details->'activity_set'->>'scope', '') <> 'session')
+        returning r.session_id`,
+      [q.tester, q.source, q.from, q.to, q.by, q.at, q.keep],
+    );
+    return [...new Set(r.rows.map((x) => x.session_id))];
+  }
+
+  /**
+   * The workout types this tester's workouts are changed to, per source and type as recorded: the
+   * latest change made for all of them. What an import of their next workouts follows.
+   */
+  async activityRules(tester: string, q: Queryable = this.db): Promise<{ source: string; from: string; to: string; by: string | null }[]> {
+    if (!tester.trim()) return [];
+    const r = await q.query<{ source: string; from: string; to: string; by: string | null }>(
+      `select distinct on (r.source_name, r.details->'activity_set'->>'from')
+              r.source_name as source, r.details->'activity_set'->>'from' as "from", r.details->'activity_set'->>'to' as "to", r.details->'activity_set'->>'by' as "by"
+         from luna_feedback.benchmark_recordings r
+         join luna_feedback.benchmark_sessions s on s.id = r.session_id
+        where s.tester_key = lower(btrim($1)) and r.details->'activity_set'->>'scope' = 'tester'
+        order by r.source_name, r.details->'activity_set'->>'from', r.details->'activity_set'->>'at' desc`,
+      [tester],
+    );
+    return r.rows.filter((x) => x.from !== x.to);
   }
 
   async patchRecording(c: Queryable, id: string, p: { device_tag?: string; device_label?: string | null }): Promise<void> {

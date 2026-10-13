@@ -4,7 +4,7 @@ import { AppError } from '../../lib/errors.js';
 import { actorOf } from '../../lib/actor.js';
 import { requirePermission } from '../../plugins/auth.js';
 import { zodIssues } from '../../schema/buildValidator.js';
-import { DEVICE_TAGS, tagLabel } from './metrics.js';
+import { CHOOSABLE_ACTIVITIES, DEVICE_TAGS, tagLabel } from './metrics.js';
 import { XLSX_TYPE, type ExportFile } from './export.js';
 import { SCREENSHOT_PRE_TRANSFORMATION, SCREENSHOT_TYPES, type ScreenshotUploads } from '../feedback/feedback.routes.js';
 import { BENCHMARK_MAX_SCREENSHOTS, type BenchmarksService } from './benchmarks.service.js';
@@ -15,7 +15,7 @@ function parse<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, value: unknown): 
   return r.data;
 }
 
-const Kind = z.enum(['workout', 'sleep']);
+const Kind = z.enum(['workout', 'sleep', 'steps']);
 /** Seconds since the epoch, within a sane range (2000 to 2100). */
 const Epoch = z.number().finite().min(946_684_800).max(4_102_444_800);
 const Tester = z.string().trim().min(1, 'say who wore the devices').max(80);
@@ -43,13 +43,20 @@ const ProgressQuery = z.object({
   weeks: z.coerce.number().int().min(4).max(52).optional(),
 });
 
-/** The list's filters, without paging: an export holds every session they match. */
-const ExportQuery = ListQuery.omit({ limit: true, offset: true });
+/**
+ * The list's filters, without paging: an export holds every session they match. Or `refs`, the
+ * sessions picked on the list ("BM-0007,BM-0012"), and then the filters do not apply.
+ */
+const ExportQuery = ListQuery.omit({ limit: true, offset: true }).extend({
+  refs: z.string().max(12_000).transform((v) => v.split(',').map((x) => x.trim()).filter(Boolean))
+    .refine((v) => v.length >= 1 && v.length <= 500, 'pick between 1 and 500 sessions')
+    .refine((v) => v.every((x) => x.length <= 40), 'each one a reference such as BM-0007').optional(),
+});
 
 /** The filters an export was made with, in words, for its About sheet. */
 function filtersInWords(f: z.infer<typeof ExportQuery>): [string, string][] {
   const out: [string, string][] = [];
-  if (f.kind) out.push(['Kind', f.kind === 'sleep' ? 'Sleep' : 'Workouts']);
+  if (f.kind) out.push(['Kind', f.kind === 'sleep' ? 'Sleep' : f.kind === 'steps' ? 'Daily steps' : 'Workouts']);
   if (f.device) out.push(['Device', tagLabel(f.device)]);
   if (f.tester) out.push(['Tester', f.tester]);
   if (f.comparable !== undefined) out.push(['Comparison', f.comparable ? 'Two or more devices compared' : 'Nothing to compare']);
@@ -74,7 +81,9 @@ const CheckBody = z.object({
     activity: z.string().max(100).nullish(),
     start: Epoch,
     end: Epoch,
-  }).strict()).min(1).max(500),
+    /** A day of steps: how many step samples this source has that day. */
+    samples: z.number().int().nonnegative().nullish(),
+  }).strict()).min(1).max(1000),
 }).strict();
 
 const Samples = z.object({
@@ -128,6 +137,10 @@ const Recording = z.object({
   }).strict().nullish(),
   /** The source's VO2max (Cardio Fitness) reading nearest the workout, in ml/kg/min. An impossible one is dropped. */
   vo2max: z.object({ value: Num.min(10).max(100), unit: z.string().max(30).optional(), at: Epoch }).strict().nullish().catch(undefined),
+  /** A day of steps: the day, midnight to midnight in the wearer's time zone, at most 25 hours. */
+  day: z.object({ start: Epoch, end: Epoch }).strict().refine((d) => d.end > d.start && d.end - d.start <= 25 * 3600, 'a day is at most 25 hours').nullish(),
+  /** A day of steps: the uploader left this device out, as not worn the whole day. */
+  excluded: z.boolean().optional(),
 }).strict();
 
 const ImportBody = z.object({
@@ -142,7 +155,8 @@ const ImportBody = z.object({
   app_version: Version.optional(),
   platform: Platform.optional(),
   recordings: z.array(Recording).min(1).max(12),
-}).strict().refine((b) => b.end >= b.start, { message: 'end must not be before start', path: ['end'] });
+}).strict().refine((b) => b.end >= b.start, { message: 'end must not be before start', path: ['end'] })
+  .refine((b) => b.kind !== 'steps' || b.recordings.every((r) => r.day), { message: 'every recording of a day of steps carries its day', path: ['recordings'] });
 
 const PatchBody = z.object({
   title: z.string().trim().max(120).transform((v) => v || null).nullable().optional(),
@@ -162,7 +176,14 @@ const RecordingPatch = z.object({
   active_kcal: Num.min(1).max(20_000).transform((v) => Math.round(v * 10) / 10).nullable().optional(),
   /** Any device, on foot: the fastest pace its app showed, in seconds per km (2:00 to 60:00). No device writes it to Apple Health. */
   max_pace_s: Num.min(120).max(3600).transform((v) => Math.round(v)).nullable().optional(),
-}).strict().refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'send device_tag, device_label, distance_km, active_kcal or max_pace_s' });
+  /** The workout type, as Apple Health names them in snake case: "traditional_strength_training". */
+  activity: z.string().trim().regex(/^[a-z0-9_]{1,60}$/, 'a workout type such as traditional_strength_training').optional(),
+  /** session: this workout only. tester: every workout of this tester that this device logged as the same type, and imports from now on. */
+  activity_scope: z.enum(['session', 'tester']).optional(),
+  /** A day of steps: leave this device out of the comparison (not worn the whole day), or take it back in. */
+  excluded: z.boolean().optional(),
+}).strict().refine((b) => Object.entries(b).some(([k, v]) => k !== 'activity_scope' && v !== undefined), { message: 'send device_tag, device_label, distance_km, active_kcal, max_pace_s, activity or excluded' })
+  .refine((b) => b.activity_scope === undefined || b.activity !== undefined, { message: 'activity_scope goes with activity', path: ['activity_scope'] });
 
 const ScreenshotBody = z.object({
   file_id: z.string().trim().min(1).max(120),
@@ -185,15 +206,16 @@ export function registerBenchmarkRoutes(app: FastifyInstance, deps: { service: B
 
   /** Every session the filters match, as an Excel workbook: one line each, every side-by-side number, agreement and findings. */
   app.get('/v1/admin/benchmarks/export', async (req, reply) => {
-    const filters = parse(ExportQuery, req.query ?? {});
+    const { refs, ...filters } = parse(ExportQuery, req.query ?? {});
+    if (refs) return sendFile(reply, await service.exportPicked(refs, deps.exports));
     return sendFile(reply, await service.exportList(filters, { ...deps.exports, filters: filtersInWords(filters) }));
   });
 
   /** A tester's streaks, weekly goals, bests, badges and nudges, with everyone's leaderboard; without a tester, the leaderboard alone. */
   app.get('/v1/admin/benchmarks/progress', async (req) => service.progress(parse(ProgressQuery, req.query ?? {})));
 
-  /** The brands a device can be tagged as. Any other tag (a-z, 0-9, _) is accepted too. */
-  app.get('/v1/admin/benchmarks/device-tags', async () => ({ items: DEVICE_TAGS.map(({ tag, label }) => ({ tag, label })) }));
+  /** The brands a device can be tagged as (any other tag, a-z, 0-9, _, is accepted too), and the workout types to offer. */
+  app.get('/v1/admin/benchmarks/device-tags', async () => ({ items: DEVICE_TAGS.map(({ tag, label }) => ({ tag, label })), activities: CHOOSABLE_ACTIVITIES }));
 
   app.get<{ Params: { id: string } }>('/v1/admin/benchmarks/:id', async (req) => service.get(req.params.id));
 

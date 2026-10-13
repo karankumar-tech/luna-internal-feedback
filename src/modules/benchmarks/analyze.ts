@@ -5,13 +5,14 @@
  * Times are seconds since the epoch. "Test" is the device being judged (Luna when it is present),
  * "reference" the one it is measured against.
  */
-import { activityKey, convert, isOnFoot, metricOf, referenceRank, tagLabel, TEST_TAG, type Agg } from './metrics.js';
+import { activityInText, activityKey, convert, isOnFoot, metricOf, referenceRank, tagLabel, TEST_TAG, type Agg } from './metrics.js';
 
 // ---------------------------------------------------------------------------------------------
 // Shapes
 // ---------------------------------------------------------------------------------------------
 
-export type Kind = 'workout' | 'sleep';
+/** A workout, a night, or a whole day of steps (midnight to midnight in the wearer's time zone). */
+export type Kind = 'workout' | 'sleep' | 'steps';
 
 /** Samples over time. `d` is each sample's length for interval samples (steps from 18:03 to 18:13), else null. */
 export interface Series {
@@ -99,6 +100,24 @@ export interface Details {
   vo2max?: { value: number; at: number } | null;
   /** Typed in by a person, read off the device's own app, for what it did not write to Apple Health. */
   manual?: { distance_km?: number; active_kcal?: number; max_pace_s?: number; by: string | null; at: string } | null;
+  /**
+   * The workout type a person changed this recording to (a Garmin "HIIT" that was strength training).
+   * scope tester: every workout of this tester from this source logged as `from` is `to`, imports included.
+   */
+  activity_set?: { from: string; to: string; scope: 'session' | 'tester'; by: string | null; at: string } | null;
+  /** Left out of the comparison by a person: a device that was not worn the whole day. Its numbers still show. */
+  excluded?: { by: string | null; at: string; at_import?: boolean } | null;
+  /** A day of steps: how many step samples it holds, so a later export with more of them can replace it. */
+  day?: { samples: number } | null;
+  /** A day of steps, hour by hour from midnight, and the first and last hour with steps. */
+  steps?: StepsDay | null;
+}
+
+export interface StepsDay {
+  hourly: number[];
+  /** The start of the first hour with steps, and the end of the last one. Null when it counted none. */
+  first_at: number | null;
+  last_at: number | null;
 }
 
 /** One device's recording, as stored. */
@@ -176,11 +195,27 @@ export interface SleepAgreement {
   confusion: number[][] | null;
 }
 
+/** Two devices' steps over a day, hour by hour. */
+export interface StepsAgreement {
+  /** Hours where either device counted steps. */
+  hours: number;
+  /** Do the two rise and fall together through the day. */
+  r: number | null;
+  /** Mean gap between the two per hour, over the hours where either counted steps. */
+  hourly_gap: number;
+  /**
+   * Stretches of the day where one device counted most of the steps and the other almost none: the
+   * reference was off the wrist, or Luna missed them. Hour boundaries, with each device's steps then.
+   */
+  quiet: { device: 'test' | 'reference'; from: number; to: number; test: number; reference: number }[];
+}
+
 export interface Pair {
   test: string;
   reference: string;
   hr: HrAgreement | null;
   sleep: SleepAgreement | null;
+  steps: StepsAgreement | null;
   rows: Row[];
 }
 
@@ -191,13 +226,13 @@ export interface Finding {
 }
 
 /** Bumped when the numbers are worked out differently, so stored sessions are redone when next read. */
-export const ANALYSIS_VERSION = 4;
+export const ANALYSIS_VERSION = 5;
 
 export interface Summary {
   version: number;
   kind: Kind;
   /** hr: the device has a heart rate trace in this session. */
-  recordings: { id: string; source: string; tag: string; label: string; logged: boolean; hr: boolean }[];
+  recordings: { id: string; source: string; tag: string; label: string; logged: boolean; hr: boolean; excluded: boolean }[];
   pairs: Pair[];
   /** Index into pairs of the comparison the page leads with. */
   primary: number | null;
@@ -249,6 +284,10 @@ export interface IncomingRecording {
   profile?: { weight_kg?: number; height_cm?: number } | null;
   /** The source's VO2max reading nearest the workout, from outside it: devices estimate it once a day or after a workout. */
   vo2max?: { value: number; unit?: string; at: number } | null;
+  /** A day of steps: the day this source's count is for, midnight to midnight. */
+  day?: { start: number; end: number } | null;
+  /** A day of steps: the uploader left this device out (it was not worn all day). */
+  excluded?: boolean;
 }
 
 export type NormalizedRecording = Omit<Rec, 'id' | 'tag' | 'label'> & { source_version: string | null; fingerprint: string | null };
@@ -428,6 +467,14 @@ export function normalizeRecording(input: IncomingRecording, kind: Kind, window:
     fingerprint = fingerprintOf(kind, input.source, start, end);
     stages = buildStages(input.sleep.segments, start, end);
     details.sleep = { has_stages: stages.runs.some((r) => r[2] === 'core' || r[2] === 'deep' || r[2] === 'rem') };
+  } else if (kind === 'steps' && input.day) {
+    // The day is the device's own: every source with steps that day counted it.
+    start = input.day.start; end = input.day.end;
+    fingerprint = fingerprintOf(kind, input.source, start, end);
+    const st = series.steps;
+    let samples = 0;
+    if (st) for (const t of st.t) if (st.t0 + t >= start && st.t0 + t < end) samples++;
+    details.day = { samples };
   }
 
   return { source: input.source, source_version: input.source_version ?? null, logged: fingerprint !== null, fingerprint, activity, start, end, series, stages, route, details };
@@ -682,8 +729,56 @@ export function sleepMetrics(stages: Stages, start: number, end: number): Record
   return out;
 }
 
+/** An hour with fewer steps than this is a trip to the kitchen, not the device being worn and walked with. */
+const STEP_HOUR_MIN = 50;
+
+/**
+ * A day of steps hour by hour from `from` (the wearer's midnight). A sample spread over more than one
+ * hour counts in each for the part that falls in it, so an hourly total and minute-by-minute samples
+ * land in the same hours.
+ */
+export function stepsDay(s: Series, from: number, to: number): StepsDay {
+  const n = Math.max(1, Math.round((to - from) / 3600));
+  const hours = new Array<number>(n).fill(0);
+  for (let i = 0; i < s.t.length; i++) {
+    const a = s.t0 + s.t[i]!, length = s.d ? s.d[i]! : 0, v = s.v[i]!;
+    if (length <= 0) { const h = Math.floor((a - from) / 3600); if (h >= 0 && h < n) hours[h]! += v; continue; }
+    const b = a + length;
+    for (let h = Math.max(0, Math.floor((a - from) / 3600)); h < n && from + h * 3600 < b; h++) {
+      const overlap = Math.min(b, from + (h + 1) * 3600) - Math.max(a, from + h * 3600);
+      if (overlap > 0) hours[h]! += v * (overlap / length);
+    }
+  }
+  const hourly = hours.map((x) => Math.round(x));
+  const first = hourly.findIndex((x) => x >= STEP_HOUR_MIN);
+  let last = -1; for (let h = n - 1; h >= 0; h--) if (hourly[h]! >= STEP_HOUR_MIN) { last = h; break; }
+  return { hourly, first_at: first === -1 ? null : from + first * 3600, last_at: last === -1 ? null : from + last * 3600 };
+}
+
+/** Two days of steps, hour by hour: how closely they move, and where one counted and the other did not. */
+export function compareSteps(test: StepsDay, reference: StepsDay, from: number): StepsAgreement {
+  const n = Math.min(test.hourly.length, reference.hourly.length);
+  const t = test.hourly.slice(0, n), r = reference.hourly.slice(0, n);
+  const hours = t.map((_, i) => i).filter((i) => t[i]! > 0 || r[i]! > 0);
+  const gap = hours.length ? hours.reduce((sum, i) => sum + Math.abs(t[i]! - r[i]!), 0) / hours.length : 0;
+  const corr = hours.length >= 3 ? pearson(t, r) : null;
+  // One device counted a real walk's worth (200+ in the hour) and the other under a tenth of it.
+  const quietIn = (i: number): 'test' | 'reference' | null => (t[i]! >= 200 && r[i]! < t[i]! * 0.1 ? 'reference' : r[i]! >= 200 && t[i]! < r[i]! * 0.1 ? 'test' : null);
+  const quiet: StepsAgreement['quiet'] = [];
+  for (let i = 0; i < n; i++) {
+    const who = quietIn(i);
+    if (!who) continue;
+    let j = i; while (j + 1 < n && quietIn(j + 1) === who) j++;
+    const ts = t.slice(i, j + 1).reduce((a, b) => a + b, 0), rs = r.slice(i, j + 1).reduce((a, b) => a + b, 0);
+    // A single busy hour is worth saying when it holds a proper walk.
+    if (Math.max(ts, rs) >= 500) quiet.push({ device: who, from: from + i * 3600, to: from + (j + 1) * 3600, test: ts, reference: rs });
+    i = j;
+  }
+  return { hours: hours.length, r: corr === null ? null : r2(corr), hourly_gap: Math.round(gap), quiet };
+}
+
 /** A recording's totals and averages. `window` is the session's, used when the device logged nothing itself. */
-export function recordingMetrics(rec: Rec, kind: Kind, window: { start: number; end: number }): { metrics: Record<string, MetricValue>; hr: HrQuality | null } {
+export function recordingMetrics(rec: Rec, kind: Kind, window: { start: number; end: number }): { metrics: Record<string, MetricValue>; hr: HrQuality | null; steps: StepsDay | null } {
   const from = rec.logged ? rec.start : window.start;
   const to = rec.logged ? rec.end : window.end;
   const metrics: Record<string, MetricValue> = {};
@@ -748,7 +843,15 @@ export function recordingMetrics(rec: Rec, kind: Kind, window: { start: number; 
   // An estimate of fitness rather than a reading of the workout: taken from outside it, kept as written.
   const vo2 = kind === 'workout' ? rec.details.vo2max : null;
   if (vo2) metrics.vo2_max = { label: 'VO2max', unit: 'ml/kg/min', agg: 'avg', value: vo2.value, at: vo2.at, from: 'summary' };
-  return { metrics, hr };
+
+  // A day of steps: the count is the total above; when the device started and stopped counting says whether it was worn all day.
+  let steps: StepsDay | null = null;
+  if (kind === 'steps' && rec.series.steps) {
+    steps = stepsDay(rec.series.steps, from, to);
+    if (steps.first_at !== null) metrics.first_steps = { label: 'First hour with steps', unit: 'clock', agg: 'avg', value: steps.first_at, from: 'derived' };
+    if (steps.last_at !== null) metrics.last_steps = { label: 'Last hour with steps', unit: 'clock', agg: 'avg', value: steps.last_at, from: 'derived' };
+  }
+  return { metrics, hr, steps };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -903,7 +1006,8 @@ export function compareSleep(test: Rec, reference: Rec): SleepAgreement | null {
 function judge(key: string, unit: string, kind: Kind, reference: number, test: number): Verdict {
   const diff = Math.abs(test - reference);
   if (unit === 'clock') {
-    const [match, close] = kind === 'sleep' ? [600, 1800] : [60, 180];
+    // A day of steps is read by the hour: the same hour matches, an hour apart is close.
+    const [match, close] = kind === 'sleep' ? [600, 1800] : kind === 'steps' ? [0, 3600] : [60, 180];
     return diff <= match ? 'match' : diff <= close ? 'close' : 'differs';
   }
   if (unit === 'bpm') return bpmVerdict(diff);
@@ -912,13 +1016,15 @@ function judge(key: string, unit: string, kind: Kind, reference: number, test: n
   if (unit === '%') return diff <= 3 ? 'match' : diff <= 7 ? 'close' : 'differs';
   if (reference === 0) return test === 0 ? 'match' : 'differs';
   const pct = diff / Math.abs(reference);
+  // Wrist step counters a day long are judged on 5% and 10%: within 2% is beyond what any two of them do.
+  if (kind === 'steps' && key === 'steps') return pct <= 0.05 ? 'match' : pct <= 0.1 ? 'close' : 'differs';
   return pct <= 0.02 ? 'match' : pct <= 0.05 ? 'close' : 'differs';
 }
 
 const ROW_ORDER = [
   'start', 'end', 'duration', 'time_in_bed', 'total_sleep', 'sleep_latency', 'waso', 'awakenings', 'sleep_efficiency',
   'deep_sleep', 'core_sleep', 'rem_sleep', 'unstaged_sleep',
-  'distance', 'pace', 'max_pace', 'speed', 'active_energy', 'basal_energy', 'steps', 'cadence', 'heart_rate', 'heart_rate_min', 'heart_rate_max', 'vo2_max',
+  'distance', 'pace', 'max_pace', 'speed', 'active_energy', 'basal_energy', 'steps', 'first_steps', 'last_steps', 'cadence', 'heart_rate', 'heart_rate_min', 'heart_rate_max', 'vo2_max',
 ];
 
 /** How a device's fastest pace was found, in a few words. */
@@ -948,7 +1054,8 @@ export function compareRows(test: Rec, reference: Rec, kind: Kind, m: Map<string
     rows.push(row);
   };
 
-  if (both) {
+  // A day of steps starts and ends at midnight for every device: nothing to compare there.
+  if (both && kind !== 'steps') {
     add('start', kind === 'sleep' ? 'Bedtime' : 'Start', 'clock', reference.start, test.start);
     add('end', kind === 'sleep' ? 'Wake time' : 'End', 'clock', reference.end, test.end);
   }
@@ -987,6 +1094,9 @@ export function compareRows(test: Rec, reference: Rec, kind: Kind, m: Map<string
 // ---------------------------------------------------------------------------------------------
 
 const minutes = (s: number) => (s < 90 ? `${Math.round(s)} s` : `${Math.round(s / 60)} min`);
+const thousands = (n: number) => Math.round(n).toLocaleString('en-US');
+/** The wearer's clock hour of a moment in a day of steps: the day starts at their midnight. */
+const hourOf = (at: number, dayStart: number) => `${String(Math.round((at - dayStart) / 3600)).padStart(2, '0')}:00`;
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 const lowHigh = (bias: number) => `${Math.round(Math.abs(bias))} bpm ${bias < 0 ? 'low' : 'high'}`;
 
@@ -1023,6 +1133,23 @@ function findingsFor(pair: Pair, test: Rec, reference: Rec, hr: Map<string, HrQu
     else if (row.key === 'distance' && row.verdict === 'differs' && row.pct !== null) out.push({ level: 'warn', title: 'Distance differs', detail: `${name} measured ${r2(row.test!)} km against ${r2(row.reference!)} km on ${ref} (${row.pct > 0 ? '+' : ''}${row.pct}%).` });
     else if (row.key === 'total_sleep' && row.verdict === 'differs' && row.diff !== null) out.push({ level: 'warn', title: 'Time asleep differs', detail: `${name} counted ${Math.round(Math.abs(row.diff) / 60)} minutes ${row.diff > 0 ? 'more' : 'less'} sleep than ${ref}.` });
   }
+  const st = pair.steps;
+  const steps = pair.rows.find((r) => r.key === 'steps' && r.diff !== null);
+  if (st && steps) {
+    const pct = steps.pct !== null ? ` (${steps.pct > 0 ? '+' : ''}${steps.pct}%)` : '';
+    out.push({
+      level: steps.verdict === 'match' ? 'good' : steps.verdict === 'close' ? 'info' : 'warn',
+      title: steps.verdict === 'match' ? 'Steps match the reference' : steps.verdict === 'close' ? 'Steps are close to the reference' : 'Steps differ from the reference',
+      detail: `${name} counted ${thousands(steps.test!)} steps and ${ref} ${thousands(steps.reference!)}${pct}.${st.r !== null ? ` Hour by hour they ${st.r >= 0.8 ? 'move together' : st.r >= 0.5 ? 'roughly move together' : 'do not move together'} (correlation ${st.r}), about ${thousands(st.hourly_gap)} steps apart in a typical hour.` : ''}`,
+    });
+    const dayStart = Math.min(test.start, reference.start);
+    for (const q of st.quiet) {
+      const when = `${hourOf(q.from, dayStart)} to ${hourOf(q.to, dayStart)}`;
+      out.push(q.device === 'reference'
+        ? { level: 'warn', title: `${ref} may not have been worn from ${when}`, detail: `${name} counted ${thousands(q.test)} steps then and ${ref} ${thousands(q.reference)}. If ${ref} was off the wrist, leave it out of this day: a day's totals only compare when both devices were worn all of it.` }
+        : { level: 'warn', title: `${name} missed steps from ${when}`, detail: `${ref} counted ${thousands(q.reference)} steps then and ${name} ${thousands(q.test)}.` });
+    }
+  }
   const s = pair.sleep;
   if (s) {
     out.push({
@@ -1041,6 +1168,16 @@ function findingsFor(pair: Pair, test: Rec, reference: Rec, hr: Map<string, HrQu
  */
 export function gapsFor(recs: Rec[], kind: Kind, pairs: Pair[], hr: Map<string, HrQuality | null>): string[] {
   const out: string[] = [];
+  if (kind === 'steps') {
+    const luna = recs.find((r) => r.tag === TEST_TAG);
+    const left = recs.filter((r) => r.details.excluded);
+    if (luna && !recs.some((r) => r.tag !== TEST_TAG && !r.details.excluded)) {
+      out.push(left.length ? `Every other device is left out of this day, so ${luna.label}'s steps are not compared.` : `No other device counted steps this day, so there is nothing to compare ${luna.label} with.`);
+    }
+    for (const r of left) out.push(`${r.label} is left out of the comparison${r.details.excluded!.at_import ? ' (at import)' : ''}: not worn the whole day. Its count still shows.`);
+    return out;
+  }
+  recs = recs.filter((r) => !r.details.excluded);
   const what = kind === 'sleep' ? 'night' : 'workout';
   const devices = recs.filter((r) => r.tag !== 'phone');
   const byRank = [...devices].sort((a, b) => Number(b.logged) - Number(a.logged) || referenceRank(a.tag) - referenceRank(b.tag));
@@ -1082,6 +1219,12 @@ export function gapsFor(recs: Rec[], kind: Kind, pairs: Pair[], hr: Map<string, 
  */
 export function whyNothing(recs: Rec[], kind: Kind, hr: Map<string, HrQuality | null>): string {
   const name = (r: Rec) => (r.label === r.source ? tagLabel(r.tag) : r.label);
+  if (kind === 'steps') {
+    const luna = recs.find((r) => r.tag === TEST_TAG);
+    if (!luna) return 'No Luna steps this day';
+    return recs.some((r) => r.tag !== TEST_TAG) ? 'Every other device is left out' : 'Only Luna counted steps';
+  }
+  recs = recs.filter((r) => !r.details.excluded);
   const what = kind === 'sleep' ? 'night' : 'workout';
   const devices = recs.filter((r) => r.tag !== 'phone');
   const logged = devices.filter((r) => r.logged);
@@ -1114,6 +1257,7 @@ export function analyzeSession(recs: Rec[], kind: Kind): {
   window: { start: number; end: number };
   metrics: Map<string, Record<string, MetricValue>>;
   hr: Map<string, HrQuality | null>;
+  steps: Map<string, StepsDay | null>;
   activity: string | null;
   summary: Summary;
 } {
@@ -1123,14 +1267,17 @@ export function analyzeSession(recs: Rec[], kind: Kind): {
 
   const metrics = new Map<string, Record<string, MetricValue>>();
   const hr = new Map<string, HrQuality | null>();
+  const steps = new Map<string, StepsDay | null>();
   for (const rec of recs) {
     const m = recordingMetrics(rec, kind, window);
-    metrics.set(rec.id, m.metrics); hr.set(rec.id, m.hr);
+    metrics.set(rec.id, m.metrics); hr.set(rec.id, m.hr); steps.set(rec.id, m.steps);
   }
 
+  // A device a person left out keeps its numbers but is compared with nothing.
+  const active = recs.filter((r) => !r.details.excluded);
   // Luna is what is being tested. Without it, the best reference device stands and the others are tested against it.
-  const byRank = [...recs].sort((a, b) => Number(b.logged) - Number(a.logged) || referenceRank(a.tag) - referenceRank(b.tag));
-  const lunas = recs.filter((r) => r.tag === TEST_TAG);
+  const byRank = [...active].sort((a, b) => Number(b.logged) - Number(a.logged) || referenceRank(a.tag) - referenceRank(b.tag));
+  const lunas = active.filter((r) => r.tag === TEST_TAG);
   const tests = lunas.length ? lunas : byRank.slice(1);
   const pairs: Pair[] = [];
   for (const test of tests) {
@@ -1140,10 +1287,12 @@ export function analyzeSession(recs: Rec[], kind: Kind): {
       const from = Math.max(test.logged ? test.start : window.start, reference.logged ? reference.start : window.start);
       const to = Math.min(test.logged ? test.end : window.end, reference.logged ? reference.end : window.end);
       const th = test.series.heart_rate, rh = reference.series.heart_rate;
+      const ts = steps.get(test.id), rs = steps.get(reference.id);
       const pair: Pair = {
         test: test.id, reference: reference.id,
         hr: kind === 'workout' && th && rh ? compareHeartRate(th, rh, from, to) : null,
         sleep: kind === 'sleep' ? compareSleep(test, reference) : null,
+        steps: kind === 'steps' && ts && rs ? compareSteps(ts, rs, window.start) : null,
         rows: compareRows(test, reference, kind, metrics),
       };
       // A source that only has background samples is compared when there is a trace to compare;
@@ -1151,19 +1300,27 @@ export function analyzeSession(recs: Rec[], kind: Kind): {
       if (pair.hr || pair.sleep || ((test.logged || test.tag === TEST_TAG) && reference.logged && pair.rows.length)) pairs.push(pair);
     }
   }
-  const primaryIndex = pairs.findIndex((p) => p.hr || p.sleep);
+  const primaryIndex = pairs.findIndex((p) => p.hr || p.sleep || p.steps);
   const primary = pairs.length ? (primaryIndex === -1 ? 0 : primaryIndex) : null;
   const byId = new Map(recs.map((r) => [r.id, r]));
   const lead = primary === null ? null : pairs[primary]!;
   const findings = lead ? findingsFor(lead, byId.get(lead.test)!, byId.get(lead.reference)!, hr, metrics) : [];
+  // The same workout logged as two different ones: a Garmin "HIIT" that was strength training on Luna.
+  const [lt, lr] = lead ? [byId.get(lead.test)!, byId.get(lead.reference)!] : [];
+  if (kind === 'workout' && lt && lr && lt.logged && lr.logged && lt.activity && lr.activity && lt.activity !== lr.activity && lt.activity !== 'other' && lr.activity !== 'other') {
+    findings.push({
+      level: 'info', title: 'Logged as different workouts',
+      detail: `${lr.label} logged it as ${activityInText(lr.activity)} and ${lt.label} as ${activityInText(lt.activity)}. If it was one workout, set the right type under Devices; the change can carry over to this tester's other ${lr.label} workouts.`,
+    });
+  }
 
-  const headlineKeys = kind === 'sleep' ? ['total_sleep', 'sleep_latency', 'deep_sleep', 'rem_sleep'] : ['distance', 'active_energy', 'duration', 'steps'];
-  const activity = (byRank.find((r) => r.logged && r.activity && r.activity !== 'other') ?? byRank.find((r) => r.logged))?.activity ?? null;
+  const headlineKeys = kind === 'sleep' ? ['total_sleep', 'sleep_latency', 'deep_sleep', 'rem_sleep'] : kind === 'steps' ? ['steps', 'first_steps', 'last_steps'] : ['distance', 'active_energy', 'duration', 'steps'];
+  const activity = kind !== 'workout' ? null : (byRank.find((r) => r.logged && r.activity && r.activity !== 'other') ?? byRank.find((r) => r.logged))?.activity ?? null;
   return {
-    window, metrics, hr, activity,
+    window, metrics, hr, steps, activity,
     summary: {
       version: ANALYSIS_VERSION, kind,
-      recordings: displayOrder(recs).map((r) => ({ id: r.id, source: r.source, tag: r.tag, label: r.label, logged: r.logged, hr: Boolean(hr.get(r.id)) })),
+      recordings: displayOrder(recs).map((r) => ({ id: r.id, source: r.source, tag: r.tag, label: r.label, logged: r.logged, hr: Boolean(hr.get(r.id)), excluded: Boolean(r.details.excluded) })),
       pairs, primary, findings,
       gaps: gapsFor(recs, kind, pairs, hr),
       why: pairs.length ? null : whyNothing(recs, kind, hr),

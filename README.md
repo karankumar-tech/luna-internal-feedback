@@ -103,8 +103,9 @@ saved on their account (`PATCH /v1/me/reporter`, returned by `GET /v1/me`) and p
 browser; the fields stay editable.
 
 Passwords are scrypt-hashed with their parameters stored alongside the hash, so the cost can
-be raised later without invalidating anyone. They must be at least 10 characters with a
-letter and a digit, must not contain the account's own name or email, must differ from the
+be raised later without invalidating anyone. The rules are few on purpose: at least 8
+characters of any kind, not a first guess ("password123", "qwerty", "12345678", a common word
+with only digits and symbols added, or the account's own email), must differ from the
 last `PASSWORD_HISTORY_DEPTH` (5), and expire after `PASSWORD_MAX_AGE_DAYS` (30). An admin can
 issue a password from `/dashboard/users`: it is shown once, never stored in the clear, and the
 recipient must replace it at first sign-in. Changing a password signs out that account's other
@@ -371,6 +372,31 @@ start and end, so uploading a later export adds only what is new. When a later e
 device's recording of a stored session (same tester, overlapping time), it joins that session
 instead of making a second one.
 
+**Daily steps.** A third kind of session (`kind=steps`, migration
+`20261013000000_benchmark_daily_steps.sql`): one tester's day, midnight to midnight in their time
+zone, with one recording per device that counted steps that day. The first pass adds up each
+source's steps per day (each sample once, on the day it starts) for the six weeks before the
+export, leaving out the day the export was taken, which is not over. `check` offers a day only when
+Luna and at least one other device counted steps (`samples` per candidate lets a later export with
+more of a day's samples, from a device that synced late, replace a stored day: status `updates`).
+**Luna is taken to be worn all day.** Any other device can be left out of a day, by unticking it in
+the import table or with Leave out on the session page (`excluded` on the recording PATCH; Luna is
+refused): its count stays on the session, but it is not compared. The comparison is the day's total
+(match within 5%, close within 10%), the first and last hour with 50 steps or more (same hour
+matches, an hour apart is close), the correlation hour by hour, and stretches where one device
+counted a walk (200+ steps in an hour) and the other under a tenth of it: the reference was off the
+wrist, or Luna missed them. The session page draws the day hour by hour with those stretches
+shaded. Days of steps do not count towards Progress.
+
+**A workout type set by hand.** Testers pick HIIT on a Garmin for a strength session. Each logged
+workout's type can be changed on the session page (`activity` on the recording PATCH): for that
+workout only (`activity_scope=session`), or for every workout this tester's device logged as that
+type, stored ones and the ones imported from then on (`activity_scope=tester`; a workout set by hand
+on its own session is left as set). The session takes the reference's type, so a Garmin HIIT changed
+to strength training makes it a strength session compared with Luna's. What the device logged is
+kept (`details.activity_set.from`); `check` shows the type an import will take (`activity_as`).
+When the two logged it as different workouts, the session says so.
+
 **One workout, two sessions.** A device whose clock is off writes the same workout to Health at a
 different time, and recordings that do not overlap are not grouped. The session page lists this
 tester's sessions recorded within half an hour by other devices ("Recorded close to this one") and
@@ -458,9 +484,12 @@ summary (what it is, the headline, what stands out, a guide to the other sheets)
 comparison, the agreement numbers with what each means, the stage table for a night, every device's
 own numbers, the devices and their roles, heart rate on one clock (averaged as the page draws it),
 every heart rate reading, held values and gaps, time in heart rate ranges, sleep stages, every other
-reading and the GPS route; a sheet with nothing in it is left out. The list's workbook covers every
-session its filters match (up to 2,000): one line per session, every comparison row, the agreement
-per pair and the findings, without readings. Times are the wearer's own clock. Units sit in the
+reading and the GPS route (and for a day of steps, steps hour by hour); a sheet with nothing in it is
+left out. The list's workbook covers every session its filters match (up to 2,000): one line per
+session, every comparison row, the agreement per pair and the findings, without readings. Ticking
+sessions on the list exports just those (`refs=BM-0007,BM-0012`, up to 500), as that workbook, or,
+for up to 25, as a zip the page packs itself: each session's own workbook with every reading, and
+the comparisons workbook. Times are the wearer's own clock. Units sit in the
 number formats (`142.0 bpm` is the number 142), so columns still sort, filter and sum; percentages
 are kept as Excel percentages and lengths as Excel times, because Apple's Quick Look preview
 misreads a `%` or a time with text added.
@@ -491,14 +520,15 @@ to half an hour, 10 s beyond), on round clock times; "Every reading" shows the r
 
 | endpoint | does |
 |---|---|
-| `GET /v1/admin/benchmarks?kind=&device=&tester=&is_test=&comparable=&limit=&offset=` | sessions, newest first, with each one's comparison summary and the filter values in use. `comparable=true` keeps only sessions where two devices have something to compare |
-| `GET /v1/admin/benchmarks/export?kind=&device=&tester=&is_test=&comparable=` | every session the filters match, as an Excel workbook |
+| `GET /v1/admin/benchmarks?kind=&device=&tester=&is_test=&comparable=&limit=&offset=` | sessions, newest first, with each one's comparison summary and the filter values in use. `kind` is `workout`, `sleep` or `steps`; `comparable=true` keeps only sessions where two devices have something to compare |
+| `GET /v1/admin/benchmarks/export?kind=&device=&tester=&is_test=&comparable=` | every session the filters match, as an Excel workbook; with `refs=` (references or ids, comma-separated) exactly those sessions instead |
 | `GET /v1/admin/benchmarks/{id or BM-ref}` | one session with every recording's metrics, series, stages and route, and `nearby` sessions it could be merged with |
 | `GET /v1/admin/benchmarks/{id or BM-ref}/export` | one session as an Excel workbook, with every reading |
-| `POST /v1/admin/benchmarks/check` | which workouts and nights from an export are one session, and which are stored; `last_build` is the Luna build last entered for the tester |
+| `POST /v1/admin/benchmarks/check` | which workouts, nights and days of steps from an export are one session, and which are stored; `last_build` is the Luna build last entered for the tester |
 | `POST /v1/admin/benchmarks/import` | one session's recordings (201 created, 200 updated or unchanged), with the Luna build optionally; a stored session that gains a device keeps its own build |
 | `PATCH /v1/admin/benchmarks/{id}` | title, notes, tester, test flag, and the Luna build: `firmware_version`, `app_version`, `platform` (`ios`/`android`; `null` or `""` clears) |
-| `PATCH /v1/admin/benchmarks/{id}/recordings/{rid}` | brand tag and device name; for a workout Luna logged `distance_km` and `active_kcal` (typed in from its app, since Luna does not always write them to Apple Health); for any device's run, walk or hike `max_pace_s` (seconds per km). `null` clears one; redoes the comparison |
+| `PATCH /v1/admin/benchmarks/{id}/recordings/{rid}` | brand tag and device name; for a workout Luna logged `distance_km` and `active_kcal` (typed in from its app, since Luna does not always write them to Apple Health); for any device's run, walk or hike `max_pace_s` (seconds per km); for a logged workout `activity` with `activity_scope` `session` or `tester` (the response's `also_changed` lists the other sessions changed); for a day of steps `excluded`. `null` clears one; redoes the comparison |
+| `GET /v1/admin/benchmarks/device-tags` | the brands a device can be tagged as, and the workout types offered (`activities`) |
 | `POST /v1/admin/benchmarks/{id}/merge` | `{ "other": id or BM-ref }` joins another session into this one |
 | `GET /v1/admin/benchmarks/screenshot-auth` | ImageKit upload credentials for one screenshot |
 | `POST /v1/admin/benchmarks/{id}/screenshots` | `{ file_id, url, name?, width?, height?, size? }` attaches an uploaded image (409 once there are 6) |
