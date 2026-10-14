@@ -302,6 +302,7 @@ label.field > span { font-size: 12px; line-height: 16px; font-weight: 500; color
 .status.open::before { background: var(--primary); }
 .status.triaged::before, .status.in_progress::before { background: oklch(60% .01 230); }
 .status.needs_info::before { background: var(--accent); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .3); }
+.status.fixed::before { background: radial-gradient(circle, var(--primary) 0 1.5px, transparent 2px); box-shadow: inset 0 0 0 1.5px var(--primary); }
 .status.resolved::before, .status.closed::before, .status.fine::before, .status.wont_fix::before { background: transparent; box-shadow: inset 0 0 0 1.5px oklch(60% .01 230); }
 
 /* tables */

@@ -26,8 +26,10 @@ export const PERMISSIONS = {
   manage_users: ['admin'],
   /** Create and update Jira tickets from a submission or an issue kind. */
   manage_jira: ['admin', 'qc'],
-  /** Move a ticket through triage and flag it as test data. */
+  /** Move a ticket through triage and flag it as test data. Resolving and closing are QC's call. */
   manage_triage: ['admin', 'qc'],
+  /** Say a bug is fixed (status `fixed`), for QC to check and resolve or close. Nothing else about its status. */
+  mark_fixed: ['admin', 'qc', 'developer'],
   /** Put tags on a report (app, firmware, …) and take them off. */
   tag_reports: ['admin', 'qc', 'developer'],
   /** Set or clear the date a report's fix is planned to go live. */

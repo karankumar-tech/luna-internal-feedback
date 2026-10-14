@@ -6,6 +6,7 @@ import { requirePermission } from '../../plugins/auth.js';
 import { zodIssues } from '../../schema/buildValidator.js';
 import { PRIORITIES, SUBMISSION_STATUSES } from '../feedback/feedback.repo.js';
 import type { FeedbackService } from '../feedback/feedback.service.js';
+import { assertNotFinished } from '../feedback/feedback.routes.js';
 import type { KindsService } from '../kinds/kinds.service.js';
 import { NOTE_VISIBILITIES, type ActivityRepo } from './activity.repo.js';
 
@@ -47,7 +48,7 @@ export function registerActivityRoutes(app: FastifyInstance, deps: {
   });
 
   /** One change applied to many reports from the dashboard list. Each report is logged on its own. */
-  app.post('/v1/admin/submissions/bulk', { onRequest: requirePermission('manage_triage') }, async (req) => {
+  app.post('/v1/admin/submissions/bulk', { onRequest: requirePermission('mark_fixed') }, async (req) => {
     const body = parse(z.object({
       ids: z.array(z.string().trim().min(1).max(60)).min(1).max(200),
       status: z.enum(SUBMISSION_STATUSES).optional(),
@@ -62,6 +63,11 @@ export function registerActivityRoutes(app: FastifyInstance, deps: {
     }).strict().refine((b) => b.status !== undefined || b.assigned_to !== undefined || b.priority !== undefined || b.is_test !== undefined || b.kind_id !== undefined || !!b.add_tags?.length || !!b.remove_tags?.length || b.sprint !== undefined, {
       message: 'send at least one of status, assigned_to, priority, is_test, kind_id, add_tags, remove_tags, sprint',
     }), req.body);
+    // Developers may mark bugs fixed in bulk, and nothing else; everything else here is QC's.
+    const onlyFixed = body.status === 'fixed' && body.assigned_to === undefined && body.priority === undefined && body.is_test === undefined
+      && !body.kind_id && !body.add_tags?.length && !body.remove_tags?.length && body.sprint === undefined;
+    const qc = can(req.actor, 'manage_triage');
+    if (!qc && !onlyFixed) throw AppError.forbidden(`Your role (${req.actor?.role}) can only mark bugs as fixed; QC resolves or closes them`);
     if (body.kind_id && !can(req.actor, 'manage_kinds')) throw AppError.forbidden(`Your role (${req.actor?.role}) cannot link problems`);
     if (body.sprint !== undefined && !can(req.actor, 'manage_sprints')) throw AppError.forbidden(`Your role (${req.actor?.role}) cannot move reports between sprints`);
     if (body.assigned_to && !(await deps.assignable()).some((u) => u.email === body.assigned_to)) {
@@ -77,6 +83,7 @@ export function registerActivityRoutes(app: FastifyInstance, deps: {
         if (body.is_test !== undefined) await feedback.setTestFlag(id, body.is_test, by);
         if (body.assigned_to !== undefined) await feedback.assign(id, body.assigned_to, by);
         if (body.priority !== undefined) await feedback.setPriority(id, body.priority, by);
+        if (!qc) await assertNotFinished(feedback, id);
         if (body.status !== undefined) await feedback.setStatus(id, body.status, null, by, team);
         if (body.kind_id) await kinds.link((await feedback.row(id)).id, body.kind_id, 'manual', null, by);
         if (body.add_tags?.length || body.remove_tags?.length) await feedback.changeTags(id, { add: body.add_tags, remove: body.remove_tags }, by);

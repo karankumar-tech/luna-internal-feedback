@@ -645,6 +645,7 @@ Every new issue is matched against open problems when it arrives; a clear match 
 | method | path | body / notes |
 |---|---|---|
 | `PATCH` | `/v1/admin/submissions/{id}` | also `{ "assigned_to": email \| null, "priority": "p0".."p3" \| null }`, and status `needs_info` (`manage_triage`). The owner must have a dashboard account |
+| `PATCH` | `/v1/admin/submissions/{id}` | status `fixed`: the developer says the bug is fixed and QC checks it. Developers (`mark_fixed`) may send only `{ "status": "fixed", "status_note"? }`, and only while the report is not resolved, closed or won't fix (`409` then); resolving, closing and every other change stay with QC and admins (`403`). `fixed` is not a finished status: the report stays open until QC resolves or closes it. The bulk route allows developers `{ "ids", "status": "fixed" }` the same way |
 | `GET` | `/v1/feedback/{id}/activity` | the report's history, oldest first: arrival, status, owner, priority, grouping, Jira, diagnosis runs and notes |
 | `POST` | `/v1/admin/submissions/{id}/notes` | `{ "body", "visibility": "internal" \| "customer" }` (`add_notes`: admin, QC, developer, CX). `customer` notes are ones CX may pass on |
 | `POST` | `/v1/admin/submissions/{id}/ask-reporter` | `{ "questions": [...] }` posts the questions as a note (customer-safe on CX reports) and sets `needs_info` |

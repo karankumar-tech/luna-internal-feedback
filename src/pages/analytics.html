@@ -271,7 +271,7 @@
     { key: 'not_a_bug', label: 'Not a bug', color: '#E4E4E7' },
     { key: 'insufficient_logs', label: 'Insufficient logs', color: '#F5F85D' },
   ];
-  const STATUS_LABEL = { open: 'Open', triaged: 'Triaged', in_progress: 'In progress', needs_info: 'Needs info', resolved: 'Resolved', closed: 'Closed', wont_fix: "Won't fix" };
+  const STATUS_LABEL = { open: 'Open', triaged: 'Triaged', in_progress: 'In progress', needs_info: 'Needs info', fixed: 'Fixed', resolved: 'Resolved', closed: 'Closed', wont_fix: "Won't fix" };
   /** "40 min", "5.2 h", "3.1 d" */
   const hrs = (h) => h == null ? '—' : h < 1 ? Math.max(1, Math.round(h * 60)) + ' min' : h < 48 ? h.toFixed(1) + ' h' : (h / 24).toFixed(1) + ' d';
   const state = { data: null, filters: null };
@@ -539,7 +539,7 @@
 
     barRows($('cStatus'), d.by_status.map((s) => ({
       label: STATUS_LABEL[s.status] || s.status, value: s.count,
-      color: s.status === 'open' ? CRIT : s.status === 'triaged' || s.status === 'in_progress' || s.status === 'needs_info' ? '#A1A1AA' : OK,
+      color: s.status === 'open' ? CRIT : s.status === 'triaged' || s.status === 'in_progress' || s.status === 'needs_info' || s.status === 'fixed' ? '#A1A1AA' : OK,
     })), { label: 'Triage status', padL: 120, rowH: 28, empty: 'No issues in this window.' });
 
     table($('tResponse'), [

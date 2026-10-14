@@ -268,3 +268,39 @@ describe('problem owners and response times', () => {
     expect(a.time_in_status.map((s: { status: string }) => s.status)).toEqual(expect.arrayContaining(['open', 'triaged']));
   });
 });
+
+describe('developers mark bugs fixed; QC resolves and closes', () => {
+  const patch = (id: string, who: string, payload: Record<string, unknown>) => app.inject({ method: 'PATCH', url: `/v1/admin/submissions/${id}`, headers: as(who), payload });
+
+  it('lets a developer mark a bug fixed, and nothing else', async () => {
+    const r = await report();
+    const fixed = await patch(r.id, 'dev', { status: 'fixed', status_note: 'fixed in 2.4.1' });
+    expect(fixed.statusCode).toBe(200);
+    expect(fixed.json()).toMatchObject({ status: 'fixed', status_changed_by: email('dev'), resolved_at: null });
+    for (const status of ['resolved', 'closed', 'wont_fix', 'in_progress']) expect((await patch(r.id, 'dev', { status })).statusCode).toBe(403);
+    expect((await patch(r.id, 'dev', { status: 'fixed', priority: 'p1' })).statusCode).toBe(403);
+    expect((await patch(r.id, 'dev', { assigned_to: email('dev') })).statusCode).toBe(403);
+    // QC checks the fix and resolves it; from then on a developer cannot reopen it as fixed.
+    expect((await patch(r.id, 'qc', { status: 'resolved' })).statusCode).toBe(200);
+    const again = await patch(r.id, 'dev', { status: 'fixed' });
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error.message).toMatch(/only QC can change it/);
+  });
+
+  it('keeps business and CX out, and lets developers mark many fixed at once', async () => {
+    const a = await report(); const b = await report();
+    expect((await patch(a.id, 'biz', { status: 'fixed' })).statusCode).toBe(403);
+    expect((await patch(a.id, 'cx', { status: 'fixed' })).statusCode).toBe(403);
+    const bulk = (payload: Record<string, unknown>) => app.inject({ method: 'POST', url: '/v1/admin/submissions/bulk', headers: as('dev'), payload });
+    expect((await bulk({ ids: [a.id, b.ref], status: 'fixed' })).json()).toEqual({ updated: 2, failed: [] });
+    expect((await bulk({ ids: [a.id], status: 'closed' })).statusCode).toBe(403);
+    expect((await get(b.id)).status).toBe('fixed');
+  });
+
+  it('treats fixed as still open: it waits for QC', async () => {
+    const r = await report();
+    await patch(r.id, 'dev', { status: 'fixed' });
+    const open = (await app.inject({ method: 'GET', url: `/v1/home/reports?data=test&state=open&page_size=100&user_id=${(await get(r.id)).user_id}`, headers: adminHeaders })).json();
+    expect(open.items.map((x: { ref: string }) => x.ref)).toContain(r.ref);
+  });
+});

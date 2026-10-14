@@ -85,7 +85,7 @@ export class AnalyticsRepo {
                 count(*) filter (where s.is_positive)::int as positive,
                 count(distinct ${personSql()})::int as users,
                 count(*) filter (where s.jira_key is not null)::int as with_jira,
-                count(*) filter (where not s.is_positive and s.status in ('open','triaged','in_progress','needs_info'))::int as open_issues,
+                count(*) filter (where not s.is_positive and s.status in ('open','triaged','in_progress','needs_info','fixed'))::int as open_issues,
                 count(*) filter (where not s.is_positive and s.status in ('resolved','closed','wont_fix'))::int as closed_issues,
                 count(*) filter (where s.ai_status = 'done')::int as diagnosed
          ${base}`),
@@ -209,8 +209,8 @@ export class AnalyticsRepo {
          select status, count(*)::int as stints,
                 (avg(extract(epoch from coalesce(until, now()) - since)) / 3600)::float8 as avg_hours,
                 (percentile_cont(0.5) within group (order by extract(epoch from coalesce(until, now()) - since)) / 3600)::float8 as p50_hours
-           from st where status in ('open', 'triaged', 'in_progress', 'needs_info')
-          group by status order by array_position(array['open','triaged','in_progress','needs_info'], status)`),
+           from st where status in ('open', 'triaged', 'in_progress', 'needs_info', 'fixed')
+          group by status order by array_position(array['open','triaged','in_progress','needs_info','fixed'], status)`),
 
       this.caughtFirst(f),
     ]);

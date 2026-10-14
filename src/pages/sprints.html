@@ -172,6 +172,7 @@
   .s-open { background: var(--primary); }
   .s-prog { background: oklch(60% .01 230); }
   .s-info { background: var(--accent); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .25); }
+  .s-fixed { background: oklch(76% .01 230); }
   .s-done { background: oklch(89% .005 230); }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; padding: 0; list-style: none; }
   .legend li { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; color: var(--ink-2); }
@@ -370,7 +371,7 @@
     <div class="bulkbar" id="bulkbar" hidden>
       <b id="bulkN">0 selected</b>
       <select id="bMove" aria-label="Move to"></select>
-      <select id="bStatus" aria-label="Set status"><option value="">Status…</option><option value="open">Open</option><option value="triaged">Triaged</option><option value="in_progress">In progress</option><option value="needs_info">Needs info</option><option value="resolved">Resolved</option><option value="closed">Closed</option><option value="wont_fix">Won't fix</option></select>
+      <select id="bStatus" aria-label="Set status"><option value="">Status…</option><option value="open">Open</option><option value="triaged">Triaged</option><option value="in_progress">In progress</option><option value="needs_info">Needs info</option><option value="fixed">Fixed</option><option value="resolved">Resolved</option><option value="closed">Closed</option><option value="wont_fix">Won't fix</option></select>
       <select id="bOwner" aria-label="Set owner"><option value="">Owner…</option><option value="__none">Unassign</option></select>
       <select id="bPrio" aria-label="Set priority"><option value="">Priority…</option><option value="p0">P0</option><option value="p1">P1</option><option value="p2">P2</option><option value="p3">P3</option><option value="__none">Clear</option></select>
       <button class="btn small primary" id="btnBulk" type="button">Apply</button>
@@ -527,7 +528,7 @@
   }
 
   // ---------- labels ----------
-  const STATUS = { open: 'Open', triaged: 'Triaged', in_progress: 'In progress', needs_info: 'Needs info', resolved: 'Resolved', closed: 'Closed', wont_fix: "Won't fix" };
+  const STATUS = { open: 'Open', triaged: 'Triaged', in_progress: 'In progress', needs_info: 'Needs info', fixed: 'Fixed', resolved: 'Resolved', closed: 'Closed', wont_fix: "Won't fix" };
   const TERMINAL = ['resolved', 'closed', 'wont_fix'];
   const L = { features: {}, categories: {} };
   const featLabel = (k) => L.features[k] || (k ? k[0].toUpperCase() + k.slice(1) : '');
@@ -620,18 +621,19 @@
     if (c.carried_in) facts.push(`<li>${svg('carry')}${c.carried_in} carried in${d.prev ? ' from ' + esc(d.prev) : ''}</li>`);
 
     const bs = c.by_status || {};
-    const openOnly = bs.open || 0, prog = (bs.triaged || 0) + (bs.in_progress || 0), info = bs.needs_info || 0;
+    const openOnly = bs.open || 0, prog = (bs.triaged || 0) + (bs.in_progress || 0), info = bs.needs_info || 0, fixed = bs.fixed || 0;
     const seg = (cls, n, label) => (n ? `<i class="${cls}" style="flex-grow:${n}" title="${label}: ${n}"></i>` : '');
     const feats = d.by_feature || [];
     const max = Math.max(1, ...feats.map((x) => x.open + x.done));
     const right = c.issues ? `
       <div>
         <div class="blk-head"><h3>Where it stands</h3><span class="sub">${c.issues} ${c.issues === 1 ? 'issue' : 'issues'}</span></div>
-        <div class="stack" role="img" aria-label="${openOnly} open, ${prog} in progress, ${info} need info, ${c.done} done">${seg('s-open', openOnly, 'Open')}${seg('s-prog', prog, 'In progress or triaged')}${seg('s-info', info, 'Needs info')}${seg('s-done', c.done, 'Done')}</div>
+        <div class="stack" role="img" aria-label="${openOnly} open, ${prog} in progress, ${info} need info, ${fixed} fixed and waiting for QC, ${c.done} done">${seg('s-open', openOnly, 'Open')}${seg('s-prog', prog, 'In progress or triaged')}${seg('s-info', info, 'Needs info')}${seg('s-fixed', fixed, 'Fixed, for QC to check')}${seg('s-done', c.done, 'Done')}</div>
         <ul class="legend">
           <li><i class="s-open"></i>Open <b>${openOnly}</b></li>
           <li><i class="s-prog"></i>In progress <b>${prog}</b></li>
           <li><i class="s-info"></i>Needs info <b>${info}</b></li>
+          ${fixed ? `<li><i class="s-fixed"></i>Fixed, to check <b>${fixed}</b></li>` : ''}
           <li><i class="s-done"></i>Done <b>${c.done}</b></li>
         </ul>
       </div>

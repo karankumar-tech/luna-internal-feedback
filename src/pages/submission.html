@@ -403,7 +403,7 @@
   const istStamp = (iso) => { if (!iso) return '—'; const d = new Date(iso); return new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).format(d) + ' IST'; };
   const SIDE_LABEL = { firmware: 'Firmware', sdk: 'Ring SDK', app: 'App', backend: 'Backend', user_expectation: 'User expectation', not_a_bug: 'Not a bug', insufficient_logs: 'Insufficient logs' };
   const STATUS_TEXT = { pending: 'Queued', running: 'Diagnosing…', waiting_logs: 'Waiting for logs', done: 'Done', no_logs: 'No logs', failed: 'Failed' };
-  const TRIAGE = [['open', 'Open'], ['triaged', 'Triaged'], ['in_progress', 'In progress'], ['needs_info', 'Needs info'], ['resolved', 'Resolved'], ['closed', 'Closed'], ['wont_fix', "Won't fix"]];
+  const TRIAGE = [['open', 'Open'], ['triaged', 'Triaged'], ['in_progress', 'In progress'], ['needs_info', 'Needs info'], ['fixed', 'Fixed'], ['resolved', 'Resolved'], ['closed', 'Closed'], ['wont_fix', "Won't fix"]];
 
   // ---------- load ----------
   async function load() {
@@ -435,11 +435,11 @@
 
   /** Hide what this role cannot do; the server refuses it either way. */
   function applyRole() {
-    $('statusSel').disabled = !can('manage_triage');
+    $('statusSel').disabled = !can('manage_triage') && !can('mark_fixed');
     $('ownerSel').disabled = !can('manage_triage');
     $('prioSel').disabled = !can('manage_triage');
     $('composer').hidden = !can('add_notes');
-    $('statusSel').title = can('manage_triage') ? 'Move this ticket through triage' : 'Your role can see the status but not change it';
+    $('statusSel').title = can('manage_triage') ? 'Move this ticket through triage' : can('mark_fixed') ? 'Mark the bug as fixed; QC checks it and resolves or closes it' : 'Your role can see the status but not change it';
     $('btnFlag').hidden = !can('manage_triage');
     $('btnDiagnose').hidden = !can('run_diagnosis');
     document.querySelector('.kind-add').classList.toggle('ro', !can('manage_kinds') && !can('suggest_kinds'));
@@ -541,6 +541,12 @@
     const sel = $('statusSel');
     if (!sel.options.length) for (const [value, label] of TRIAGE) { const o = el('option', null, label); o.value = value; sel.appendChild(o); }
     sel.value = state.sub.status || 'open';
+    if (can('manage_triage')) { sel.disabled = false; for (const o of sel.options) o.disabled = false; return; }
+    // Developers: only "Fixed", and only until QC has resolved, closed or dropped the report.
+    const finished = ['resolved', 'closed', 'wont_fix'].includes(state.sub.status);
+    const open = can('mark_fixed') && !finished && state.sub.status !== 'fixed';
+    for (const o of sel.options) o.disabled = !(o.value === sel.value || (open && o.value === 'fixed'));
+    sel.disabled = !open;
   }
   $('statusSel').addEventListener('change', async (ev) => {
     const sel = ev.target; const next = sel.value; const previous = state.sub.status || 'open';
@@ -551,7 +557,7 @@
       toast('Status set to ' + (TRIAGE.find((t) => t[0] === next) || [, next])[1]);
       renderSubmission(); loadActivity();
     } catch (err) { sel.value = previous; toast('Could not update status: ' + err.message); }
-    finally { sel.disabled = false; }
+    finally { renderStatusSelect(); }
   });
 
   // ---------- owner & priority ----------

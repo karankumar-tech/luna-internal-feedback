@@ -348,7 +348,7 @@
       <div class="fpanel" id="fpanel" hidden></div>
       <div class="bulkbar" id="bulkbar" hidden>
         <b id="bulkN">0 selected</b>
-        <select id="bStatus" aria-label="Set status"><option value="">Status…</option><option value="triaged">Triaged</option><option value="in_progress">In progress</option><option value="needs_info">Needs info</option><option value="resolved">Resolved</option><option value="closed">Closed</option><option value="wont_fix">Won't fix</option></select>
+        <select id="bStatus" aria-label="Set status"><option value="">Status…</option><option value="triaged">Triaged</option><option value="in_progress">In progress</option><option value="needs_info">Needs info</option><option value="fixed">Fixed</option><option value="resolved">Resolved</option><option value="closed">Closed</option><option value="wont_fix">Won't fix</option></select>
         <select id="bOwner" aria-label="Set owner"><option value="">Owner…</option><option value="__none">Unassign</option></select>
         <select id="bPrio" aria-label="Set priority"><option value="">Priority…</option><option value="p0">P0</option><option value="p1">P1</option><option value="p2">P2</option><option value="p3">P3</option><option value="__none">Clear</option></select>
         <input id="bTag" type="text" list="knownTags" placeholder="Add tag…" aria-label="Add a tag" autocomplete="off" spellcheck="false" maxlength="30">
@@ -405,7 +405,7 @@
   // ---------- labels ----------
   const featLabel = (k) => (S.labels && S.labels.features[k]) || (k ? k[0].toUpperCase() + k.slice(1) : '');
   const catLabel = (f, k) => (S.labels && S.labels.categories[f] && S.labels.categories[f][k]) || k.replace(/_/g, ' ');
-  const STATUS = { open: 'Open', triaged: 'Triaged', in_progress: 'In progress', needs_info: 'Needs info', resolved: 'Resolved', closed: 'Closed', wont_fix: "Won't fix" };
+  const STATUS = { open: 'Open', triaged: 'Triaged', in_progress: 'In progress', needs_info: 'Needs info', fixed: 'Fixed', resolved: 'Resolved', closed: 'Closed', wont_fix: "Won't fix" };
   const SIDE = { firmware: 'Firmware', sdk: 'Ring SDK', app: 'App', backend: 'Backend', user_expectation: 'Expectation', not_a_bug: 'Not a bug', insufficient_logs: 'Too few logs' };
   const ENV = { stage: 'Stage', uat: 'UAT', production: 'Production' };
 

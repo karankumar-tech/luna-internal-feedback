@@ -8,7 +8,7 @@ import { zodIssues } from '../../schema/buildValidator.js';
 import { isValidCalendarDate, todayInZone } from '../../lib/time.js';
 import { ENVIRONMENTS, ORIGINS, PLATFORMS } from '../../schema/registry.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
-import { PRIORITIES, SUBMISSION_STATUSES, parseSubmissionRef } from './feedback.repo.js';
+import { PRIORITIES, SUBMISSION_STATUSES, TERMINAL_STATUSES, parseSubmissionRef } from './feedback.repo.js';
 import { can, isTeamAction } from '../../lib/actor.js';
 import { parseSprintRef } from '../sprints/cycle.js';
 import type { FastifyRequest } from 'fastify';
@@ -104,6 +104,14 @@ export const SCREENSHOT_TYPES = ['image/jpeg', 'image/png', 'image/heic', 'image
 export const SCREENSHOT_PRE_TRANSFORMATION = 'w-1600,h-1600,c-at_max,q-80';
 /** What the app should do before uploading so uploads are fast on mobile networks. */
 export const SCREENSHOT_CLIENT_RESIZE = { max_dimension: 1600, jpeg_quality: 0.8, target_bytes: 500 * 1024, note: 'Downscale so the longest side is ≤ 1600 px and encode as JPEG (quality ~0.8) before uploading. Convert HEIC/camera photos to JPEG on device. Typical result: 150–500 KB.' } as const;
+
+/** A developer may not reopen what QC resolved, closed or won't fix by marking it fixed. */
+export async function assertNotFinished(service: FeedbackService, id: string) {
+  const row = await service.row(id);
+  if ((TERMINAL_STATUSES as readonly string[]).includes(row.status)) {
+    throw AppError.conflict(`${row.ref} is already ${row.status.replace('_', ' ')}; only QC can change it now`);
+  }
+}
 
 /** Tells the app the issue form may carry `sprint`, and where to get the labels for its two choices. */
 export const SPRINTS_DESCRIPTOR = {
@@ -211,8 +219,8 @@ export function registerFeedbackRoutes(
   /** By uuid or by reference (LN-00042, ln-42, 42). */
   app.get<{ Params: { id: string } }>('/v1/feedback/:id', async (req) => service.get(req.params.id));
 
-  // ---- triage: status, owner, priority, test flag (QC) ----
-  app.patch<{ Params: { id: string } }>('/v1/admin/submissions/:id', { onRequest: requirePermission('manage_triage') }, async (req) => {
+  // ---- triage: status, owner, priority, test flag (QC); developers may only mark a bug fixed ----
+  app.patch<{ Params: { id: string } }>('/v1/admin/submissions/:id', { onRequest: requirePermission('mark_fixed') }, async (req) => {
     const parsed = z.object({
       is_test: z.boolean().optional(),
       status: z.enum(SUBMISSION_STATUSES).optional(),
@@ -228,6 +236,12 @@ export function registerFeedbackRoutes(
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
     const { is_test, status, status_note, assigned_to, priority, sprint } = parsed.data;
     const by = actorOf(req);
+    if (!can(req.actor, 'manage_triage')) {
+      // Developers: "fixed" and nothing else, and only on a report QC has not finished with.
+      const onlyFixed = status === 'fixed' && is_test === undefined && assigned_to === undefined && priority === undefined && sprint === undefined;
+      if (!onlyFixed) throw AppError.forbidden(`Your role (${req.actor?.role ?? 'unknown'}) can only mark a bug as fixed; QC resolves or closes it`);
+      await assertNotFinished(service, req.params.id);
+    }
     if (sprint !== undefined && !can(req.actor, 'manage_sprints')) throw AppError.forbidden(`Your role (${req.actor?.role ?? 'unknown'}) cannot move reports between sprints`);
 
     if (assigned_to && isAssignable && !(await isAssignable(assigned_to))) {

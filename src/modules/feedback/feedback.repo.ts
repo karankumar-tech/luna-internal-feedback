@@ -80,8 +80,11 @@ export interface SubmissionRow {
   ai_checked_at: Date | null;
 }
 
-/** Where a ticket sits in triage. QC owns the transitions; everyone else reads them. */
-export const SUBMISSION_STATUSES = ['open', 'triaged', 'in_progress', 'needs_info', 'resolved', 'closed', 'wont_fix'] as const;
+/**
+ * Where a ticket sits in triage. QC owns the transitions; developers may only say a bug is `fixed`,
+ * which QC then checks and resolves or closes. Everyone else reads them.
+ */
+export const SUBMISSION_STATUSES = ['open', 'triaged', 'in_progress', 'needs_info', 'fixed', 'resolved', 'closed', 'wont_fix'] as const;
 export type SubmissionStatus = (typeof SUBMISSION_STATUSES)[number];
 /** Statuses where nobody needs to do anything more. */
 export const TERMINAL_STATUSES: readonly SubmissionStatus[] = ['resolved', 'closed', 'wont_fix'];
