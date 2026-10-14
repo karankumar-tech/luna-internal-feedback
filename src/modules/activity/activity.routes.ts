@@ -57,10 +57,13 @@ export function registerActivityRoutes(app: FastifyInstance, deps: {
       kind_id: z.string().trim().max(60).optional(),
       add_tags: z.array(z.string().max(40)).max(10).optional(),
       remove_tags: z.array(z.string().max(40)).max(10).optional(),
-    }).strict().refine((b) => b.status !== undefined || b.assigned_to !== undefined || b.priority !== undefined || b.is_test !== undefined || b.kind_id !== undefined || !!b.add_tags?.length || !!b.remove_tags?.length, {
-      message: 'send at least one of status, assigned_to, priority, is_test, kind_id, add_tags, remove_tags',
+      /** "current", "next" or a sprint reference; null puts them back on the main list. */
+      sprint: z.string().trim().max(20).nullable().optional(),
+    }).strict().refine((b) => b.status !== undefined || b.assigned_to !== undefined || b.priority !== undefined || b.is_test !== undefined || b.kind_id !== undefined || !!b.add_tags?.length || !!b.remove_tags?.length || b.sprint !== undefined, {
+      message: 'send at least one of status, assigned_to, priority, is_test, kind_id, add_tags, remove_tags, sprint',
     }), req.body);
     if (body.kind_id && !can(req.actor, 'manage_kinds')) throw AppError.forbidden(`Your role (${req.actor?.role}) cannot link problems`);
+    if (body.sprint !== undefined && !can(req.actor, 'manage_sprints')) throw AppError.forbidden(`Your role (${req.actor?.role}) cannot move reports between sprints`);
     if (body.assigned_to && !(await deps.assignable()).some((u) => u.email === body.assigned_to)) {
       throw AppError.validation([{ path: 'assigned_to', message: `${body.assigned_to} has no dashboard account` }]);
     }
@@ -77,6 +80,7 @@ export function registerActivityRoutes(app: FastifyInstance, deps: {
         if (body.status !== undefined) await feedback.setStatus(id, body.status, null, by, team);
         if (body.kind_id) await kinds.link((await feedback.row(id)).id, body.kind_id, 'manual', null, by);
         if (body.add_tags?.length || body.remove_tags?.length) await feedback.changeTags(id, { add: body.add_tags, remove: body.remove_tags }, by);
+        if (body.sprint !== undefined) await feedback.moveToSprint(id, body.sprint, by);
         updated += 1;
       } catch (err) {
         failed.push({ id, error: err instanceof Error ? err.message : String(err) });

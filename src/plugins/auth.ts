@@ -18,14 +18,14 @@ function header(req: { headers: Record<string, unknown> }, name: string): string
 /** Routes that serve HTML pages or handle the dashboard sign-in. Data behind them still needs auth. */
 export const PUBLIC_PATHS = new Set([
   '/', '/healthz', '/docs',
-  '/dashboard', '/dashboard/report', '/dashboard/diagnosis', '/dashboard/analytics', '/dashboard/kinds', '/dashboard/users', '/dashboard/attention', '/dashboard/settings', '/dashboard/benchmarks',
+  '/dashboard', '/dashboard/report', '/dashboard/diagnosis', '/dashboard/analytics', '/dashboard/kinds', '/dashboard/users', '/dashboard/attention', '/dashboard/settings', '/dashboard/benchmarks', '/dashboard/sprints',
   '/dashboard/login', '/dashboard/logout', '/dashboard/session', '/dashboard/bootstrap',
   // Brand assets: the logo in every header and the icons browsers fetch on their own.
   '/logo.png', '/mark.png', '/favicon.png', '/favicon.ico', '/apple-touch-icon.png',
 ]);
 
-/** Detail pages (a tester's progress among them), the short share links (/i/LN-00042, /k/LNK-0007, /b/BM-0007) that redirect to them, and the pages' scripts. */
-const PUBLIC_PAGE = /^\/(?:dashboard\/(?:submissions|kinds|benchmarks|benchmarks\/progress|assets)|i|k|b)\/[^/]+$/;
+/** Detail pages (a tester's progress among them), the short share links (/i/LN-00042, /k/LNK-0007, /b/BM-0007, /s/SPR-202610-01) that redirect to them, and the pages' scripts. */
+const PUBLIC_PAGE = /^\/(?:dashboard\/(?:submissions|kinds|benchmarks|benchmarks\/progress|sprints|assets)|i|k|b|s)\/[^/]+$/;
 
 /** What the CX tool's key may call: its own routes, plus the form schema and screenshot upload credentials. */
 function cxKeyMayCall(url: string): boolean {

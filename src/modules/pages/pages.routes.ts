@@ -83,6 +83,8 @@ export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
   app.get('/dashboard/settings', html(PAGES.settings));
   app.get('/dashboard/benchmarks', html(PAGES.benchmarks));
   // Static paths win over the :ref one in Fastify's router, whatever the order here.
+  app.get('/dashboard/sprints', html(PAGES.sprints));
+  app.get('/dashboard/sprints/:ref', html(PAGES.sprints));
   app.get('/dashboard/benchmarks/progress', html(PAGES.progress));
   app.get('/dashboard/benchmarks/progress/:tester', html(PAGES.progress));
   app.get('/dashboard/benchmarks/:ref', html(PAGES.benchmark));
@@ -108,7 +110,9 @@ export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
   if (ASSETS['favicon.png']) app.get('/favicon.ico', asset(ASSETS['favicon.png']));
   app.get('/', async (_req, reply) => reply.redirect('/docs', 302));
 
-  // Short links for sharing: /i/LN-00042, /k/LNK-0007 and /b/BM-0007. The page behind them still needs a sign-in.
+  // Short links for sharing: /i/LN-00042, /k/LNK-0007, /b/BM-0007 and /s/SPR-202610-01. The page behind them still needs a sign-in.
+  app.get<{ Params: { ref: string } }>('/s/:ref', async (req, reply) =>
+    reply.redirect(`/dashboard/sprints/${encodeURIComponent(req.params.ref)}`, 302));
   app.get<{ Params: { ref: string } }>('/b/:ref', async (req, reply) =>
     reply.redirect(`/dashboard/benchmarks/${encodeURIComponent(req.params.ref)}`, 302));
   app.get<{ Params: { ref: string } }>('/i/:ref', async (req, reply) =>

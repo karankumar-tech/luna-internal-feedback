@@ -18,6 +18,7 @@
   const P = {
     report: '<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/>',
     reports: '<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+    sprints: '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M3 10h18"/><path d="M8 2v4"/><path d="M17 14h-6"/><path d="M13 18H7"/><path d="M7 14h.01"/><path d="M17 18h.01"/>',
     attention: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
     problems: '<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>',
     analytics: '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
@@ -43,6 +44,7 @@
   const NAV = [
     { group: 'Overview', items: [
       { id: 'reports', label: 'Reports', href: '/dashboard', match: /^\/dashboard\/?$|^\/dashboard\/submissions\// },
+      { id: 'sprints', label: 'Sprints', href: '/dashboard/sprints', match: /^\/dashboard\/sprints/ },
       { id: 'report', label: 'Report an issue', href: '/dashboard/report', match: /^\/dashboard\/report/ },
       { id: 'attention', label: 'Needs attention', href: '/dashboard/attention', match: /^\/dashboard\/attention/, badge: true },
       { id: 'problems', label: 'Problems', href: '/dashboard/kinds', match: /^\/dashboard\/kinds/ },
@@ -93,7 +95,7 @@
 <header class="app-header">
   <div class="hd-start">
     <button class="hd-icon hd-menu" type="button" id="hdMenu" aria-label="Open the menu" aria-controls="appSidebar" aria-expanded="false">${icon('menu')}</button>
-    <div class="hd-search">${icon('search')}<input id="goRef" type="search" placeholder="Go to LN-… or LNK-…" aria-label="Go to a report (LN-00042) or a problem (LNK-0007)" aria-keyshortcuts="/" autocomplete="off" spellcheck="false"><kbd aria-hidden="true">/</kbd></div>
+    <div class="hd-search">${icon('search')}<input id="goRef" type="search" placeholder="Go to LN, LNK, SPR…" aria-label="Go to a report (LN-00042), a problem (LNK-0007) or a sprint (SPR-202610-01)" aria-keyshortcuts="/" autocomplete="off" spellcheck="false"><kbd aria-hidden="true">/</kbd></div>
   </div>
   <div class="hd-end">
     <a class="hd-icon hd-docs" href="/docs" title="API docs" aria-label="API docs">${icon('docs')}</a>
@@ -358,6 +360,7 @@
     const v = $('goRef').value.trim();
     if (/^(ln-?)?\d{1,9}$/i.test(v)) location.href = '/dashboard/submissions/' + encodeURIComponent(v.toUpperCase());
     else if (/^lnk-?\d{1,9}$/i.test(v)) location.href = '/dashboard/kinds/' + encodeURIComponent(v.toUpperCase());
-    else LunaShell.toast('Type a report (LN-00042) or a problem (LNK-0007)');
+    else if (/^spr-?\d{6}-?0?[12]$/i.test(v)) location.href = '/dashboard/sprints/' + encodeURIComponent(v.toUpperCase().replace(/^SPR-?(\d{6})-?0?([12])$/, 'SPR-$1-0$2'));
+    else LunaShell.toast('Type a report (LN-00042), a problem (LNK-0007) or a sprint (SPR-202610-01)');
   });
 })();

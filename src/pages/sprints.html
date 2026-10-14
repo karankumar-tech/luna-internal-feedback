@@ -1,0 +1,1124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Luna Pulse · Sprints</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  /* ---- base and list styles, as on the Reports page (dashboard.html); app.css below restyles them ---- */
+  * { box-sizing: border-box; }
+  html { color-scheme: light; }
+  body { margin: 0; background: var(--bg); color: var(--black); font-family: var(--sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  h1, h2, h3, p { margin: 0; }
+  .mono { font-family: var(--mono); }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  [hidden] { display: none !important; }
+  select { appearance: none; -webkit-appearance: none; padding-right: 28px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5l3.5 3.5 3.5-3.5' fill='none' stroke='%23737373' stroke-width='1.2'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; }
+  label.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+
+  .reports-head { display: flex; align-items: center; gap: 12px 16px; flex-wrap: wrap; padding: 16px 20px 12px; }
+  .reports-head h2 { font-size: 18px; line-height: 24px; }
+  .reports-head .total { font-size: 13px; color: var(--gray-dark); font-variant-numeric: tabular-nums; }
+  .tabs .count { font-family: var(--mono); font-size: 11px; color: var(--gray-dark); margin-left: 4px; }
+  .tabs button.on .count { color: var(--black); }
+  .head-end { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .fbtn .badge { font-family: var(--mono); font-size: 10px; line-height: 14px; background: var(--black); color: var(--white); border-radius: 7px; padding: 0 5px; }
+  .fbtn[aria-expanded="true"] { border-color: var(--black); }
+
+  .chipsrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 20px 12px; }
+  .fchip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; line-height: 16px; background: var(--yellow-50); border: 1px solid var(--yellow-700); color: var(--black); border-radius: 999px; padding: 3px 4px 3px 10px; }
+  .fchip button { border: 0; background: none; cursor: pointer; padding: 0 3px; border-radius: 50%; color: var(--yellow-700); display: inline-flex; }
+  .fchip button:hover { background: rgba(84,85,0,.12); }
+  .clearall { border: 0; background: none; font-size: 12px; color: var(--gray-dark); text-decoration: underline; cursor: pointer; padding: 3px 4px; }
+
+  .fpanel { margin: 0 20px 14px; padding: 16px; border: 1px solid var(--border-warm); border-radius: var(--r-l); }
+  .fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+  .fgrid select { width: 100%; }
+
+  .bulkbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 20px 12px; padding: 8px 12px; border: 1px solid var(--black); border-radius: var(--r-l); background: var(--yellow); font-size: 13px; }
+  .bulkbar select { min-height: 0; height: 30px; border-radius: var(--r-s); padding: 3px 28px 3px 8px; font-size: 12px; background-position: right 8px center; }
+
+  .list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border-ghost); }
+  .item { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 20px; padding: 14px 20px; border-bottom: 1px solid var(--border-ghost); transition: background .12s; }
+  .list.picking .item { grid-template-columns: 20px minmax(0, 1fr) auto; }
+  .item:hover, .item:focus-within { background: var(--row-hover); }
+  .item .pick { position: relative; z-index: 1; padding-top: 3px; }
+  .item .pick input { width: 15px; height: 15px; margin: 0; cursor: pointer; accent-color: var(--black); }
+  .item .main { min-width: 0; }
+  .item .head { max-width: 80ch; font-size: 15px; line-height: 22px; font-weight: 600; letter-spacing: -0.005em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .item .head a { text-decoration: none; }
+  .item .head a::after { content: ''; position: absolute; inset: 0; }
+  .item .head a:focus-visible { outline: none; }
+  .item .head a:focus-visible::after { outline: 2px solid var(--black); outline-offset: -2px; border-radius: var(--r-s); }
+  .item .said { max-width: 80ch; margin-top: 2px; font-size: 14px; line-height: 21px; color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .item .meta { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; font-size: 12px; line-height: 18px; color: var(--gray-dark); }
+  .item .meta .ref { font-family: var(--mono); color: var(--black); }
+  .item .side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; text-align: right; }
+  .item .when { font-size: 12px; line-height: 16px; color: var(--gray-dark); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; white-space: nowrap; color: var(--ink-2); }
+  .status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .owner { font-size: 12px; line-height: 16px; color: var(--gray-dark); white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+  .empty { padding: 40px 20px; text-align: center; color: var(--gray-dark); font-size: 14px; }
+  .empty b { display: block; color: var(--black); font-weight: 600; margin-bottom: 4px; }
+
+  .pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 20px; }
+  .pager .range { font-size: 13px; color: var(--gray-dark); font-variant-numeric: tabular-nums; }
+  .pages { display: flex; align-items: center; gap: 4px; }
+  .pages button { min-width: 32px; height: 32px; padding: 0 8px; border: 1px solid transparent; background: none; cursor: pointer; font-family: var(--mono); font-size: 12px; color: var(--ink-2); display: inline-flex; align-items: center; justify-content: center; }
+  .pages button:hover:not([disabled]) { border-color: var(--gray-light); color: var(--black); }
+  .pages button[disabled] { color: var(--gray-light); cursor: default; }
+  .pages .word { font-family: var(--sans); font-size: 13px; }
+
+  .bar { width: 100%; display: grid; grid-template-columns: minmax(96px, 150px) minmax(0, 1fr) 64px; align-items: center; gap: 12px; padding: 5px 8px; margin: 0 -8px; border: 0; background: none; border-radius: var(--r-m); cursor: pointer; text-align: left; transition: background .15s; }
+  .bar:hover { background: var(--row-hover); }
+  .bar:focus-visible { outline: 2px solid var(--black); outline-offset: -2px; }
+  .bar.on { background: var(--yellow-50); box-shadow: inset 0 0 0 1px var(--yellow-700); }
+  .bar .lbl { min-width: 0; display: flex; flex-direction: column; }
+  .bar .lbl b { font-weight: 500; font-size: 13px; line-height: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar .lbl small { font-size: 11px; line-height: 14px; color: var(--gray-dark); }
+  .bar .track { height: 10px; border-radius: 5px; background: var(--bg); display: flex; overflow: hidden; }
+  .bar .track i { display: block; height: 100%; }
+  .bar .num { font-family: var(--mono); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+  .bars { list-style: none; margin: 0; padding: 0; }
+
+  .pages .gap { color: var(--gray-dark); padding: 0 2px; font-size: 12px; }
+  .list.dim { opacity: .5; transition: opacity .15s; }
+  .item .meta .tag { font-family: var(--mono); font-size: 10px; line-height: 16px; letter-spacing: .06em; padding: 0 5px; border-radius: var(--r-xs); }
+  .item .meta .tag.test { background: var(--yellow); color: var(--black); }
+  .track-x .sk { flex: none; }
+
+  /* ---------------------------------------------------------------------------------------------
+     Sprints
+     --------------------------------------------------------------------------------------------- */
+
+
+  /* the strip of sprints */
+  .strip { display: flex; align-items: stretch; gap: 8px; padding: 10px; margin-bottom: 16px; }
+  .strip .nav { flex: none; width: 32px; border: 0; background: none; border-radius: var(--r-m); color: var(--muted-foreground); cursor: pointer; display: grid; place-items: center; transition: background-color .15s var(--ease), color .15s var(--ease); }
+  .strip .nav:hover:not([disabled]) { background: var(--muted); color: var(--foreground); }
+  .strip .nav[disabled] { opacity: .35; cursor: default; }
+  .strip .nav svg { width: 16px; height: 16px; }
+  .strip .nav:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+  .track-x { flex: 1 1 auto; min-width: 0; display: flex; gap: 8px; overflow-x: auto; scroll-behavior: smooth; scrollbar-width: none; padding: 2px; }
+  .track-x::-webkit-scrollbar { display: none; }
+  .spchip { flex: none; min-width: 168px; display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--r-l); background: var(--card); text-align: left; cursor: pointer; transition: border-color .15s var(--ease), background-color .15s var(--ease), box-shadow .15s var(--ease); }
+  .spchip:hover { border-color: var(--border-strong); }
+  .spchip:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+  .spchip .r1 { display: flex; align-items: center; gap: 6px; font: 500 12px/16px var(--mono); color: var(--foreground); }
+  .spchip .r1 svg { width: 13px; height: 13px; color: var(--muted-foreground); flex: none; }
+  .spchip .r2 { font-size: 12px; line-height: 16px; color: var(--muted-foreground); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .spchip.planned { border-style: dashed; border-color: var(--border-strong); }
+  .spchip.closed .r1 { color: var(--ink-2); }
+  .spchip[aria-current="true"] { background: var(--accent-soft); border-color: var(--accent-ink); box-shadow: inset 0 0 0 1px var(--accent-ink); border-style: solid; }
+  .spchip.add { min-width: 120px; justify-content: center; align-items: center; flex-direction: row; gap: 6px; border-style: dashed; color: var(--muted-foreground); font-size: 13px; font-weight: 500; }
+  .spchip.add:hover { color: var(--foreground); border-color: var(--primary); }
+  .spchip.add svg { width: 14px; height: 14px; }
+  .badge-cur { font: 600 10px/16px var(--sans); letter-spacing: .02em; padding: 0 6px; border-radius: var(--r-xs); background: var(--primary); color: #FFF; }
+  .badge-late { font: 600 10px/16px var(--sans); letter-spacing: .02em; padding: 0 6px; border-radius: var(--r-xs); background: var(--accent-soft); color: var(--accent-ink); box-shadow: inset 0 0 0 1px oklch(85% .09 110); }
+
+  /* the sprint card */
+  .sprint { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); margin-bottom: 16px; }
+  .sp-head { grid-column: 1 / -1; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; padding: 20px 24px 18px; border-bottom: 1px solid var(--border-ghost); }
+  .sp-title { min-width: 0; }
+  .sp-title h2 { font-size: 20px; line-height: 28px; font-weight: 650; letter-spacing: -.015em; display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap; margin-top: 2px; }
+  .sp-title .refchip { font: 500 12px/20px var(--mono); padding: 0 7px; border-radius: var(--r-s); background: var(--muted); color: var(--foreground); letter-spacing: 0; }
+  .sp-title .dates { margin-top: 4px; font-size: 13px; line-height: 20px; color: var(--muted-foreground); }
+  .sp-title .goal { margin-top: 6px; max-width: 72ch; font-size: 14px; line-height: 21px; color: var(--ink-2); }
+  .sp-title .goal b { font-weight: 500; color: var(--foreground); }
+  .sp-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .btn.icon-btn { width: 36px; padding: 0; }
+  .sp-banner { grid-column: 1 / -1; margin: 16px 24px 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .sp-banner .btn { margin-left: auto; height: 30px; font-size: 13px; }
+
+  .sp-left { padding: 22px 24px 20px; border-right: 1px solid var(--border-ghost); display: flex; flex-direction: column; min-width: 0; }
+  .big { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-weight: 500; }
+  .big .n { font-size: 64px; line-height: 64px; font-weight: 600; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
+  .big .w { font-size: 20px; line-height: 26px; }
+  .big-sub { margin-top: 6px; font-size: 13px; line-height: 20px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+  .big-sub b { color: var(--foreground); font-weight: 500; }
+  .facts { margin: 14px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+  .facts li { display: inline-flex; align-items: center; gap: 6px; }
+  .facts .prio { font-size: 10px; line-height: 16px; padding: 0 5px; }
+  .facts svg { width: 14px; height: 14px; color: var(--muted-foreground); }
+  .time { margin-top: auto; padding-top: 22px; }
+  .time-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 13px; line-height: 18px; }
+  .time-row b { font-weight: 600; }
+  .time-row span { color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+  .tbar { position: relative; height: 10px; border-radius: 5px; background: var(--muted); overflow: hidden; }
+  .tbar i { position: absolute; inset: 0 auto 0 0; background: var(--primary); border-radius: 5px 0 0 5px; }
+  .tbar.done i { border-radius: 5px; }
+  .tbar.late i { background: var(--primary); }
+  /* one notch per day */
+  .tbar::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0, transparent calc(100% / var(--days) - 2px), var(--card) calc(100% / var(--days) - 2px), var(--card) calc(100% / var(--days))); }
+  .time-foot { margin-top: 8px; font-size: 12px; line-height: 16px; color: var(--muted-foreground); }
+  .daily { display: grid; grid-template-columns: repeat(var(--days), minmax(0, 1fr)); gap: 2px; align-items: end; height: 64px; margin-bottom: 6px; }
+  .daily i { display: block; min-height: 2px; border-radius: 3px 3px 1px 1px; background: oklch(72% .01 230); }
+  .daily i.today { background: var(--primary); }
+  .daily i.future { background: var(--muted); }
+
+  .sp-right { padding: 20px 24px 18px; min-width: 0; display: flex; flex-direction: column; gap: 20px; }
+  .sp-right h3 { font-size: 14px; line-height: 20px; font-weight: 600; }
+  .sp-right .sub { font-size: 12px; line-height: 16px; color: var(--muted-foreground); }
+  .blk-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .stack { display: flex; gap: 2px; height: 14px; border-radius: 7px; overflow: hidden; background: var(--muted); }
+  .stack i { display: block; height: 100%; min-width: 3px; }
+  .s-open { background: var(--primary); }
+  .s-prog { background: oklch(60% .01 230); }
+  .s-info { background: var(--accent); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .25); }
+  .s-done { background: oklch(89% .005 230); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; padding: 0; list-style: none; }
+  .legend li { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; color: var(--ink-2); }
+  .legend i { width: 8px; height: 8px; border-radius: var(--r-xs); flex: none; }
+  .legend b { font-family: var(--mono); font-weight: 500; font-size: 12px; color: var(--foreground); font-variant-numeric: tabular-nums; }
+  .bar .track i.o { background: var(--primary); }
+  .bar .track i.d { background: oklch(89% .005 230); }
+  .sp-empty { padding: 28px 0; color: var(--muted-foreground); font-size: 13px; line-height: 20px; }
+  .sp-empty b { display: block; color: var(--foreground); font-weight: 600; font-size: 14px; margin-bottom: 2px; }
+
+  /* list extras */
+  .carried { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 7px; border: 1px solid var(--border-strong); border-radius: 6px; font: 500 11px/16px var(--mono); color: var(--ink-2); }
+  .carried svg { width: 11px; height: 11px; }
+  .hintline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 20px 12px; font-size: 13px; line-height: 20px; color: var(--muted-foreground); }
+  .hintline svg { width: 14px; height: 14px; flex: none; }
+  .hintline a, .linkish { color: var(--foreground); font-weight: 500; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--border-strong); cursor: pointer; background: none; border: 0; padding: 0; }
+  .hintline a:hover, .linkish:hover { text-decoration-color: var(--primary); }
+
+  /* all sprints */
+  .card-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 18px 20px 12px; }
+  .tbl-wrap { position: relative; overflow-x: auto; }
+  .tbl td { font-size: 13px; line-height: 18px; white-space: nowrap; }
+  .tbl td.name b { display: block; font-weight: 500; font-size: 14px; line-height: 20px; color: var(--foreground); }
+  .tbl td.name small { font: 400 12px/16px var(--mono); color: var(--muted-foreground); }
+  .tbl td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+  .tbl th.num { text-align: right; }
+  .tbl tbody tr { cursor: pointer; }
+  .tbl tbody tr.on td { background: var(--accent-soft); }
+  .tbl tbody tr:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+  .tbl th:first-child, .tbl td:first-child { padding-left: 20px; }
+  .tbl th:last-child, .tbl td:last-child { padding-right: 20px; }
+  .donebar { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; }
+  .donebar .t { width: 72px; height: 6px; border-radius: 3px; background: var(--muted); overflow: hidden; }
+  .donebar .t i { display: block; height: 100%; background: var(--primary); border-radius: 3px; }
+  .st { display: inline-block; padding: 0 7px; border-radius: var(--r-s); font: 600 11px/18px var(--sans); letter-spacing: .02em; border: 1px solid var(--border); white-space: nowrap; }
+  .st.active { background: var(--primary); border-color: var(--primary); color: #FFF; }
+  .st.planned { border-style: dashed; border-color: var(--border-strong); color: var(--foreground); }
+  .st.closed { background: var(--muted); color: var(--muted-foreground); }
+  .st.late { background: var(--accent-soft); border-color: oklch(85% .09 110); color: var(--accent-ink); }
+  .carry { color: var(--muted-foreground); font-size: 12px; }
+
+  /* menu */
+  .menu-pop { position: fixed; z-index: 70; width: 264px; padding: 4px; background: var(--card); border: 1px solid var(--border); border-radius: var(--r-l); box-shadow: var(--shadow-lg); animation: scale-in .15s var(--ease); transform-origin: top right; }
+  .menu-pop button { width: 100%; display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; border: 0; background: none; border-radius: var(--r-s); font-size: 14px; line-height: 20px; color: var(--foreground); cursor: pointer; text-align: left; }
+  .menu-pop button:hover:not([aria-disabled="true"]), .menu-pop button:focus-visible { background: var(--muted); outline: none; }
+  .menu-pop button svg { width: 16px; height: 16px; margin-top: 2px; color: var(--muted-foreground); flex: none; }
+  .menu-pop button.danger { color: var(--destructive-ink); }
+  .menu-pop button.danger svg { color: var(--destructive-ink); }
+  .menu-pop button[aria-disabled="true"] { color: var(--muted-foreground); cursor: default; }
+  .menu-pop button[aria-disabled="true"] svg { color: var(--gray-mid); }
+  .menu-pop small { display: block; font-size: 12px; line-height: 16px; color: var(--muted-foreground); }
+  .menu-pop hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
+
+  /* dialogs */
+  dialog.dlg { width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--card); color: var(--foreground); box-shadow: 0 24px 60px -12px rgba(0, 0, 0, .28); }
+  dialog.dlg[open] { display: flex; flex-direction: column; animation: scale-in .18s var(--ease); }
+  dialog.dlg::backdrop { background: rgba(8, 8, 8, .42); }
+  dialog.dlg.narrow { width: min(480px, calc(100vw - 32px)); }
+  .dlg-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 20px 24px 4px; }
+  .dlg-head h2 { font-size: 18px; line-height: 26px; }
+  .dlg-head p { margin-top: 4px; font-size: 14px; line-height: 21px; color: var(--muted-foreground); }
+  .dlg-x { width: 32px; height: 32px; flex: none; display: grid; place-items: center; border: 0; background: none; border-radius: var(--r-m); color: var(--muted-foreground); cursor: pointer; margin: -4px -8px 0 0; }
+  .dlg-x:hover { background: var(--muted); color: var(--foreground); }
+  .dlg-x:focus-visible, .perissue summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+  .dlg-x svg { width: 16px; height: 16px; }
+  .dlg-body { padding: 16px 24px 4px; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 16px; }
+  .dlg-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; padding: 16px 24px 20px; border-top: 1px solid var(--border-ghost); margin-top: 16px; }
+  .dlg-foot .note { margin-right: auto; font-size: 12px; line-height: 16px; color: var(--muted-foreground); max-width: 34ch; }
+  .flabel { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--muted-foreground); margin-bottom: 6px; display: block; }
+  .rcards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .rcard { position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--r-l); cursor: pointer; transition: border-color .15s var(--ease), box-shadow .15s var(--ease); }
+  .rcard:hover { border-color: var(--border-strong); }
+  .rcard:has(input:checked) { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+  .rcard:has(input:focus-visible) { box-shadow: inset 0 0 0 1px var(--primary), 0 0 0 3px var(--ring); }
+  .rcard input { margin: 3px 0 0; flex: none; }
+  .rcard b { display: block; font-weight: 600; font-size: 14px; line-height: 20px; }
+  .rcard small { display: block; font-size: 12px; line-height: 17px; color: var(--muted-foreground); }
+  .rcard .mono { font-size: 12px; }
+  .perissue { border: 1px solid var(--border); border-radius: var(--r-l); }
+  .perissue summary { list-style: none; display: flex; align-items: center; gap: 8px; padding: 10px 14px; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .perissue summary::-webkit-details-marker { display: none; }
+  .perissue summary svg { width: 14px; height: 14px; transition: transform .2s var(--ease); color: var(--muted-foreground); }
+  .perissue[open] summary svg { transform: rotate(90deg); }
+  .perissue summary .changed { margin-left: auto; font-weight: 400; color: var(--muted-foreground); font-size: 12px; }
+  .perissue ul { list-style: none; margin: 0; padding: 0 0 4px; border-top: 1px solid var(--border-ghost); max-height: 260px; overflow-y: auto; }
+  .perissue li { display: grid; grid-template-columns: 76px minmax(0, 1fr) 92px auto; align-items: center; gap: 4px 12px; padding: 8px 14px; border-bottom: 1px solid var(--border-ghost); font-size: 13px; line-height: 18px; }
+  .perissue li:last-child { border-bottom: 0; }
+  .perissue li .ref { font-family: var(--mono); font-size: 12px; }
+  .perissue li .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .perissue li select { min-height: 0; height: 30px; font-size: 12px; padding: 3px 28px 3px 8px; border-radius: var(--r-s); background-position: right 8px center; }
+  .perissue li select.moved { border-color: var(--primary); }
+  .after { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--r-l); background: var(--muted); font-size: 13px; line-height: 20px; color: var(--ink-2); }
+  .after svg { width: 16px; height: 16px; flex: none; margin-top: 2px; color: var(--muted-foreground); }
+  .after b { color: var(--foreground); font-weight: 500; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-grid .full { grid-column: 1 / -1; }
+  .form-grid input, .form-grid textarea { width: 100%; }
+  .form-grid textarea { resize: vertical; min-height: 64px; }
+  .help { margin-top: 4px; font-size: 12px; line-height: 16px; color: var(--muted-foreground); }
+  .err { margin-top: 4px; font-size: 12px; line-height: 16px; color: var(--destructive-ink); }
+  .refpreview { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted-foreground); }
+  .refpreview .mono { color: var(--foreground); background: var(--muted); padding: 0 7px; border-radius: var(--r-s); font-size: 12px; line-height: 20px; }
+  .btn.danger.solid { background: var(--destructive); border-color: var(--destructive); color: #FFF; }
+  .btn.danger.solid:hover { background: oklch(50% .22 27.3); }
+  .gone { margin: 0; padding-left: 18px; font-size: 13px; line-height: 21px; color: var(--ink-2); }
+
+
+  @media (max-width: 900px) {
+    .sprint { grid-template-columns: 1fr; }
+    .sp-left { border-right: 0; border-bottom: 1px solid var(--border-ghost); }
+  }
+  @media (max-width: 640px) {
+    .sp-head, .sp-left, .sp-right { padding-left: 16px; padding-right: 16px; }
+    .sp-banner { margin-left: 16px; margin-right: 16px; }
+    .big .n { font-size: 52px; line-height: 54px; }
+    .bar { grid-template-columns: minmax(0, 1fr) 90px 52px; gap: 10px; }
+    .reports-head { padding: 14px 16px 10px; }
+    .head-end { margin-left: 0; }
+    .tabs { order: 3; width: 100%; overflow-x: auto; }
+    .item { grid-template-columns: minmax(0, 1fr); padding: 14px 16px; }
+    .list.picking .item { grid-template-columns: 20px minmax(0, 1fr); }
+    .item .side { grid-column: -2 / -1; flex-direction: row; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 10px; }
+    .chipsrow, .fpanel, .bulkbar, .hintline { margin-left: 16px; margin-right: 16px; }
+    .chipsrow { padding: 0 0 12px; }
+    .pager { padding: 12px 16px; }
+    .rcards, .form-grid { grid-template-columns: 1fr; }
+    .perissue li { grid-template-columns: auto minmax(0, 1fr) auto; } .perissue li .t { grid-column: 1 / -1; grid-row: 1; }
+    .dlg-head, .dlg-body, .dlg-foot { padding-left: 16px; padding-right: 16px; }
+    .card-head { padding: 16px 16px 10px; }
+    .strip .nav { display: none; }
+  }
+</style>
+<link rel="stylesheet" href="/dashboard/assets/app.css">
+</head>
+<body>
+<script src="/dashboard/assets/shell.js"></script>
+<!--
+  THESIS: one sprint at a time, read like the Reports page: how much is left and how long is left
+  first, then the issues as sentences. Moving through sprints is a strip, not a calendar.
+  STORY: open the page on the current sprint, see "13 open, closes tomorrow", read what is open,
+  close the sprint and choose where the leftovers go; the next sprint becomes current.
+  FORM: extension inside the established dashboard world (no new visual system).
+  Mocked up first in docs/design/sprints-mockup.html; the plan is docs/PLAN-sprints.md.
+-->
+
+<main class="wrap">
+  <div class="page-head">
+    <div>
+      <h1>Sprints</h1>
+      <p class="page-sub">Issues QA files against a half-month sprint. Close the current sprint to start the next one.</p>
+    </div>
+    <div class="page-actions">
+      <button class="btn" type="button" id="btnNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M3 10h18"/><path d="M8 2v4"/><path d="M12 14v4"/><path d="M10 16h4"/></svg>New sprint</button>
+      <a class="btn primary" href="/dashboard/report?sprint=current" id="btnReport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Report an issue</a>
+    </div>
+  </div>
+
+  <nav class="card strip" aria-label="Sprints">
+    <button class="nav" type="button" id="prevSp" aria-label="Previous sprint" title="Previous sprint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+    <div class="track-x" id="strip"><span class="sk" style="width:168px;height:52px"></span><span class="sk" style="width:168px;height:52px"></span></div>
+    <button class="nav" type="button" id="nextSp" aria-label="Next sprint" title="Next sprint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+  </nav>
+
+  <section class="card sprint" id="sprint" aria-labelledby="spName">
+    <div class="sp-head"><div class="sp-title"><span class="sk" style="width:120px;height:12px;display:block"></span><span class="sk" style="width:280px;height:24px;display:block;margin-top:8px"></span></div></div>
+    <div class="sp-left"><span class="sk" style="width:120px;height:60px"></span></div>
+    <div class="sp-right"><span class="sk" style="height:14px"></span></div>
+  </section>
+
+  <section class="card" id="issues" aria-labelledby="issuesTitle">
+    <div class="reports-head">
+      <h2 id="issuesTitle">Issues in this sprint</h2>
+      <div class="tabs" role="group" aria-label="Which issues" id="tabs">
+        <button type="button" data-tab="open">Open<span class="count" data-n="open"></span></button>
+        <button type="button" data-tab="done">Done<span class="count" data-n="done"></span></button>
+        <button type="button" data-tab="all">All<span class="count" data-n="all"></span></button>
+        <button type="button" data-tab="mine" title="Open issues in this sprint assigned to you">Mine<span class="count" data-n="mine"></span></button>
+      </div>
+      <div class="head-end">
+        <span class="total" id="total"></span>
+        <button class="btn small fbtn" id="btnFilter" type="button" aria-expanded="false" aria-controls="fpanel">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M2 4h12M4.5 8h7M7 12h2"/></svg>Filter<span class="badge" id="fcount" hidden></span>
+        </button>
+      </div>
+    </div>
+    <div class="chipsrow" id="chips" hidden></div>
+    <div class="fpanel" id="fpanel" hidden>
+      <div class="fgrid">
+        <label class="field"><span>Feature</span><select data-f="feature"></select></label>
+        <label class="field"><span>Status</span><select data-f="status"></select></label>
+        <label class="field"><span>Priority</span><select data-f="priority"></select></label>
+        <label class="field"><span>Owner</span><select data-f="assigned_to"></select></label>
+      </div>
+    </div>
+    <div class="bulkbar" id="bulkbar" hidden>
+      <b id="bulkN">0 selected</b>
+      <select id="bMove" aria-label="Move to"></select>
+      <select id="bStatus" aria-label="Set status"><option value="">Status…</option><option value="open">Open</option><option value="triaged">Triaged</option><option value="in_progress">In progress</option><option value="needs_info">Needs info</option><option value="resolved">Resolved</option><option value="closed">Closed</option><option value="wont_fix">Won't fix</option></select>
+      <select id="bOwner" aria-label="Set owner"><option value="">Owner…</option><option value="__none">Unassign</option></select>
+      <select id="bPrio" aria-label="Set priority"><option value="">Priority…</option><option value="p0">P0</option><option value="p1">P1</option><option value="p2">P2</option><option value="p3">P3</option><option value="__none">Clear</option></select>
+      <button class="btn small primary" id="btnBulk" type="button">Apply</button>
+      <button class="btn small ghost" id="btnBulkClear" type="button">Clear selection</button>
+    </div>
+    <p class="sr-only" id="listStatus" aria-live="polite"></p>
+    <ol class="list" id="list"></ol>
+    <div class="pager" id="pager" hidden><span class="range" id="range"></span><div class="pages" id="pages"></div></div>
+  </section>
+
+  <section class="card" id="allCard" aria-labelledby="allTitle">
+    <div class="card-head">
+      <div><h2 id="allTitle">All sprints</h2><p class="sub">Newest first. Pick one to open it.</p></div>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>Sprint</th><th>Dates</th><th>State</th><th class="num">Issues</th><th>Done</th><th>Carried</th><th><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody id="allRows"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<!-- close a sprint -->
+<dialog class="dlg" id="dlgClose" aria-labelledby="dlgCloseTitle">
+  <form method="dialog" id="formClose" style="display:contents">
+    <div class="dlg-head"><div><h2 id="dlgCloseTitle"></h2><p id="dlgCloseSub"></p></div><button class="dlg-x" type="button" data-close aria-label="Cancel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>
+    <div class="dlg-body">
+      <div id="closeChoice">
+        <span class="flabel" id="closeWhereLbl">Move the open issues to</span>
+        <div class="rcards" role="radiogroup" aria-labelledby="closeWhereLbl">
+          <label class="rcard"><input type="radio" name="dest" value="next" checked><span><b>Next sprint</b><small id="closeNextLbl"></small></span></label>
+          <label class="rcard"><input type="radio" name="dest" value="main"><span><b>Main issue list</b><small>Back on Reports, out of sprints</small></span></label>
+        </div>
+      </div>
+      <details class="perissue" id="perIssue">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg><span id="perIssueLbl">Choose per issue</span><span class="changed" id="perIssueChanged"></span></summary>
+        <ul id="perIssueList"></ul>
+      </details>
+      <div class="after"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg><span id="closeAfter"></span></div>
+      <p class="err" id="closeErr" hidden></p>
+    </div>
+    <div class="dlg-foot">
+      <button class="btn" type="button" data-close>Cancel</button>
+      <button class="btn primary" type="submit" id="closeGo"></button>
+    </div>
+  </form>
+</dialog>
+
+<!-- new / edit sprint -->
+<dialog class="dlg narrow" id="dlgEdit" aria-labelledby="dlgEditTitle">
+  <form method="dialog" id="formEdit" style="display:contents" novalidate>
+    <div class="dlg-head"><div><h2 id="dlgEditTitle"></h2><p id="dlgEditSub"></p></div><button class="dlg-x" type="button" data-close aria-label="Cancel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>
+    <div class="dlg-body">
+      <div class="form-grid">
+        <label class="field"><span>Starts</span><input type="date" id="fStart" required></label>
+        <label class="field"><span>Ends</span><input type="date" id="fEnd" required></label>
+        <div class="full" id="fDatesMsg"></div>
+        <div class="full refpreview" id="fRef"></div>
+        <label class="field full"><span>Name</span><input type="text" id="fName" maxlength="80" required></label>
+        <label class="field full"><span>Goal <span style="font-weight:400">(optional)</span></span><textarea id="fGoal" maxlength="300" rows="2" placeholder="One sentence the team can check the sprint against"></textarea></label>
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button class="btn" type="button" data-close>Cancel</button>
+      <button class="btn primary" type="submit" id="editGo"></button>
+    </div>
+  </form>
+</dialog>
+
+<!-- delete -->
+<dialog class="dlg narrow" id="dlgDelete" aria-labelledby="dlgDeleteTitle">
+  <form method="dialog" id="formDelete" style="display:contents">
+    <div class="dlg-head"><div><h2 id="dlgDeleteTitle"></h2></div><button class="dlg-x" type="button" data-close aria-label="Cancel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>
+    <div class="dlg-body">
+      <div class="banner crit" id="delWhat"></div>
+      <ul class="gone" id="delList"></ul>
+      <label class="field"><span id="delLbl"></span><input type="text" id="delInput" autocomplete="off" spellcheck="false" class="mono"></label>
+      <p class="err" id="delErr" hidden></p>
+    </div>
+    <div class="dlg-foot">
+      <button class="btn" type="button" data-close>Cancel</button>
+      <button class="btn danger solid" type="submit" id="delGo" disabled></button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const toast = (m) => LunaShell.toast(m);
+  const HERE = location.pathname + location.search;
+  const TZ = 'Asia/Kolkata';
+  const PAGE_SIZE = 25;
+  const ICON = {
+    check: '<path d="M20 6 9 17l-5-5"/>',
+    plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+    more: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+    edit: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
+    link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+    trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+    flag: '<path d="M4 22V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.333 2q2 0 3.067-.8A1 1 0 0 1 20 4v10a1 1 0 0 1-.4.8A6 6 0 0 1 16 16c-3 0-5-2-8-2a6 6 0 0 0-4 1.528"/>',
+    carry: '<polyline points="15 10 20 15 15 20"/><path d="M4 4v7a4 4 0 0 0 4 4h12"/>',
+    x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  };
+  const svg = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
+
+  async function api(path, opts = {}) {
+    const headers = Object.assign({ 'x-requested-with': 'dashboard' }, opts.headers || {});
+    if (opts.body) headers['content-type'] = 'application/json';
+    const r = await fetch(path, Object.assign({ credentials: 'same-origin' }, opts, { headers }));
+    const text = await r.text();
+    let body = null; try { body = text ? JSON.parse(text) : null; } catch { body = { error: { message: text.slice(0, 200) } }; }
+    if (!r.ok) { const e = new Error((body && body.error && body.error.message) || `HTTP ${r.status}`); e.status = r.status; e.body = body; throw e; }
+    return body;
+  }
+  const qs = (o) => Object.entries(o).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+  /** The first field message of a 422, else the error's own message. */
+  const why = (err) => (err.body && err.body.error && err.body.error.issues && err.body.error.issues[0] && err.body.error.issues[0].message) || err.message;
+
+  // ---------- dates (civil days, YYYY-MM-DD) ----------
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const MON = MONTHS.map((m) => m.slice(0, 3));
+  const pad = (n) => String(n).padStart(2, '0');
+  const D = (s) => new Date(s + 'T00:00:00Z');
+  const addDays = (s, n) => { const d = D(s); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const diff = (a, b) => Math.round((D(a) - D(b)) / 86400000);
+  const dm = (s) => `${D(s).getUTCDate()} ${MON[D(s).getUTCMonth()]}`;
+  const wd = (s) => new Intl.DateTimeFormat('en-GB', { weekday: 'short', timeZone: 'UTC' }).format(D(s));
+  const dayOf = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+  function halfOf(s) {
+    const [y, m, d] = s.split('-').map(Number); const h = d <= 15 ? 1 : 2;
+    const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    return { y, m, h, start: `${y}-${pad(m)}-${h === 1 ? '01' : '16'}`, end: `${y}-${pad(m)}-${h === 1 ? '15' : pad(last)}` };
+  }
+  const refOf = (h) => `SPR-${h.y}${pad(h.m)}-0${h.h}`;
+  const nameOf = (h) => `Sprint · ${MONTHS[h.m - 1]} ${h.y} · 0${h.h}`;
+  const halfLabel = (h) => `the ${h.h === 1 ? 'first' : 'second'} half of ${MONTHS[h.m - 1]} ${h.y}`;
+  function range(a, b, year = true) {
+    const A = D(a), B = D(b); const y = year ? ' ' + B.getUTCFullYear() : '';
+    return A.getUTCMonth() === B.getUTCMonth() && A.getUTCFullYear() === B.getUTCFullYear() ? `${A.getUTCDate()}–${B.getUTCDate()} ${MON[B.getUTCMonth()]}${y}` : `${dm(a)} – ${dm(b)}${y}`;
+  }
+  /** The sprint that follows one ending on `end`, as the server makes it. */
+  function sprintAfter(end) { const start = addDays(end, 1); const h = halfOf(start); return { ref: refOf(h), start, end: h.end }; }
+  /** "14:05" today, "Yesterday 21:40", "24 Sep" before that. */
+  function when(isoTs) {
+    const d = new Date(isoTs); const today = dayOf(new Date()); const day = dayOf(d);
+    const clock = new Intl.DateTimeFormat('en-IN', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false }).format(d);
+    if (day === today) { const m = Math.round((Date.now() - d) / 60000); return m < 60 ? (m < 1 ? 'just now' : `${m} min ago`) : clock; }
+    if (day === addDays(today, -1)) return 'Yesterday ' + clock;
+    return dm(day) + (day.slice(0, 4) !== today.slice(0, 4) ? ' ' + day.slice(0, 4) : '');
+  }
+
+  // ---------- labels ----------
+  const STATUS = { open: 'Open', triaged: 'Triaged', in_progress: 'In progress', needs_info: 'Needs info', resolved: 'Resolved', closed: 'Closed', wont_fix: "Won't fix" };
+  const TERMINAL = ['resolved', 'closed', 'wont_fix'];
+  const L = { features: {}, categories: {} };
+  const featLabel = (k) => L.features[k] || (k ? k[0].toUpperCase() + k.slice(1) : '');
+  const catLabel = (f, k) => (L.categories[f] && L.categories[f][k]) || k.replace(/_/g, ' ');
+
+  // ---------- state ----------
+  const S = { me: null, list: null, sel: null, detail: null, tab: 'open', f: {}, page: 1, items: null, picked: new Set(), people: null, seq: 0 };
+  const can = (p) => !!(S.me && S.me.permissions && S.me.permissions[p]);
+  const sp = (ref) => (S.list ? S.list.items.find((s) => s.ref === ref) : null);
+  const ordered = () => (S.list ? [...S.list.items].sort((a, b) => a.starts_on.localeCompare(b.starts_on)) : []);
+  const planned = () => ordered().filter((s) => s.status === 'planned');
+
+  // ---------- strip ----------
+  function renderStrip() {
+    const html = ordered().map((s) => {
+      const c = s.counts || {};
+      const late = s.is_current && s.overdue_days > 0;
+      const r1 = s.status === 'closed' ? `${svg('check')}${s.ref}` : s.ref;
+      const badge = s.is_current ? (late ? '<span class="badge-late">Overdue</span>' : '<span class="badge-cur">Current</span>') : '';
+      const r2 = s.status === 'closed' ? `${range(s.starts_on, s.ends_on, false)} · ${c.issues} done`
+        : s.is_current ? `${range(s.starts_on, s.ends_on, false)} · ${c.open} open`
+          : `${range(s.starts_on, s.ends_on, false)} · ${c.issues ? c.issues + ' filed' : s.is_next ? 'next' : 'planned'}`;
+      return `<button type="button" class="spchip ${s.status}" data-ref="${s.ref}"${s.ref === S.sel ? ' aria-current="true"' : ''} title="${esc(s.name)}"><span class="r1">${r1}${badge}</span><span class="r2">${esc(r2)}</span></button>`;
+    }).join('') + (can('manage_sprints') ? `<button type="button" class="spchip add" id="stripAdd" title="Plan another sprint">${svg('plus')}Plan next</button>` : '');
+    $('strip').innerHTML = html;
+    $('strip').querySelectorAll('[data-ref]').forEach((b) => b.addEventListener('click', () => select(b.dataset.ref)));
+    const add = $('stripAdd'); if (add) add.addEventListener('click', () => openEdit(null));
+    const list = ordered(); const i = list.findIndex((s) => s.ref === S.sel);
+    $('prevSp').disabled = i <= 0; $('nextSp').disabled = i < 0 || i >= list.length - 1;
+    const on = $('strip').querySelector('[aria-current="true"]');
+    if (on) on.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }
+  function step(d) { const list = ordered(); const i = list.findIndex((s) => s.ref === S.sel) + d; if (list[i]) select(list[i].ref); }
+
+  // ---------- the sprint card ----------
+  function daily(d) {
+    const counts = new Map((d.per_day || []).map((x) => [x.date, x.count]));
+    const days = d.days; const max = Math.max(1, ...counts.values());
+    let bars = '', total = 0;
+    for (let k = 0; k < days; k++) {
+      const day = addDays(d.starts_on, k); const n = counts.get(day) || 0; total += n;
+      const future = day > d.today; const cls = future ? 'future' : day === d.today ? 'today' : '';
+      bars += `<i class="${cls}" style="height:${future || !n ? 2 : Math.max(8, (n / max) * 100)}%" title="${dm(day)}: ${future ? 'to come' : n + ' filed'}"></i>`;
+    }
+    return `<div class="daily" style="--days:${days}" role="img" aria-label="${total} issues filed during the sprint, by day">${bars}</div>`;
+  }
+  function peak(d) {
+    const p = (d.per_day || []).reduce((a, x) => (x.count > (a ? a.count : 0) ? x : a), null);
+    return p ? `Bars show issues filed each day, most on ${dm(p.date)} (${p.count}). ` : '';
+  }
+  function renderSprint() {
+    const d = S.detail; const c = d.counts;
+    const late = d.is_current ? d.overdue_days : 0;
+    const overline = d.is_current ? 'Current sprint' : d.status === 'planned' ? (d.is_next ? 'Next sprint' : 'Planned sprint') : 'Closed sprint';
+    const closedOn = d.closed_at ? dayOf(new Date(d.closed_at)) : null;
+
+    let time;
+    if (d.is_current && d.starts_in > 0) {
+      time = `<div class="time"><div class="time-row"><b>Current early · starts ${wd(d.starts_on)} ${dm(d.starts_on)}</b><span>${d.days} days</span></div>
+        <div class="tbar" style="--days:${d.days}" role="img" aria-label="Not started"><i style="width:0"></i></div>
+        <p class="time-foot">The sprint before was closed early. Reports marked “current sprint” land here from now on; the dates stay as planned.</p></div>`;
+    } else if (d.is_current) {
+      const when = late ? `Ended ${wd(d.ends_on)} ${dm(d.ends_on)}` : d.days_left === 0 ? 'Closes today' : d.days_left === 1 ? 'Closes tomorrow' : `Closes in ${d.days_left} days`;
+      time = `<div class="time"><div class="time-row"><b>${when}</b><span>${late ? `${late} ${late === 1 ? 'day' : 'days'} past the end` : `Day ${d.day} of ${d.days}`}</span></div>
+        ${daily(d)}
+        <div class="tbar${late ? ' done' : ''}" style="--days:${d.days}" role="img" aria-label="Day ${d.day} of ${d.days}"><i style="width:${Math.min(100, ((d.day || 0) / d.days) * 100)}%"></i></div>
+        <p class="time-foot">${peak(d)}${late ? 'The app keeps filing here until it is closed.' : `Ends ${wd(d.ends_on)} ${dm(d.ends_on)}; it stays current until someone closes it.`}</p></div>`;
+    } else if (d.status === 'planned') {
+      time = `<div class="time"><div class="time-row"><b>${d.starts_in > 0 ? `Starts in ${d.starts_in} ${d.starts_in === 1 ? 'day' : 'days'}` : 'Starts when the current sprint closes'}</b><span>${d.days} days</span></div>
+        <div class="tbar" style="--days:${d.days}" role="img" aria-label="Not started"><i style="width:0"></i></div>
+        <p class="time-foot">Becomes current when ${esc(S.list.current || 'the current sprint')} is closed.</p></div>`;
+    } else {
+      time = `<div class="time"><div class="time-row"><b>Closed ${closedOn ? `${wd(closedOn)} ${dm(closedOn)}` : ''}</b><span>${d.days} days</span></div>
+        ${daily(d)}
+        <div class="tbar done" style="--days:${d.days}" role="img" aria-label="Finished"><i style="width:100%;background:oklch(60% .01 230)"></i></div>
+        <p class="time-foot">${peak(d)}${d.closed_by ? `Closed by ${esc(d.closed_by)}.` : ''}</p></div>`;
+    }
+
+    const pct = c.issues ? Math.round((c.done / c.issues) * 100) : 0;
+    let big;
+    if (d.status === 'closed') big = `<h3 class="big"><span class="n">${c.issues}</span><span class="w">done</span></h3><p class="big-sub">${c.issues ? 'every issue finished' : 'nothing was left in it'}${c.carried_out ? ` · <b>${c.carried_out}</b> carried over when it closed` : ''}</p>`;
+    else if (d.status === 'planned') big = `<h3 class="big"><span class="n">${c.issues}</span><span class="w">${c.issues === 1 ? 'issue' : 'issues'} filed for it</span></h3><p class="big-sub">from the app's “Next sprint” option and moves from this page</p>`;
+    else big = `<h3 class="big"><span class="n">${c.open}</span><span class="w">open</span></h3><p class="big-sub">of <b>${c.issues}</b> ${c.issues === 1 ? 'issue' : 'issues'} · <b>${c.done}</b> done (${pct}%)</p>`;
+    const facts = [];
+    if (d.status !== 'closed') {
+      if (c.p0_open) facts.push(`<li><span class="prio p0">P0</span>${c.p0_open} open</li>`);
+      if (c.p1_open) facts.push(`<li><span class="prio p1">P1</span>${c.p1_open} open</li>`);
+      if (c.unassigned_open) facts.push(`<li>${c.unassigned_open} without an owner</li>`);
+    }
+    if (c.carried_in) facts.push(`<li>${svg('carry')}${c.carried_in} carried in${d.prev ? ' from ' + esc(d.prev) : ''}</li>`);
+
+    const bs = c.by_status || {};
+    const openOnly = bs.open || 0, prog = (bs.triaged || 0) + (bs.in_progress || 0), info = bs.needs_info || 0;
+    const seg = (cls, n, label) => (n ? `<i class="${cls}" style="flex-grow:${n}" title="${label}: ${n}"></i>` : '');
+    const feats = d.by_feature || [];
+    const max = Math.max(1, ...feats.map((x) => x.open + x.done));
+    const right = c.issues ? `
+      <div>
+        <div class="blk-head"><h3>Where it stands</h3><span class="sub">${c.issues} ${c.issues === 1 ? 'issue' : 'issues'}</span></div>
+        <div class="stack" role="img" aria-label="${openOnly} open, ${prog} in progress, ${info} need info, ${c.done} done">${seg('s-open', openOnly, 'Open')}${seg('s-prog', prog, 'In progress or triaged')}${seg('s-info', info, 'Needs info')}${seg('s-done', c.done, 'Done')}</div>
+        <ul class="legend">
+          <li><i class="s-open"></i>Open <b>${openOnly}</b></li>
+          <li><i class="s-prog"></i>In progress <b>${prog}</b></li>
+          <li><i class="s-info"></i>Needs info <b>${info}</b></li>
+          <li><i class="s-done"></i>Done <b>${c.done}</b></li>
+        </ul>
+      </div>
+      <div>
+        <div class="blk-head"><h3>By feature</h3><span class="sub">Pick one to list its issues</span></div>
+        <ul class="bars">${feats.map((x) => `<li><button type="button" class="bar${S.f.feature === x.feature_key ? ' on' : ''}" data-feature="${esc(x.feature_key)}" aria-pressed="${S.f.feature === x.feature_key}">
+          <span class="lbl"><b>${esc(featLabel(x.feature_key))}</b><small>${x.open ? x.open + ' open' : 'all done'}</small></span>
+          <span class="track" aria-hidden="true"><i class="o" style="width:${(x.open / max) * 100}%"></i><i class="d" style="width:${(x.done / max) * 100}%"></i></span>
+          <span class="num">${x.open}/${x.open + x.done}</span></button></li>`).join('')}</ul>
+      </div>`
+      : `<div class="sp-empty"><b>Nothing filed for this sprint yet</b>${d.status === 'closed' ? 'It closed empty.' : 'Reports sent with the app’s “Current sprint” or “Next sprint” option land here, and QC can move issues in from Reports.'}</div>`;
+
+    const acts = [];
+    if (can('manage_sprints') && d.is_current) acts.push(`<button class="btn primary" type="button" id="btnClose">${svg('flag')}Close sprint</button>`);
+    if (can('manage_sprints') && d.status !== 'closed') acts.push(`<button class="btn" type="button" id="btnEdit">${svg('edit')}Edit</button>`);
+    acts.push(`<button class="btn icon-btn" type="button" id="btnMore" aria-haspopup="menu" aria-expanded="false" aria-label="More actions for ${d.ref}" title="More">${svg('more')}</button>`);
+
+    const banner = late ? `<div class="sp-banner banner"><b>Overdue by ${late} ${late === 1 ? 'day' : 'days'}.</b> ${can('manage_sprints') ? `Close it to start ${esc(d.follows)}` : `Waiting for QC to close it and start ${esc(d.follows)}`}; until then the app files “current sprint” reports here.${can('manage_sprints') ? '<button class="btn" type="button" data-close-sprint>Close now</button>' : ''}</div>` : '';
+
+    $('sprint').innerHTML = `
+      <div class="sp-head">
+        <div class="sp-title">
+          <span class="overline">${overline}</span>
+          <h2 id="spName">${esc(d.name)}<span class="refchip">${d.ref}</span></h2>
+          <p class="dates">${esc(d.range)} · ${d.days} days${d.status === 'planned' && d.created_by === 'system' ? ' · planned automatically' : ''}</p>
+          ${d.goal ? `<p class="goal"><b>Goal:</b> ${esc(d.goal)}</p>` : ''}
+        </div>
+        <div class="sp-actions">${acts.join('')}</div>
+      </div>
+      ${banner}
+      <div class="sp-left">${big}${facts.length ? `<ul class="facts">${facts.join('')}</ul>` : ''}${time}</div>
+      <div class="sp-right">${right}</div>`;
+
+    const cl = $('btnClose'); if (cl) cl.addEventListener('click', openClose);
+    const cn = $('sprint').querySelector('[data-close-sprint]'); if (cn) cn.addEventListener('click', openClose);
+    const ed = $('btnEdit'); if (ed) ed.addEventListener('click', () => openEdit(d));
+    $('btnMore').addEventListener('click', (ev) => openMenu(ev.currentTarget, sp(d.ref) || d));
+    $('sprint').querySelectorAll('[data-feature]').forEach((b) => b.addEventListener('click', () => {
+      S.f.feature = S.f.feature === b.dataset.feature ? undefined : b.dataset.feature; S.page = 1;
+      syncFilterPanel(); renderSprint(); loadList();
+      $('issues').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    }));
+    $('btnReport').href = '/dashboard/report?sprint=' + (d.is_next ? 'next' : 'current');
+    document.title = `Luna Pulse · ${d.ref}`;
+  }
+
+  // ---------- issues ----------
+  function headlineOf(r) {
+    const k = r.kinds && r.kinds[0];
+    const text = (r.feedback_text || '').trim();
+    if (k) return { head: k.title, said: text, kind: k };
+    if (text) return { head: text, said: '' };
+    const cats = r.issue_categories.map((x) => catLabel(r.feature_key, x)).join(', ');
+    return { head: cats || featLabel(r.feature_key), said: '' };
+  }
+  const testerOf = (r) => {
+    if (r.origin === 'cx') return 'CX · ' + (r.user_id ? 'user ' + r.user_id : 'ring ' + (r.device_serial || ''));
+    const e = (r.email || '').toLowerCase();
+    return r.tester_name || (e ? e.split('@')[0] : null) || (r.user_id ? 'tester ' + r.user_id : '');
+  };
+  async function loadList() {
+    const my = ++S.seq;
+    $('list').classList.add('dim');
+    const q = Object.assign({
+      view: S.tab === 'mine' ? 'mine' : 'issues', sprint: S.sel, page: S.page, page_size: PAGE_SIZE,
+      state: S.tab === 'open' ? 'open' : S.tab === 'done' ? 'done' : undefined,
+    }, S.f);
+    try {
+      const out = await api('/v1/home/reports?' + qs(q));
+      if (my !== S.seq) return;
+      S.items = out; renderList();
+    } catch (err) {
+      if (my !== S.seq) return;
+      $('list').classList.remove('dim');
+      toast('Could not load the issues: ' + err.message);
+    }
+  }
+  function renderTabs() {
+    const d = S.detail; const c = (d && d.counts) || {};
+    const counts = { open: c.open, done: c.done, all: c.issues, mine: d ? d.mine_open : 0 };
+    document.querySelectorAll('#tabs [data-tab]').forEach((b) => { const on = b.dataset.tab === S.tab; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+    document.querySelectorAll('#tabs [data-n]').forEach((x) => { x.textContent = counts[x.dataset.n] ? String(counts[x.dataset.n]) : ''; });
+    $('issuesTitle').textContent = d && d.status === 'planned' ? 'Filed for this sprint' : 'Issues in this sprint';
+  }
+  function renderList() {
+    renderTabs(); renderChips(); renderBulk();
+    const out = S.items; const host = $('list');
+    host.classList.remove('dim');
+    if (!out) return;
+    const picking = can('manage_sprints');
+    host.classList.toggle('picking', picking);
+    $('total').textContent = `${out.total} ${out.total === 1 ? 'issue' : 'issues'}`;
+    $('listStatus').textContent = $('total').textContent;
+    if (!out.items.length) {
+      const filtered = Object.values(S.f).some(Boolean);
+      const c = (S.detail && S.detail.counts) || {};
+      const [b, t] = filtered ? ['No issues match', 'Clear the filters to see more.']
+        : S.tab === 'open' && c.issues ? ['Nothing open in this sprint', 'Everything filed for it is done.']
+          : S.tab === 'mine' ? ['Nothing here is assigned to you', 'Open issues in this sprint with you as the owner show up here.']
+            : ['No issues yet', 'Issues filed for this sprint show up here.'];
+      host.innerHTML = `<li class="empty"><b>${b}</b>${t}</li>`;
+      $('pager').hidden = true; return;
+    }
+    host.innerHTML = out.items.map((r) => {
+      const h = headlineOf(r);
+      return `<li class="item">
+        ${picking ? `<div class="pick"><input type="checkbox" data-pick="${r.id}" aria-label="Select ${r.ref}"${S.picked.has(r.id) ? ' checked' : ''}></div>` : ''}
+        <div class="main">
+          <div class="head"><a href="/dashboard/submissions/${encodeURIComponent(r.ref)}">${esc(h.head)}</a></div>
+          ${h.said ? `<p class="said">“${esc(h.said)}”</p>` : ''}
+          <div class="meta"><span class="ref">${r.ref}</span>${h.kind ? `<span class="ref" title="${esc(h.kind.title)}">${h.kind.ref}</span>` : ''}<span>${esc(featLabel(r.feature_key))}${r.issue_categories.length ? ' · ' + esc(r.issue_categories.map((x) => catLabel(r.feature_key, x)).join(', ')) : ''}</span>${testerOf(r) ? `<span>${esc(testerOf(r))}</span>` : ''}${r.carried_from ? `<span class="carried" title="Carried over when ${r.carried_from} closed">${svg('carry')}from ${r.carried_from}</span>` : ''}${r.is_test ? '<span><span class="tag test">TEST</span></span>' : ''}</div>
+        </div>
+        <div class="side">
+          <span class="status ${r.status}">${STATUS[r.status] || r.status}</span>
+          ${r.priority ? `<span class="prio ${r.priority}">${r.priority.toUpperCase()}</span>` : ''}
+          <span class="owner">${r.assigned_to ? esc(r.owner_name || r.assigned_to.split('@')[0]) : 'Unassigned'}</span>
+          <span class="when" title="Received ${esc(new Date(r.created_at).toLocaleString('en-IN', { timeZone: TZ }))} IST">${when(r.created_at)}</span>
+        </div>
+      </li>`;
+    }).join('');
+    host.querySelectorAll('[data-pick]').forEach((x) => x.addEventListener('change', () => { if (x.checked) S.picked.add(x.dataset.pick); else S.picked.delete(x.dataset.pick); renderBulk(); }));
+    renderPager();
+  }
+  function renderPager() {
+    const out = S.items; const pages = Math.max(1, Math.ceil(out.total / out.page_size));
+    $('pager').hidden = pages <= 1;
+    const from = (out.page - 1) * out.page_size + 1;
+    $('range').textContent = `${from}–${Math.min(out.total, from + out.items.length - 1)} of ${out.total}`;
+    const shown = [...new Set([1, pages, S.page - 1, S.page, S.page + 1].filter((p) => p >= 1 && p <= pages))].sort((a, b) => a - b);
+    let html = `<button type="button" class="word" data-p="${S.page - 1}"${S.page <= 1 ? ' disabled' : ''}>Previous</button>`; let last = 0;
+    for (const p of shown) { if (p - last > 1) html += '<span class="gap">…</span>'; html += `<button type="button" data-p="${p}" class="${p === S.page ? 'on' : ''}"${p === S.page ? ' aria-current="page"' : ''}>${p}</button>`; last = p; }
+    html += `<button type="button" class="word" data-p="${S.page + 1}"${S.page >= pages ? ' disabled' : ''}>Next</button>`;
+    $('pages').innerHTML = html;
+    $('pages').querySelectorAll('[data-p]').forEach((b) => b.addEventListener('click', () => { S.page = Number(b.dataset.p); loadList(); $('issues').scrollIntoView({ block: 'start' }); }));
+  }
+
+  // ---------- filters ----------
+  const FILTERS = {
+    feature: { label: 'Feature', options: () => Object.entries(L.features) },
+    status: { label: 'Status', options: () => Object.entries(STATUS) },
+    priority: { label: 'Priority', options: () => [['p0', 'P0'], ['p1', 'P1'], ['p2', 'P2'], ['p3', 'P3'], ['none', 'Not set']] },
+    assigned_to: { label: 'Owner', options: () => [['me', 'Me'], ['none', 'Nobody'], ...(S.people || []).map((p) => [p.email, p.name || p.email])] },
+  };
+  function fillFilterPanel() {
+    for (const [k, f] of Object.entries(FILTERS)) {
+      const sel = document.querySelector(`[data-f="${k}"]`);
+      sel.innerHTML = `<option value="">Any</option>` + f.options().map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
+    }
+    syncFilterPanel();
+  }
+  function syncFilterPanel() { document.querySelectorAll('[data-f]').forEach((sel) => { sel.value = S.f[sel.dataset.f] || ''; }); }
+  document.querySelectorAll('[data-f]').forEach((sel) => sel.addEventListener('change', () => {
+    S.f[sel.dataset.f] = sel.value || undefined; S.page = 1;
+    if (sel.dataset.f === 'status' && sel.value && S.tab !== 'all') S.tab = 'all';
+    if (S.detail) renderSprint();
+    loadList();
+  }));
+  function chipLabel(k, v) {
+    const opt = FILTERS[k].options().find(([o]) => o === v);
+    return k === 'feature' ? featLabel(v) : `${FILTERS[k].label}: ${opt ? opt[1] : v}`;
+  }
+  function renderChips() {
+    const on = Object.entries(S.f).filter(([, v]) => v);
+    $('chips').hidden = !on.length;
+    $('fcount').hidden = !on.length; $('fcount').textContent = String(on.length);
+    $('chips').innerHTML = on.map(([k, v]) => `<span class="fchip">${esc(chipLabel(k, v))}<button type="button" data-unf="${k}" aria-label="Remove filter: ${esc(chipLabel(k, v))}"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button></span>`).join('')
+      + (on.length > 1 ? '<button class="clearall" type="button" data-unf="*">Clear all</button>' : '');
+    $('chips').querySelectorAll('[data-unf]').forEach((b) => b.addEventListener('click', () => {
+      if (b.dataset.unf === '*') S.f = {}; else delete S.f[b.dataset.unf];
+      S.page = 1; syncFilterPanel(); if (S.detail) renderSprint(); loadList();
+    }));
+  }
+  async function loadPeople() {
+    if (S.people) return S.people;
+    S.people = await api('/v1/admin/assignees').then((x) => x.items || []).catch(() => []);
+    fillFilterPanel();
+    const sel = $('bOwner');
+    for (const p of S.people) sel.appendChild(Object.assign(document.createElement('option'), { value: p.email, textContent: p.name ? `${p.name} (${p.role})` : p.email }));
+    return S.people;
+  }
+  $('btnFilter').addEventListener('click', () => {
+    const open = $('fpanel').hidden;
+    $('fpanel').hidden = !open; $('btnFilter').setAttribute('aria-expanded', String(open));
+    if (open) { loadPeople(); const first = $('fpanel').querySelector('select'); if (first) first.focus(); }
+  });
+
+  // ---------- bulk ----------
+  function moveTargets() {
+    const d = S.detail; const cur = S.list.current; const out = [];
+    if (cur && cur !== d.ref) out.push([cur, `Current sprint · ${cur}`]);
+    for (const p of planned()) if (p.ref !== d.ref) out.push([p.ref, `${p.is_next ? 'Next sprint' : 'Planned'} · ${p.ref}`]);
+    if (!S.list.next && cur && cur === d.ref) out.push(['next', `Next sprint · ${sprintAfter(d.ends_on).ref} (planned on the way)`]);
+    out.push(['__main', 'Main issue list']);
+    return out;
+  }
+  function renderBulk() {
+    const n = S.picked.size;
+    $('bulkbar').hidden = !can('manage_sprints') || n === 0;
+    $('bulkN').textContent = `${n} selected`;
+    if (n && S.detail) {
+      $('bMove').innerHTML = '<option value="">Move to…</option>' + moveTargets().map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
+      loadPeople();
+    }
+  }
+  $('btnBulkClear').addEventListener('click', () => { S.picked.clear(); renderList(); });
+  $('btnBulk').addEventListener('click', async () => {
+    const change = {};
+    const mv = $('bMove').value;
+    if (mv) change.sprint = mv === '__main' ? null : mv;
+    if ($('bStatus').value) change.status = $('bStatus').value;
+    if ($('bOwner').value) change.assigned_to = $('bOwner').value === '__none' ? null : $('bOwner').value;
+    if ($('bPrio').value) change.priority = $('bPrio').value === '__none' ? null : $('bPrio').value;
+    if (!Object.keys(change).length) { toast('Pick where to move them, or a status, owner or priority'); return; }
+    const ids = [...S.picked];
+    try {
+      const out = await api('/v1/admin/submissions/bulk', { method: 'POST', body: JSON.stringify(Object.assign({ ids }, change)) });
+      const what = change.sprint !== undefined ? (change.sprint === null ? 'Moved to the main list' : `Moved to ${change.sprint === 'next' ? 'the next sprint' : change.sprint}`) : 'Applied';
+      toast(`${what} · ${out.updated} updated${out.failed.length ? ` · ${out.failed.length} failed: ${out.failed[0].error}` : ''}`);
+      S.picked.clear(); ['bMove', 'bStatus', 'bOwner', 'bPrio'].forEach((id) => { $(id).value = ''; });
+      await refresh();
+    } catch (err) { toast('Could not apply: ' + why(err)); }
+  });
+
+  // ---------- all sprints ----------
+  function renderTable() {
+    const rows = [...S.list.items].sort((a, b) => b.starts_on.localeCompare(a.starts_on));
+    $('allRows').innerHTML = rows.map((s) => {
+      const c = s.counts || {}; const pct = c.issues ? Math.round((c.done / c.issues) * 100) : 0;
+      const state = s.is_current ? (s.overdue_days ? `<span class="st late">Overdue ${s.overdue_days} d</span>` : '<span class="st active">Current</span>')
+        : s.status === 'planned' ? `<span class="st planned">${s.is_next ? 'Next' : 'Planned'}</span>` : '<span class="st closed">Closed</span>';
+      const carry = [c.carried_in ? `${c.carried_in} in` : '', c.carried_out ? `${c.carried_out} out` : ''].filter(Boolean).join(' · ') || '—';
+      return `<tr tabindex="0" data-ref="${s.ref}" class="${s.ref === S.sel ? 'on' : ''}">
+        <td class="name"><b>${esc(s.name)}</b><small>${s.ref}</small></td>
+        <td>${esc(s.range)}</td>
+        <td>${state}</td>
+        <td class="num">${c.issues || '—'}</td>
+        <td>${c.issues ? `<span class="donebar"><span class="t"><i style="width:${pct}%"></i></span>${pct}%</span>` : '<span class="carry">—</span>'}</td>
+        <td><span class="carry">${carry}</span></td>
+        <td><button class="btn small ghost icon-btn" type="button" data-more="${s.ref}" aria-label="More actions for ${s.ref}" aria-haspopup="menu" style="width:32px">${svg('more')}</button></td>
+      </tr>`;
+    }).join('');
+    const go = (ref) => { select(ref); window.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); };
+    $('allRows').querySelectorAll('tr').forEach((tr) => {
+      tr.addEventListener('click', (e) => { if (!e.target.closest('[data-more]')) go(tr.dataset.ref); });
+      tr.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === tr) go(tr.dataset.ref); });
+    });
+    $('allRows').querySelectorAll('[data-more]').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); openMenu(b, sp(b.dataset.more)); }));
+  }
+
+  // ---------- menu ----------
+  let menu = null;
+  function closeMenu() { if (menu) { menu.btn.setAttribute('aria-expanded', 'false'); menu.el.remove(); menu = null; } }
+  function openMenu(btn, s) {
+    if (menu && menu.btn === btn) { closeMenu(); return; }
+    closeMenu();
+    const el = document.createElement('div'); el.className = 'menu-pop'; el.setAttribute('role', 'menu');
+    const n = (s.counts && s.counts.issues) || 0;
+    const items = [`<button role="menuitem" type="button" data-a="link">${svg('link')}<span>Copy link<small class="mono">/s/${s.ref}</small></span></button>`];
+    if (can('manage_sprints') && s.status !== 'closed' && btn.dataset.more) items.unshift(`<button role="menuitem" type="button" data-a="edit">${svg('edit')}<span>Edit details</span></button>`);
+    if (can('delete_sprints')) {
+      items.push('<hr>', s.delete_blocked_by
+        ? `<button role="menuitem" type="button" aria-disabled="true" data-a="noop">${svg('trash')}<span>Delete sprint<small>${esc(s.delete_blocked_by)}</small></span></button>`
+        : `<button role="menuitem" type="button" class="danger" data-a="delete">${svg('trash')}<span>Delete sprint…<small>${n ? `With its ${n} closed ${n === 1 ? 'issue' : 'issues'}` : 'It has no issues'}</small></span></button>`);
+    } else if (can('manage_sprints')) {
+      items.push('<hr>', `<button role="menuitem" type="button" aria-disabled="true" data-a="noop">${svg('trash')}<span>Delete sprint<small>Only an admin can delete a sprint.</small></span></button>`);
+    }
+    el.innerHTML = items.join('');
+    document.body.appendChild(el);
+    const r = btn.getBoundingClientRect();
+    el.style.top = Math.max(8, Math.min(window.innerHeight - el.offsetHeight - 8, r.bottom + 6)) + 'px';
+    el.style.left = Math.max(8, Math.min(window.innerWidth - el.offsetWidth - 8, r.right - el.offsetWidth)) + 'px';
+    btn.setAttribute('aria-expanded', 'true');
+    menu = { el, btn };
+    const first = el.querySelector('button:not([aria-disabled])'); if (first) first.focus();
+    el.addEventListener('click', async (e) => {
+      const a = e.target.closest('[data-a]'); if (!a || a.dataset.a === 'noop') return;
+      closeMenu();
+      if (a.dataset.a === 'link') {
+        const url = location.origin + '/s/' + s.ref;
+        try { await navigator.clipboard.writeText(url); toast('Link copied: ' + url); } catch { toast(url); }
+      }
+      if (a.dataset.a === 'edit') openEdit(s);
+      if (a.dataset.a === 'delete') openDelete(s);
+    });
+  }
+  document.addEventListener('click', (e) => { if (menu && !e.target.closest('.menu-pop') && e.target.closest('button') !== menu.btn) closeMenu(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && menu) { const b = menu.btn; closeMenu(); b.focus(); } });
+  window.addEventListener('scroll', closeMenu, { passive: true });
+
+  // ---------- close ----------
+  async function openClose() {
+    const d = S.detail; if (!d || !d.is_current) return;
+    let open;
+    try { open = await api('/v1/home/reports?' + qs({ view: 'issues', sprint: d.ref, state: 'open', data: 'all', page_size: 100 })); }
+    catch (err) { toast('Could not load the open issues: ' + err.message); return; }
+    const next = planned().find((p) => p.is_next);
+    const nextRef = next ? next.ref : d.follows;
+    const nextEnd = next ? next.ends_on : sprintAfter(d.ends_on).end;
+    const nextStart = next ? next.starts_on : sprintAfter(d.ends_on).start;
+    const following = planned().some((p) => p.starts_on > nextStart) ? null : sprintAfter(nextEnd).ref;
+    const total = open.total; const done = d.counts.done;
+    $('dlgCloseTitle').textContent = `Close ${d.ref}?`;
+    $('dlgCloseSub').textContent = total
+      ? `${done} done ${done === 1 ? 'issue stays' : 'issues stay'} with this sprint. ${total} ${total === 1 ? 'is' : 'are'} still open: choose where ${total === 1 ? 'it goes' : 'they go'}.`
+      : `All ${done} issues are done. Nothing needs to move.`;
+    $('closeChoice').hidden = !total; $('perIssue').hidden = !total; $('closeErr').hidden = true;
+    $('closeNextLbl').innerHTML = `<span class="mono">${esc(nextRef)}</span> · ${range(nextStart, nextEnd, false)}`;
+    document.querySelector('#formClose input[value="next"]').checked = true;
+    $('perIssue').open = false;
+    const others = planned().filter((p) => p.ref !== nextRef);
+    $('perIssueLbl').textContent = `Choose per issue (${total})`;
+    $('perIssueList').innerHTML = open.items.map((r) => `<li><span class="ref">${r.ref}</span><span class="t" title="${esc(headlineOf(r).head)}">${esc(headlineOf(r).head)}</span><span class="status ${r.status}">${STATUS[r.status]}</span>
+      <select data-dest="${r.id}" aria-label="Where ${r.ref} goes"><option value="">Same as above</option><option value="next">Next sprint</option><option value="main">Main issue list</option>${others.map((p) => `<option value="${p.ref}">${p.ref}</option>`).join('')}</select></li>`).join('')
+      + (total > open.items.length ? `<li><span></span><span class="t">…and ${total - open.items.length} more, which follow the choice above</span></li>` : '');
+    const sync = () => {
+      const def = document.querySelector('#formClose input[name="dest"]:checked').value;
+      const sels = [...$('perIssueList').querySelectorAll('select')];
+      const changed = sels.filter((x) => x.value && x.value !== def).length;
+      sels.forEach((x) => x.classList.toggle('moved', !!x.value && x.value !== def));
+      $('perIssueChanged').textContent = changed ? `${changed} ${changed === 1 ? 'goes' : 'go'} elsewhere` : '';
+      const rest = total - sels.length;
+      const toNext = sels.filter((x) => (x.value || def) === 'next').length + (def === 'next' ? rest : 0);
+      const toMain = sels.filter((x) => (x.value || def) === 'main').length + (def === 'main' ? rest : 0);
+      const toOther = total - toNext - toMain;
+      $('closeGo').textContent = total ? `Close sprint and move ${total}` : 'Close sprint';
+      const parts = [];
+      if (toNext) parts.push(`<b>${toNext}</b> to ${esc(nextRef)}`); if (toMain) parts.push(`<b>${toMain}</b> to the main list`); if (toOther) parts.push(`<b>${toOther}</b> to other planned sprints`);
+      $('closeAfter').innerHTML = `${parts.length ? 'Moving ' + parts.join(', ') + '. ' : ''}Then <b>${esc(nextRef)}</b> becomes the current sprint${following ? ` and <b>${esc(following)}</b> is planned as next` : ''}. The app's “Current sprint” switches at the same moment. Status, owners and priorities stay as they are.`;
+    };
+    $('formClose').onchange = sync; sync();
+    $('dlgClose').showModal();
+    (total ? document.querySelector('#formClose input[name="dest"]:checked') : $('closeGo')).focus();
+  }
+  $('formClose').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const d = S.detail; const def = document.querySelector('#formClose input[name="dest"]:checked').value;
+    const overrides = {};
+    for (const x of $('perIssueList').querySelectorAll('select')) if (x.value && x.value !== def) overrides[x.dataset.dest] = x.value;
+    $('closeGo').disabled = true;
+    try {
+      const out = await api(`/v1/admin/sprints/${encodeURIComponent(d.ref)}/close`, { method: 'POST', body: JSON.stringify({ default: def, overrides }) });
+      $('dlgClose').close();
+      toast(`${out.closed} closed. ${out.current} is now current${out.to_next ? `, with ${out.to_next} carried over` : ''}${out.to_main ? `; ${out.to_main} back on the main list` : ''}. ${out.next} is planned as next.`);
+      await reloadList(); await select(out.current);
+    } catch (err) { $('closeErr').textContent = why(err); $('closeErr').hidden = false; }
+    finally { $('closeGo').disabled = false; }
+  });
+
+  // ---------- new / edit ----------
+  let editing = null; let nameTouched = false;
+  function freeHalf() {
+    const last = [...S.list.items].sort((a, b) => b.ends_on.localeCompare(a.ends_on))[0];
+    if (!last) { const h = halfOf(dayOf(new Date())); return { start: h.start, end: h.end }; }
+    return sprintAfter(last.ends_on);
+  }
+  function openEdit(s) {
+    editing = s; nameTouched = !!s;
+    const dflt = s ? null : freeHalf();
+    $('dlgEditTitle').textContent = s ? `Edit ${s.ref}` : 'New sprint';
+    $('dlgEditSub').textContent = s ? (s.is_current ? 'The current sprint keeps its start date. You can move its end, rename it or set a goal.' : 'Dates can move within their half month, so the reference stays the same.')
+      : 'Prefilled with the next free half month. It starts as planned and becomes current when the sprint before it closes.';
+    $('fStart').value = s ? s.starts_on : dflt.start; $('fEnd').value = s ? s.ends_on : dflt.end;
+    $('fStart').disabled = !!(s && s.is_current);
+    $('fName').value = s ? s.name : nameOf(halfOf(dflt.start)); $('fGoal').value = s ? (s.goal || '') : '';
+    $('editGo').textContent = s ? 'Save' : 'Create sprint';
+    checkEdit();
+    $('dlgEdit').showModal();
+  }
+  function checkEdit(serverMsg) {
+    const a = $('fStart').value, b = $('fEnd').value; const msgs = serverMsg ? [serverMsg] : [];
+    let ok = !!a && !!b && !!$('fName').value.trim() && !serverMsg;
+    if (a && b) {
+      const h = halfOf(a); const ref = refOf(h);
+      if (b < a) { msgs.push('The end is before the start.'); ok = false; }
+      else if (diff(b, a) > 62) { msgs.push('A sprint can be at most two months long.'); ok = false; }
+      const clash = S.list.items.find((x) => (!editing || x.ref !== editing.ref) && !(b < x.starts_on || a > x.ends_on));
+      if (clash) { msgs.push(`Overlaps ${clash.ref} (${range(clash.starts_on, clash.ends_on, false)}).`); ok = false; }
+      if (editing && ref !== editing.ref) { msgs.push(`The start must stay in ${halfLabel(halfOf(editing.starts_on))}, so the reference stays ${editing.ref}.`); ok = false; }
+      $('fRef').innerHTML = editing ? `Reference <span class="mono">${editing.ref}</span> · ${b >= a ? diff(b, a) + 1 : 0} days` : `Gets <span class="mono">${ref}</span> · ${b >= a ? diff(b, a) + 1 : 0} days, ${halfLabel(h)}`;
+      if (!editing && !nameTouched) $('fName').value = nameOf(h);
+    }
+    $('fDatesMsg').innerHTML = [...new Set(msgs)].map((m) => `<p class="err">${esc(m)}</p>`).join('') || (a && b && !editing ? '<p class="help">Default cycle: 1st to 15th, then 16th to the end of the month.</p>' : '');
+    $('editGo').disabled = !ok;
+    return ok;
+  }
+  ['fStart', 'fEnd', 'fName'].forEach((id) => $(id).addEventListener('input', () => { if (id === 'fName') nameTouched = true; checkEdit(); }));
+  $('fGoal').addEventListener('input', () => checkEdit());
+  $('formEdit').addEventListener('submit', async (e) => {
+    e.preventDefault(); if (!checkEdit()) return;
+    const body = { name: $('fName').value.trim(), goal: $('fGoal').value.trim() || null, ends_on: $('fEnd').value };
+    if (!editing || !editing.is_current) body.starts_on = $('fStart').value;
+    $('editGo').disabled = true;
+    try {
+      const out = editing
+        ? await api(`/v1/admin/sprints/${encodeURIComponent(editing.ref)}`, { method: 'PATCH', body: JSON.stringify(body) })
+        : await api('/v1/admin/sprints', { method: 'POST', body: JSON.stringify(body) });
+      $('dlgEdit').close();
+      toast(editing ? `${out.ref} saved` : `${out.ref} created as ${out.status === 'active' ? 'the current sprint' : 'planned'}`);
+      await reloadList(); await select(out.ref);
+    } catch (err) { checkEdit(why(err)); $('editGo').disabled = false; }
+  });
+
+  // ---------- delete ----------
+  let deleting = null;
+  async function openDelete(s) {
+    deleting = s; const n = (s.counts && s.counts.issues) || 0;
+    let refs = [];
+    if (n) refs = await api('/v1/home/reports?' + qs({ view: 'issues', sprint: s.ref, data: 'all', page_size: 5 })).then((x) => x.items.map((r) => r.ref)).catch(() => []);
+    $('dlgDeleteTitle').textContent = n ? `Delete ${s.ref} and its ${n} closed ${n === 1 ? 'issue' : 'issues'}?` : `Delete ${s.ref}?`;
+    $('delWhat').innerHTML = n ? '<b>This can’t be undone.</b> The sprint and every issue in it are deleted for good.' : '<b>This can’t be undone.</b> The sprint has no issues, so only the sprint goes.';
+    $('delList').innerHTML = n ? `<li>${n} ${n === 1 ? 'report' : 'reports'}${refs.length ? ` (${refs.sort().slice(0, 3).join(', ')}${n > 3 ? '…' : ''})` : ''} with their notes, history, AI checks and links to problems</li><li>their screenshots, removed from ImageKit</li><li>Jira tickets are <b>not</b> touched</li>` : '';
+    $('delList').hidden = !n; $('delErr').hidden = true;
+    $('delLbl').innerHTML = `Type <span class="mono" style="color:var(--foreground)">${s.ref}</span> to confirm`;
+    $('delInput').value = ''; $('delGo').disabled = true;
+    $('delGo').textContent = n ? `Delete sprint and ${n} ${n === 1 ? 'issue' : 'issues'}` : 'Delete sprint';
+    $('dlgDelete').showModal(); $('delInput').focus();
+  }
+  $('delInput').addEventListener('input', () => { $('delGo').disabled = $('delInput').value.trim().toUpperCase() !== deleting.ref; });
+  $('formDelete').addEventListener('submit', async (e) => {
+    e.preventDefault(); if ($('delGo').disabled) return;
+    $('delGo').disabled = true;
+    try {
+      const out = await api(`/v1/admin/sprints/${encodeURIComponent(deleting.ref)}?confirm=${encodeURIComponent(deleting.ref)}`, { method: 'DELETE' });
+      $('dlgDelete').close();
+      toast(`${out.ref} deleted${out.deleted_issues ? ` with ${out.deleted_issues} closed ${out.deleted_issues === 1 ? 'issue' : 'issues'}` : ''}`);
+      await reloadList(); await select(S.list.current || (S.list.items[0] && S.list.items[0].ref));
+    } catch (err) { $('delErr').textContent = why(err); $('delErr').hidden = false; $('delGo').disabled = false; }
+  });
+  document.querySelectorAll('dialog [data-close]').forEach((b) => b.addEventListener('click', () => b.closest('dialog').close()));
+  document.querySelectorAll('dialog').forEach((dl) => dl.addEventListener('click', (e) => { if (e.target === dl) dl.close(); }));
+
+  // ---------- loading ----------
+  async function reloadList() { S.list = await api('/v1/sprints'); }
+  async function loadDetail() { S.detail = await api('/v1/sprints/' + encodeURIComponent(S.sel)); }
+  /** After a change: everything on the page, keeping the sprint, tab and filters. */
+  async function refresh() {
+    try { await Promise.all([reloadList(), loadDetail()]); } catch (err) { toast('Could not refresh: ' + err.message); }
+    renderStrip(); renderSprint(); renderTable(); await loadList();
+  }
+  function writeUrl() {
+    const path = '/dashboard/sprints/' + encodeURIComponent(S.sel);
+    const q = S.tab !== defaultTab() ? '?tab=' + S.tab : '';
+    if (location.pathname + location.search !== path + q) history.replaceState(null, '', path + q);
+  }
+  function defaultTab() { const s = sp(S.sel); return s && s.is_current ? 'open' : 'all'; }
+  async function select(ref, opts = {}) {
+    if (!ref) return;
+    const changedSprint = S.sel !== ref;
+    S.sel = ref;
+    if (changedSprint || opts.first) { S.f = {}; S.picked.clear(); S.page = 1; if (!opts.tab) S.tab = defaultTab(); syncFilterPanel(); }
+    if (opts.tab) S.tab = opts.tab;
+    writeUrl(); renderStrip(); renderTable(); renderTabs();
+    $('list').classList.add('dim');
+    try { await loadDetail(); } catch (err) { toast('Could not load ' + ref + ': ' + err.message); return; }
+    if (S.sel !== ref) return;
+    renderSprint(); renderTabs(); loadList();
+  }
+
+  document.querySelectorAll('#tabs [data-tab]').forEach((b) => b.addEventListener('click', () => { if (S.tab === b.dataset.tab) return; S.tab = b.dataset.tab; S.page = 1; writeUrl(); loadList(); renderTabs(); }));
+  $('btnNew').addEventListener('click', () => openEdit(null));
+  $('prevSp').addEventListener('click', () => step(-1));
+  $('nextSp').addEventListener('click', () => step(1));
+
+  async function start() {
+    let session;
+    try { session = await api('/dashboard/session'); } catch { location.replace('/dashboard?next=' + encodeURIComponent(HERE)); return; }
+    if (!session.authenticated || (session.password && session.password.must_change)) { location.replace('/dashboard?next=' + encodeURIComponent(HERE)); return; }
+    let schema;
+    try { [S.me, S.list, schema] = await Promise.all([LunaShell.me(), api('/v1/sprints'), api('/v1/feedback/schema').catch(() => null)]); }
+    catch (err) { if (err.status === 401) { location.replace('/dashboard?next=' + encodeURIComponent(HERE)); return; } toast('Could not load sprints: ' + err.message); return; }
+    for (const f of (schema && schema.features) || []) { L.features[f.key] = f.label; L.categories[f.key] = Object.fromEntries((f.issue_categories || []).map((c) => [c.key, c.label])); }
+    $('btnNew').hidden = !can('manage_sprints');
+    fillFilterPanel();
+    if (!S.list.items.length) {
+      $('sprint').innerHTML = '<div class="sp-empty" style="padding:24px"><b>No sprints yet</b>Create the first one with New sprint.</div>';
+      renderStrip(); renderTable(); return;
+    }
+    const m = /^\/dashboard\/sprints\/([^/]+)$/.exec(location.pathname);
+    const want = m ? decodeURIComponent(m[1]).toUpperCase() : null;
+    const alias = want === 'CURRENT' ? S.list.current : want === 'NEXT' ? S.list.next : want;
+    const known = alias && sp(alias) ? alias : null;
+    if (want && !known) toast(`No sprint ${want}; showing the current one`);
+    const tab = new URLSearchParams(location.search).get('tab');
+    await select(known || S.list.current || S.list.items[0].ref, { first: true, tab: ['open', 'done', 'all', 'mine'].includes(tab) ? tab : null });
+  }
+  start();
+})();
+</script>
+</body>
+</html>

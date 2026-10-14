@@ -439,6 +439,7 @@ Create a submission. `{feature}` is one of `home`, `sleep`, `activity`, `workout
 | `client` | object | no | any subset of the client context keys, see §7. Unknown keys are rejected |
 | `screenshots` | object[] | no | up to 5 images uploaded to ImageKit first; each `{ file_id, url, name?, width?, height?, size?, thumbnail_url?, upload_size?, original_width?, original_height? }`: the first seven as returned by the upload, plus the bytes and dimensions the app actually sent so the dashboard can show that on-device downsizing happened. Only URLs under our ImageKit account are accepted. See §3c |
 | `is_test` | boolean | no | default `false`. Send `true` from integration runs and test builds; see §3b |
+| `sprint` | `"current"` \| `"next"` | no | issues only: files the issue into the current or the next QA sprint instead of the main list. Omit (or `null`) for the main list. Refused on positive feedback and on CX reports. Labels for the two choices come from `GET /v1/sprints/options` |
 
 Optional or nullable fields may be omitted or sent as `null`. Whitespace is trimmed from strings.
 
@@ -591,6 +592,21 @@ The AI diagnosis for a reported issue, produced on demand from the dashboard (or
 
 ---
 
+### `GET /v1/sprints/options`
+
+The two sprint choices the issue form offers: the **current** sprint and the **next** one. Sprints run half a month (1st–15th, 16th–end) and move on only when QC closes one, so the current sprint can be past its end (`overdue_days`). Fetch it when the form opens; it changes only when a sprint closes or is renamed. `next.exists: false` means the sprint is created when the first report asks for it.
+
+```json
+{
+  "current": { "ref": "SPR-202610-01", "name": "Sprint · October 2026 · 01", "starts_on": "2026-10-01", "ends_on": "2026-10-15",
+               "range": "1–15 Oct 2026", "days_left": 1, "overdue_days": 0, "exists": true },
+  "next":    { "ref": "SPR-202610-02", "name": "Sprint · October 2026 · 02", "starts_on": "2026-10-16", "ends_on": "2026-10-31",
+               "range": "16–31 Oct 2026", "days_left": null, "overdue_days": 0, "exists": true }
+}
+```
+
+Send `"sprint": "current"` or `"next"` with the issue; the response's `sprint` is `{ ref, name, status }` (or `null`). `GET /v1/feedback/schema` carries a `sprints` entry pointing here.
+
 ### Admin routes (`x-admin-key`)
 
 Not for the app. Listed so the front-end team knows how categories change.
@@ -634,7 +650,7 @@ Every new issue is matched against open problems when it arrives; a clear match 
 | `POST` | `/v1/admin/submissions/{id}/ask-reporter` | `{ "questions": [...] }` posts the questions as a note (customer-safe on CX reports) and sets `needs_info` |
 | `POST` | `/v1/admin/submissions/{id}/tags` | `{ "add"?: [...], "remove"?: [...] }` (`tag_reports`: admin, QC, developer) → the report. Tags are lowercased, spaces become dashes; letters, digits, `.`, `_` and `-`, up to 30 characters and 10 per report |
 | `GET` | `/v1/admin/tags` | `{ items: [{ tag, count }] }`: tags in use, most used first, plus `app` and `firmware` |
-| `POST` | `/v1/admin/submissions/bulk` | `{ "ids": [...], "status"?, "assigned_to"?, "priority"?, "is_test"?, "kind_id"?, "add_tags"?, "remove_tags"? }` → `{ updated, failed: [{ id, error }] }` |
+| `POST` | `/v1/admin/submissions/bulk` | `{ "ids": [...], "status"?, "assigned_to"?, "priority"?, "is_test"?, "kind_id"?, "add_tags"?, "remove_tags"?, "sprint"? }` → `{ updated, failed: [{ id, error }] }` |
 | `GET` | `/v1/admin/assignees` | everyone a report can be assigned to |
 
 List, stats and the attention page accept `assigned_to` (an email, `me` or `none`), `priority` (`p0`..`p3` or `none`) and `tag` (one tag, several comma-separated for any of them, or `none` for untagged). Reports carry `tags`. Reports carry `first_touched_at` (the team's first action), `last_activity_at` and `resolved_at`; the analytics overview adds `response_times` and `time_in_status`.
@@ -645,6 +661,20 @@ List, stats and the attention page accept `assigned_to` (an email, `me` or `none
 |---|---|---|
 | `GET` | `/v1/home` | `{ viewer, today, summary: { today, last_7_days, previous_7_days }, categories, labels, counts, reports }`: real issues received today and over the last 7 days (the app's time zone), issues per category for those 7 days, feature and category display names, the badge counts, and the first page of real issues (25) |
 | `GET` | `/v1/home/reports` | one page of the list: the usual filters plus `view` (`issues` default · `mine`: my open issues · `fine`: working fine · `all`), `data` (`real` default · `test` · `all`), `received` (`today` · `7d`), `from`/`to` (when it happened), `page`, `page_size` (5–100, default 25) → `{ items, total, page, page_size }`. Items are lean: each carries its owner's name and its problems with their report counts |
+
+**Sprints** (dashboard; see `docs/PLAN-sprints.md`). A report is on the main list or in one sprint. Sprints are half months referenced `SPR-202610-01` (year, month, half); one is current and moves on only when QC closes it. The Reports list (`/v1/home`, `/v1/home/reports`) and the attention queue leave sprint issues out unless `sprint` is given; every other list, stats and analytics include them.
+
+| method | path | body / notes |
+|---|---|---|
+| `GET` | `/v1/sprints` | every sprint, newest first, with `counts` (`issues`, `open`, `done`, `by_status`, `p0_open`, `p1_open`, `unassigned_open`, `carried_in`, `carried_out`), timing (`days`, `day`, `days_left`, `overdue_days`, `starts_in`), `is_current`, `is_next` and `delete_blocked_by` |
+| `GET` | `/v1/sprints/{ref}` | one sprint (`current` and `next` work too) plus `by_feature`, `per_day`, `mine_open`, `prev`/`after` refs and `follows` (the sprint closing it would start) |
+| `POST` | `/v1/admin/sprints` | `{ "starts_on"?, "ends_on"?, "name"?, "goal"? }` (`manage_sprints`: admin, QC). Without dates it takes the next free half month. One sprint per half month, no overlaps, at most two months long, never before the current sprint |
+| `PATCH` | `/v1/admin/sprints/{ref}` | `{ "name"?, "goal"?, "starts_on"?, "ends_on"? }`. The start stays in its half (the reference never changes) and is fixed once the sprint is current. `409` on a closed sprint |
+| `POST` | `/v1/admin/sprints/{ref}/close` | `{ "default": "next" \| "main", "overrides"?: { "<id or LN-ref>": "next" \| "main" \| "SPR-…" } }`. The current sprint only: moves its open issues (history note "Carried over when … closed"), closes it, makes the next sprint current and plans one after it → `{ closed, current, next, moved, to_next, to_main, to_other }` |
+| `DELETE` | `/v1/admin/sprints/{ref}?confirm={ref}` | `delete_sprints`: admins only. Not the current sprint, and not while anything in it is open. Deletes the sprint and its closed issues for good (history, notes, AI checks, problem links; screenshots removed from ImageKit; Jira untouched) → `{ ref, deleted_issues }` |
+| `PATCH` | `/v1/admin/submissions/{id}` | also `{ "sprint": "current" \| "next" \| "SPR-…" \| null }` (`manage_sprints`). Never into a closed sprint; only issues |
+
+Lists and stats accept `sprint`: `none` (the main list), `any`, `current`, `next` or a reference. `/v1/home/reports` also takes `state` (`open` · `done`). Reports carry `sprint: { ref, name, status } | null`; home items add `carried_from`. An issue reopened inside a closed sprint moves to the current sprint, and its history says so.
 
 **Pinpointing** (dashboard). Nothing here is stored except the fix versions and the regression flag; the rest is computed when asked.
 

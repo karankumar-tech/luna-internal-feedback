@@ -73,7 +73,8 @@ export class AttentionRepo {
   /** Every open (non-terminal) issue in the filter slice, with its age, idleness and impact. */
   async openIssues(f: Partial<CommonFilters>, limit = 2000): Promise<OpenIssueRow[]> {
     const { where, vals } = buildWhere(f);
-    const conds = [where.replace(/^where /, ''), 'not s.is_positive', `s.status not in ${TERMINAL}`].filter(Boolean);
+    // Sprint issues have their own page and clock (the sprint's end), so the queue leaves them out unless asked.
+    const conds = [where.replace(/^where /, ''), 'not s.is_positive', `s.status not in ${TERMINAL}`, f.sprint === undefined ? 's.sprint_id is null' : ''].filter(Boolean);
     const testClause = f.is_test === undefined ? '' : `and s2.is_test = ${f.is_test ? 'true' : 'false'}`;
     vals.push(limit);
     const r = await this.db.query<OpenIssueRow>(

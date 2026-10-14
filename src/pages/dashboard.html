@@ -173,6 +173,13 @@
   .item .meta .golive { font-weight: 500; color: var(--foreground); }
   .bulkbar input[type=text] { min-height: 0; height: 28px; width: 130px; padding: 3px 8px; font-size: 12px; border-radius: var(--r-s); }
   .owner { font-size: 12px; line-height: 16px; color: var(--gray-dark); white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+  /* sprint issues are on their own page: a line says how many, and where */
+  .sprinthint { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 20px 12px; font-size: 13px; line-height: 20px; color: var(--gray-dark); }
+  .sprinthint svg { flex: none; }
+  .sprinthint b { font-weight: 500; color: var(--black); }
+  .sprinthint a { color: var(--black); font-weight: 500; text-underline-offset: 2px; text-decoration-color: var(--border-strong); }
+  .item .meta .sprintref { position: relative; z-index: 1; display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border: 1px solid var(--border-strong); border-radius: 6px; font: 500 11px/16px var(--mono); color: var(--foreground); text-decoration: none; }
+  .item .meta .sprintref:hover { border-color: var(--primary); }
 
   .empty { padding: 40px 20px; text-align: center; color: var(--gray-dark); font-size: 14px; }
   .empty b { display: block; color: var(--black); font-weight: 600; margin-bottom: 4px; }
@@ -210,7 +217,7 @@
     .item { grid-template-columns: minmax(0, 1fr); padding: 14px 16px; column-gap: 12px; }
     .list.picking .item { grid-template-columns: 20px minmax(0, 1fr); }
     .item .side { grid-column: -2 / -1; flex-direction: row; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 10px; }
-    .chipsrow, .fpanel, .bulkbar { margin-left: 16px; margin-right: 16px; } .chipsrow { padding: 0 0 12px; }
+    .chipsrow, .fpanel, .bulkbar, .sprinthint { margin-left: 16px; margin-right: 16px; } .chipsrow { padding: 0 0 12px; }
     .pager { padding: 12px 16px; } .pages .num-page:not(.on) { display: none; }
   }
   @media (prefers-reduced-motion: reduce) { .sk, .asof.busy button svg { animation: none; } .list.dim, .item, .bar { transition: none; } }
@@ -336,6 +343,7 @@
           </button>
         </div>
       </div>
+      <p class="sprinthint" id="sprintHint" hidden></p>
       <div class="chipsrow" id="chips" hidden></div>
       <div class="fpanel" id="fpanel" hidden></div>
       <div class="bulkbar" id="bulkbar" hidden>
@@ -345,6 +353,7 @@
         <select id="bPrio" aria-label="Set priority"><option value="">Priority…</option><option value="p0">P0</option><option value="p1">P1</option><option value="p2">P2</option><option value="p3">P3</option><option value="__none">Clear</option></select>
         <input id="bTag" type="text" list="knownTags" placeholder="Add tag…" aria-label="Add a tag" autocomplete="off" spellcheck="false" maxlength="30">
         <select id="bUntag" aria-label="Remove a tag"><option value="">Remove tag…</option></select>
+        <select id="bSprint" aria-label="Move to a sprint" hidden><option value="">Move to sprint…</option></select>
         <datalist id="knownTags"></datalist>
         <button class="btn small primary" id="btnBulk" type="button">Apply</button>
         <button class="btn small" id="btnBulkTest" type="button">Mark as test</button>
@@ -377,8 +386,8 @@
    * What the page is showing. Anything other than the first page of issues with no filters is a
    * "custom" view: it is fetched on its own and never cached, so the default stays cheap and instant.
    */
-  const S = { home: null, viewer: null, labels: null, list: null, view: 'issues', page: 1, filters: {}, picked: new Set(), people: null, kinds: null, tags: null, keyLogin: false, loadedAt: 0 };
-  const FILTER_KEYS = ['received', 'from', 'to', 'feature', 'category', 'origin', 'environment', 'platform', 'status', 'assigned_to', 'priority', 'tag', 'go_live', 'go_live_from', 'go_live_to', 'kind_id', 'jira', 'ai_status', 'ai_side', 'ai_severity', 'data', 'user_id'];
+  const S = { home: null, viewer: null, labels: null, list: null, view: 'issues', page: 1, filters: {}, picked: new Set(), people: null, kinds: null, tags: null, sprints: null, keyLogin: false, loadedAt: 0 };
+  const FILTER_KEYS = ['received', 'from', 'to', 'feature', 'category', 'origin', 'environment', 'platform', 'status', 'assigned_to', 'priority', 'tag', 'go_live', 'go_live_from', 'go_live_to', 'kind_id', 'jira', 'ai_status', 'ai_side', 'ai_severity', 'sprint', 'data', 'user_id'];
   const isDefault = () => S.view === 'issues' && S.page === 1 && !Object.keys(S.filters).length;
   const can = (p) => !!(S.viewer && S.viewer.permissions && S.viewer.permissions[p]);
 
@@ -529,9 +538,18 @@
     const cats = r.issue_categories.map((c) => catLabel(r.feature_key, c)).join(', ');
     return { head: r.is_positive ? `${featLabel(r.feature_key)} working fine` : cats || featLabel(r.feature_key), said: '', plain: true };
   }
+  /** The main list leaves sprint issues out; say how many the current sprint holds and link there. */
+  function renderSprintHint() {
+    const sp = S.home && S.home.sprint; const hint = $('sprintHint');
+    const show = !!(sp && sp.open && !S.filters.sprint && S.view !== 'fine');
+    hint.hidden = !show; if (!show) return;
+    hint.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M3 10h18"/><path d="M8 2v4"/></svg>';
+    const t = el('span'); t.appendChild(el('b', null, `${fmtN(sp.open)} open ${sp.open === 1 ? 'issue is' : 'issues are'}`)); t.appendChild(document.createTextNode(` in the current sprint, ${sp.ref}, and not listed here.`)); hint.appendChild(t);
+    const a = el('a', null, 'Open ' + sp.ref); a.href = '/dashboard/sprints/' + encodeURIComponent(sp.ref); hint.appendChild(a);
+  }
   function renderList() {
     const list = S.list; const host = $('list'); host.replaceChildren(); host.classList.remove('dim');
-    renderTabs(); renderChips(); renderBulk();
+    renderTabs(); renderChips(); renderBulk(); renderSprintHint();
     $('total').textContent = list ? `${fmtN(list.total)} ${S.view === 'fine' ? 'reports' : S.view === 'all' ? 'reports' : list.total === 1 ? 'issue' : 'issues'}` : '';
     if (!list) return;
     $('listStatus').textContent = `${$('total').textContent}, page ${list.page} of ${Math.max(1, Math.ceil(list.total / list.page_size))}`;
@@ -583,6 +601,7 @@
       else if (!r.is_positive && r.ai_status === 'waiting_logs') add('AI waiting for logs');
       if (r.jira_key) add(el('span', 'ref', r.jira_key));
       if (r.go_live_on) { const g = add(el('span', 'golive', 'Live ' + goLiveLabel(r.go_live_on))); g.title = 'Planned to go live on ' + r.go_live_on; }
+      if (r.sprint) { const a = el('a', 'sprintref', r.sprint.ref); a.href = '/dashboard/sprints/' + encodeURIComponent(r.sprint.ref); a.title = r.sprint.name; add(a); }
       if (r.is_test) { const s = el('span'); s.appendChild(el('span', 'tag test', 'TEST')); add(s); }
       main.appendChild(meta);
       li.appendChild(main);
@@ -695,9 +714,20 @@
     { key: 'ai_status', label: 'AI check', options: () => [['none', 'Not checked'], ['waiting_logs', 'Waiting for logs'], ['done', 'Diagnosed'], ['no_logs', 'No logs'], ['failed', 'Failed']] },
     { key: 'ai_side', label: 'Root cause', options: () => Object.entries(SIDE) },
     { key: 'ai_severity', label: 'Severity', options: () => [['critical', 'Critical'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']] },
+    { key: 'sprint', label: 'Sprint', options: () => sprintOptions(), any: 'Not in a sprint' },
     { key: 'data', label: 'Data', options: () => [['test', 'Test only'], ['all', 'Real and test']], any: 'Real only' },
     { key: 'user_id', label: 'Tester or customer ID', type: 'number' },
   ];
+  /** Sprint issues are left out unless a sprint is picked: any, the current or next one, or a particular sprint. */
+  function sprintOptions() {
+    const out = [['any', 'Any sprint'], ['current', 'Current sprint'], ['next', 'Next sprint']];
+    for (const sp of (S.sprints && S.sprints.items) || []) out.push([sp.ref, `${sp.ref}${sp.is_current ? ' · current' : sp.is_next ? ' · next' : sp.status === 'closed' ? ' · closed' : ''}`]);
+    return out;
+  }
+  async function loadSprints() {
+    if (!S.sprints) S.sprints = await api('/v1/sprints').catch(() => ({ items: [] }));
+    return S.sprints;
+  }
   function categoryOptions() {
     if (!S.labels) return [];
     const f = S.filters.feature;
@@ -738,9 +768,10 @@
       S.people ? Promise.resolve(S.people) : api('/v1/admin/assignees').then((x) => x.items || []).catch(() => []),
       S.kinds ? Promise.resolve(S.kinds) : api('/v1/kinds?from=2020-01-01').then((x) => x.items || []).catch(() => []),
       loadTags(),
+      loadSprints(),
     ]);
     S.people = people; S.kinds = kinds;
-    fillSelect(FILTERS.find((x) => x.key === 'assigned_to')); fillSelect(FILTERS.find((x) => x.key === 'kind_id')); fillSelect(FILTERS.find((x) => x.key === 'tag'));
+    fillSelect(FILTERS.find((x) => x.key === 'assigned_to')); fillSelect(FILTERS.find((x) => x.key === 'kind_id')); fillSelect(FILTERS.find((x) => x.key === 'tag')); fillSelect(FILTERS.find((x) => x.key === 'sprint'));
     renderFilterValues(); renderChips();
   }
   /** Tags in use (most used first) and the common ones; fetched once, when first needed. */
@@ -783,6 +814,7 @@
     if (k === 'go_live_to') return 'Goes live by ' + v;
     if (k === 'user_id') return 'ID ' + v;
     if (k === 'tag') return v === 'none' ? 'Untagged' : 'Tag: ' + v.split(',').join(' or ');
+    if (k === 'sprint') return v === 'any' ? 'In any sprint' : v === 'current' ? 'Current sprint' : v === 'next' ? 'Next sprint' : v === 'none' ? 'Not in a sprint' : 'Sprint ' + v;
     if (k === 'kind_id') { const kk = (S.kinds || []).find((x) => x.id === v); return kk ? `${kk.ref} ${kk.title}` : 'One problem'; }
     const opt = f && f.options ? f.options().find(([o]) => o === v) : null;
     return `${f ? f.label : k}: ${opt ? opt[1] : v}`;
@@ -825,7 +857,7 @@
     if (!rows.length) { toast('Nothing to export'); return; }
     const cols = [['ref', (r) => r.ref], ['received', (r) => r.created_at], ['happened', (r) => r.occurred_on], ['problem', (r) => (r.kinds || []).map((k) => `${k.ref} ${k.title}`).join(' | ')],
       ['feature', (r) => featLabel(r.feature_key)], ['categories', (r) => r.issue_categories.map((c) => catLabel(r.feature_key, c)).join(' | ')], ['text', (r) => r.feedback_text],
-      ['result', (r) => r.is_positive ? 'working fine' : 'issue'], ['status', (r) => r.status], ['priority', (r) => r.priority], ['tags', (r) => (r.tags || []).join(' | ')], ['go_live', (r) => r.go_live_on], ['owner', (r) => r.assigned_to], ['source', (r) => r.origin],
+      ['result', (r) => r.is_positive ? 'working fine' : 'issue'], ['status', (r) => r.status], ['priority', (r) => r.priority], ['tags', (r) => (r.tags || []).join(' | ')], ['go_live', (r) => r.go_live_on], ['sprint', (r) => r.sprint ? r.sprint.ref : ''], ['owner', (r) => r.assigned_to], ['source', (r) => r.origin],
       ['environment', (r) => r.environment], ['user_id', (r) => r.user_id], ['ring', (r) => r.device_serial], ['cx_ticket', (r) => r.cx_ref], ['ai_side', (r) => r.ai_side], ['ai_severity', (r) => r.ai_severity], ['jira', (r) => r.jira_key], ['test', (r) => r.is_test]];
     const esc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const csv = [cols.map(([h]) => h).join(','), ...rows.map((r) => cols.map(([, f]) => esc(f(r))).join(','))].join('\n');
@@ -837,9 +869,19 @@
     const n = S.picked.size;
     $('bulkbar').hidden = n === 0 || !can('manage_triage');
     $('bulkN').textContent = `${n} selected`;
+    $('bSprint').hidden = !can('manage_sprints');
+    if (n && can('manage_sprints')) loadSprints().then(fillSprintMoves);
     if (n) loadTags();
     if (n && !S.people) api('/v1/admin/assignees').then((x) => { S.people = x.items || []; fillOwners(); }).catch(() => {});
     else if (n) fillOwners();
+  }
+  function fillSprintMoves() {
+    const sel = $('bSprint'); if (sel.options.length > 1) return;
+    for (const sp of (S.sprints && S.sprints.items) || []) {
+      if (sp.status === 'closed') continue;
+      sel.appendChild(Object.assign(el('option', null, `${sp.is_current ? 'Current' : sp.is_next ? 'Next' : 'Planned'} · ${sp.ref}`), { value: sp.ref }));
+    }
+    sel.appendChild(Object.assign(el('option', null, 'Main issue list'), { value: '__main' }));
   }
   function fillOwners() {
     const sel = $('bOwner'); if (sel.options.length > 2) return;
@@ -860,10 +902,12 @@
     if ($('bPrio').value) change.priority = $('bPrio').value === '__none' ? null : $('bPrio').value;
     if ($('bTag').value.trim()) change.add_tags = [$('bTag').value.trim()];
     if ($('bUntag').value) change.remove_tags = [$('bUntag').value];
-    if (!Object.keys(change).length) { toast('Pick a status, owner, priority or tag to apply'); return; }
+    if ($('bSprint').value) change.sprint = $('bSprint').value === '__main' ? null : $('bSprint').value;
+    if (!Object.keys(change).length) { toast('Pick a status, owner, priority, tag or sprint to apply'); return; }
+    if (change.sprint !== undefined) S.sprints = null; // counts change; fetch again next time
     if (change.add_tags || change.remove_tags) S.tags = null; // counts change; fetch again next time
     bulk(change, 'Applied');
-    $('bStatus').value = ''; $('bOwner').value = ''; $('bPrio').value = ''; $('bTag').value = ''; $('bUntag').value = '';
+    $('bStatus').value = ''; $('bOwner').value = ''; $('bPrio').value = ''; $('bTag').value = ''; $('bUntag').value = ''; $('bSprint').value = '';
   });
   $('btnBulkTest').addEventListener('click', () => bulk({ is_test: true }, 'Marked as test'));
   $('btnBulkClear').addEventListener('click', () => { S.picked.clear(); for (const b of document.querySelectorAll('.item .pick input')) b.checked = false; renderBulk(); });
@@ -983,7 +1027,7 @@
     if (isDefault()) { S.list = home.reports; renderList(); } else if (S.list) renderList();
     // Back from a sign-in: detail pages send people here with ?next=. Only our own pages.
     const next = new URLSearchParams(location.search).get('next');
-    if (next && /^\/dashboard\/(?:(?:submissions|kinds)\/[A-Za-z0-9-]{1,40}|report|diagnosis|analytics|kinds|users|attention|settings)$/.test(next)) location.replace(next);
+    if (next && /^\/dashboard\/(?:(?:submissions|kinds|sprints)\/[A-Za-z0-9-]{1,40}|report|diagnosis|analytics|kinds|users|attention|settings|sprints)(?:\?tab=[a-z]{1,8})?$/.test(next)) location.replace(next);
   }
   if (!readCache()) { $('app').hidden = false; skeletonList(); }
   start().catch((err) => showGate('Could not reach the API: ' + err.message));

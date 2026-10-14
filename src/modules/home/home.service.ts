@@ -16,7 +16,11 @@ export const HOME_PAGE_SIZE = 25;
 export class HomeService {
   constructor(
     private readonly repo: HomeRepo,
-    private readonly deps: { categories: CategoriesRepo; attention: AttentionService; timeZone: string },
+    private readonly deps: {
+      categories: CategoriesRepo; attention: AttentionService; timeZone: string;
+      /** The current sprint and its open issues, for the line saying they are not on this list. */
+      currentSprint?: () => Promise<{ ref: string; name: string; open: number } | null>;
+    },
   ) {}
 
   today(): string {
@@ -25,12 +29,13 @@ export class HomeService {
 
   async overview(me: string | null) {
     const today = this.today();
-    const [summary, categories, labels, counts, first] = await Promise.all([
+    const [summary, categories, labels, counts, first, sprint] = await Promise.all([
       this.repo.summary(today),
       this.repo.categories(today, CATEGORY_BARS),
       this.deps.categories.labels(),
       this.deps.attention.counts({ is_test: false }, me),
-      this.repo.reports({ is_test: false, is_positive: false }, today, 1, HOME_PAGE_SIZE),
+      this.repo.reports({ is_test: false, is_positive: false, sprint: 'none' }, today, 1, HOME_PAGE_SIZE),
+      this.deps.currentSprint ? this.deps.currentSprint().catch(() => null) : Promise.resolve(null),
     ]);
     return {
       generated_at: new Date().toISOString(),
@@ -45,6 +50,8 @@ export class HomeService {
       labels,
       counts: { mine: counts.mine, untouched: counts.untouched, stale: counts.stale, cx_waiting: counts.cx_waiting },
       reports: { ...first, page: 1, page_size: HOME_PAGE_SIZE },
+      /** Sprint issues are not on this list; this says how many open ones the current sprint holds. */
+      sprint,
     };
   }
 

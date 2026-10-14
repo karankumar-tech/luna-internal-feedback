@@ -34,6 +34,10 @@ export interface HomeReport {
   is_test: boolean;
   /** Problems the report is confirmed under, each with how many real reports it has in all. */
   kinds: { id: string; ref: string; title: string; reports: number }[];
+  /** The sprint it is in, or null on the main list. */
+  sprint: { ref: string; name: string; status: string } | null;
+  /** The sprint it was carried over from, when it came into this one that way. */
+  carried_from: string | null;
 }
 
 export interface HomeListFilters extends Partial<CommonFilters> {
@@ -43,6 +47,8 @@ export interface HomeListFilters extends Partial<CommonFilters> {
   receivedDays?: number;
   /** Still needs someone: not resolved, closed or won't fix. */
   openOnly?: boolean;
+  /** Finished: resolved, closed or won't fix. */
+  doneOnly?: boolean;
 }
 
 export interface HomeSummaryRow {
@@ -64,6 +70,7 @@ export class HomeRepo {
     const { where, vals } = buildWhere(f);
     const clauses = where ? [where.replace(/^where /, '')] : [];
     if (f.openOnly) clauses.push(`s.status not in ('resolved', 'closed', 'wont_fix')`);
+    if (f.doneOnly) clauses.push(`s.status in ('resolved', 'closed', 'wont_fix')`);
     if (f.receivedDays) {
       vals.push(this.timeZone, today, f.receivedDays);
       clauses.push(`(s.created_at at time zone $${vals.length - 2})::date > $${vals.length - 1}::date - $${vals.length}::int`);
@@ -74,8 +81,13 @@ export class HomeRepo {
               s.feedback_text, s.origin, s.environment, s.status, s.priority, s.tags, s.go_live_on::text as go_live_on, s.assigned_to, u.name as owner_name,
               s.user_id::text as user_id, s.email, t.name as tester_name, s.device_serial, s.cx_ref, s.ai_status, s.ai_side, s.ai_severity, s.jira_key, s.is_test,
               coalesce(k.kinds, '[]'::json) as kinds,
+              case when sp.id is null then null else json_build_object('ref', sp.ref, 'name', sp.name, 'status', sp.status) end as sprint,
+              (select e.from_value from luna_feedback.submission_events e
+                where e.submission_id = s.id and e.action = 'sprint' and e.to_value = sp.ref and e.note like 'Carried over when%'
+                order by e.created_at desc limit 1) as carried_from,
               count(*) over () as total
          from luna_feedback.submissions s
+         left join luna_feedback.sprints sp on sp.id = s.sprint_id
          left join luna_feedback.dashboard_users u on u.email = s.assigned_to
          left join luna_feedback.dashboard_users t on t.email = lower(s.email)
          left join lateral (
@@ -113,13 +125,13 @@ export class HomeRepo {
     };
   }
 
-  /** Real issues received today, in the last 7 days and in the 7 days before, by the app's calendar. */
+  /** Real issues on the main list (not in a sprint) received today, in the last 7 days and in the 7 days before, by the app's calendar. */
   async summary(today: string): Promise<HomeSummaryRow> {
     const r = await this.db.query<HomeSummaryRow>(
       `with d as (
          select (s.created_at at time zone $1)::date as day, s.origin, ${personSql()} as person
            from luna_feedback.submissions s
-          where not s.is_test and not s.is_positive
+          where not s.is_test and not s.is_positive and s.sprint_id is null
             and s.created_at >= (($2::date - 13)::timestamp at time zone $1))
        select count(*) filter (where day = $2::date)::int as today,
               count(*) filter (where day = $2::date and origin = 'cx')::int as today_cx,
@@ -133,13 +145,13 @@ export class HomeRepo {
     return r.rows[0]!;
   }
 
-  /** Real issues received in the last 7 days, per feature category, most reported first. */
+  /** Real issues on the main list received in the last 7 days, per feature category, most reported first. */
   async categories(today: string, limit: number): Promise<HomeCategoryRow[]> {
     const r = await this.db.query<HomeCategoryRow>(
       `select s.feature_key, c.key, count(*)::int as count, count(*) filter (where s.origin = 'cx')::int as cx
          from luna_feedback.submissions s
          cross join lateral unnest(s.issue_categories) as c(key)
-        where not s.is_test and not s.is_positive
+        where not s.is_test and not s.is_positive and s.sprint_id is null
           and (s.created_at at time zone $1)::date > $2::date - 7
         group by s.feature_key, c.key
         order by count(*) desc, s.feature_key, c.key

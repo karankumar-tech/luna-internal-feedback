@@ -13,12 +13,15 @@ import type { HomeListFilters } from './home.repo.js';
  *   view      issues (default) · mine (my open issues, as the tab's count) · fine (working fine) · all
  *   data      real (default) · test · all
  *   received  today · 7d: received, rather than happened, in that window (what the top numbers count)
+ *   sprint    none (default: the main list leaves sprint issues out) · any · current · next · SPR-202610-01
+ *   state     open · done: still needing someone, or finished (the Sprints page's tabs)
  *   page, page_size
  */
 const ReportsQuery = CommonQuery.omit({ is_test: true, is_positive: true }).extend({
   view: z.enum(['issues', 'mine', 'fine', 'all']).default('issues'),
   data: z.enum(['real', 'test', 'all']).default('real'),
   received: z.enum(['today', '7d']).optional(),
+  state: z.enum(['open', 'done']).optional(),
   from: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
   to: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
   page: z.coerce.number().int().min(1).max(10_000).default(1),
@@ -40,12 +43,14 @@ export function registerHomeRoutes(app: FastifyInstance, deps: { service: HomeSe
   app.get('/v1/home/reports', async (req) => {
     const parsed = ReportsQuery.safeParse(req.query);
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error), 'Invalid query');
-    const { view, data, received, page, page_size, ...rest } = parsed.data;
+    const { view, data, received, state, page, page_size, ...rest } = parsed.data;
     if (rest.from && rest.to && rest.from > rest.to) throw AppError.validation([{ path: 'from', message: 'must not be after to' }], 'Invalid query');
     if (rest.go_live_from && rest.go_live_to && rest.go_live_from > rest.go_live_to) throw AppError.validation([{ path: 'go_live_from', message: 'must not be after go_live_to' }], 'Invalid query');
     const filters: HomeListFilters = resolveMe({
       ...rest,
+      sprint: rest.sprint ?? 'none',
       ...(view === 'mine' ? { assigned_to: 'me', openOnly: !rest.status } : {}),
+      ...(state === 'open' ? { openOnly: true } : state === 'done' ? { doneOnly: true } : {}),
       is_positive: view === 'fine' ? true : view === 'all' ? undefined : false,
       is_test: data === 'all' ? undefined : data === 'test',
       receivedDays: received === 'today' ? 1 : received === '7d' ? 7 : undefined,

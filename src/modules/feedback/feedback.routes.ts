@@ -9,11 +9,21 @@ import { isValidCalendarDate, todayInZone } from '../../lib/time.js';
 import { ENVIRONMENTS, ORIGINS, PLATFORMS } from '../../schema/registry.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
 import { PRIORITIES, SUBMISSION_STATUSES, parseSubmissionRef } from './feedback.repo.js';
-import { isTeamAction } from '../../lib/actor.js';
+import { can, isTeamAction } from '../../lib/actor.js';
+import { parseSprintRef } from '../sprints/cycle.js';
 import type { FastifyRequest } from 'fastify';
 import type { FeedbackService } from './feedback.service.js';
 
 const IsTest = z.enum(['true', 'false']).transform((v) => v === 'true').optional();
+
+/** none (the main list) · any · current · next · a reference like SPR-202610-01. */
+export const SprintFilter = z.string().trim().max(20).transform((v, ctx) => {
+  const k = v.toLowerCase();
+  if (k === 'none' || k === 'any' || k === 'current' || k === 'next') return k;
+  const ref = parseSprintRef(v);
+  if (!ref) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'must be none, any, current, next or a sprint like SPR-202610-01' }); return z.NEVER; }
+  return ref;
+});
 
 const AiStatus = z.enum(['none', 'pending', 'running', 'waiting_logs', 'done', 'no_logs', 'failed']).optional();
 const AiSide = z.enum(['firmware', 'sdk', 'app', 'backend', 'user_expectation', 'not_a_bug', 'insufficient_logs']).optional();
@@ -37,6 +47,8 @@ export const CommonQuery = z.object({
   /** Go-live date within this range, inclusive. */
   go_live_from: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
   go_live_to: z.string().refine(isValidCalendarDate, 'must be YYYY-MM-DD').optional(),
+  /** Which sprint: none (the main list), any, current, next, or a reference. Unset = everything (the Reports list defaults to none). */
+  sprint: SprintFilter.optional(),
   event_code: z.string().max(20).optional(),
   kind_id: z.string().uuid().optional(),
   /** An owner's email, 'me' for the signed-in person, or 'none' for unassigned. */
@@ -93,6 +105,12 @@ export const SCREENSHOT_PRE_TRANSFORMATION = 'w-1600,h-1600,c-at_max,q-80';
 /** What the app should do before uploading so uploads are fast on mobile networks. */
 export const SCREENSHOT_CLIENT_RESIZE = { max_dimension: 1600, jpeg_quality: 0.8, target_bytes: 500 * 1024, note: 'Downscale so the longest side is ≤ 1600 px and encode as JPEG (quality ~0.8) before uploading. Convert HEIC/camera photos to JPEG on device. Typical result: 150–500 KB.' } as const;
 
+/** Tells the app the issue form may carry `sprint`, and where to get the labels for its two choices. */
+export const SPRINTS_DESCRIPTOR = {
+  field: 'sprint', values: ['current', 'next'], options_endpoint: '/v1/sprints/options',
+  note: 'Optional on issues (is_positive: false): "current" files into the current sprint, "next" into the next one. Leave it out for the main issue list. Refused on positive feedback.',
+} as const;
+
 export function registerFeedbackRoutes(
   app: FastifyInstance,
   deps: {
@@ -143,7 +161,7 @@ export function registerFeedbackRoutes(
   // ---- schema for form building -------------------------------------------
   app.get('/v1/feedback/schema', async (req, reply) => {
     const [features, options] = await Promise.all([categories.allFeatures(), categories.activeOptionsByFeature()]);
-    const payload = { ...buildSchemaResponse(features, options), uploads: uploadsDescriptor() };
+    const payload = { ...buildSchemaResponse(features, options), uploads: uploadsDescriptor(), sprints: SPRINTS_DESCRIPTOR };
     const etag = etagFor(payload);
     if (req.headers['if-none-match'] === etag) return reply.code(304).send();
     return reply.header('ETag', etag).header('Cache-Control', 'no-cache').send(payload);
@@ -202,12 +220,15 @@ export function registerFeedbackRoutes(
       /** Any dashboard user's email; null unassigns. */
       assigned_to: z.string().trim().toLowerCase().email().max(254).nullable().optional(),
       priority: z.enum(PRIORITIES).nullable().optional(),
+      /** "current", "next" or a sprint reference; null puts it back on the main list. */
+      sprint: z.string().trim().max(20).nullable().optional(),
     }).strict().refine((b) => Object.values(b).some((v) => v !== undefined), {
-      message: 'send is_test, status, assigned_to or priority',
+      message: 'send is_test, status, assigned_to, priority or sprint',
     }).safeParse(req.body);
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
-    const { is_test, status, status_note, assigned_to, priority } = parsed.data;
+    const { is_test, status, status_note, assigned_to, priority, sprint } = parsed.data;
     const by = actorOf(req);
+    if (sprint !== undefined && !can(req.actor, 'manage_sprints')) throw AppError.forbidden(`Your role (${req.actor?.role ?? 'unknown'}) cannot move reports between sprints`);
 
     if (assigned_to && isAssignable && !(await isAssignable(assigned_to))) {
       throw AppError.validation([{ path: 'assigned_to', message: `${assigned_to} has no dashboard account` }]);
@@ -216,6 +237,8 @@ export function registerFeedbackRoutes(
     if (assigned_to !== undefined) dto = await service.assign(req.params.id, assigned_to, by);
     if (priority !== undefined) dto = await service.setPriority(req.params.id, priority, by);
     if (status !== undefined) dto = await service.setStatus(req.params.id, status, status_note ?? null, by, isTeamAction(req));
+    // After the status: an explicit sprint wins over the move a reopen makes.
+    if (sprint !== undefined) dto = await service.moveToSprint(req.params.id, sprint, by);
     return dto ?? service.get(req.params.id);
   });
 

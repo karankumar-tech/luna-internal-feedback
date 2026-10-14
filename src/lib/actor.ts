@@ -48,6 +48,10 @@ export const PERMISSIONS = {
   delete_test_data: ['admin'],
   /** Import device benchmark sessions from a health export, and tag, edit or delete them. */
   manage_benchmarks: ['admin', 'qc', 'developer'],
+  /** Create, edit and close sprints, and move reports between sprints and the main list. */
+  manage_sprints: ['admin', 'qc'],
+  /** Delete a finished sprint together with the closed issues in it. */
+  delete_sprints: ['admin'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

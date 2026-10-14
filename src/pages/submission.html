@@ -211,6 +211,9 @@
   .tag-line .overline { margin-right: 4px; }
   .golive-line { margin-top: 6px; }
   .golive-line input[type=date] { min-height: 0; height: 24px; padding: 0 8px; font-size: 12px; border-radius: 6px; box-shadow: none; }
+  .sprint-line select { min-height: 0; height: 24px; padding: 0 26px 0 8px; font-size: 12px; border-radius: 6px; box-shadow: none; background-position: right 8px center; }
+  .sprint-line .sprintref { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 6px; font: 500 12px/18px var(--mono); color: var(--foreground); text-decoration: none; }
+  .sprint-line .sprintref:hover { border-color: var(--primary); }
   #goLiveText { font-size: 13px; font-weight: 500; }
   .tagchips { display: contents; }
   .tagchip { display: inline-flex; align-items: center; gap: 2px; height: 24px; padding: 0 3px 0 9px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--card); font-size: 12px; line-height: 16px; font-weight: 500; }
@@ -241,6 +244,12 @@
         <span class="tagchips" id="tagChips"></span>
         <input id="tagInput" type="text" list="tagOptions" placeholder="Add tag…" maxlength="30" autocomplete="off" spellcheck="false" aria-label="Add a tag, then press Enter">
         <datalist id="tagOptions"></datalist>
+      </div>
+      <div class="tag-line golive-line sprint-line" id="sprintLine" hidden>
+        <span class="overline">Sprint</span>
+        <a class="sprintref" id="sprintRef" href="/dashboard/sprints" hidden></a>
+        <span id="sprintText" class="tertiary"></span>
+        <select id="sprintSel" aria-label="Move to a sprint" hidden><option value="">Move to…</option></select>
       </div>
       <div class="tag-line golive-line" id="goLiveLine" hidden>
         <span class="overline">Go-live</span>
@@ -452,6 +461,7 @@
     $('crumbRef').textContent = r.ref;
     renderTags();
     renderGoLive();
+    renderSprintLine();
     document.title = `${r.ref} · ${f.label} · ${r.is_positive ? 'Working fine' : 'Issue'} · Luna Pulse`;
     $('title').replaceChildren(
       el('span', 'refno', r.ref), el('span', null, f.label + ' · '), el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue'),
@@ -562,7 +572,13 @@
     $('prioSel').value = r.priority || '';
   }
   async function patchSub(body, done) {
-    try { state.sub = await api(`/v1/admin/submissions/${id}`, { method: 'PATCH', body: JSON.stringify(body) }); renderSubmission(); loadActivity(); toast(done); }
+    const was = state.sub && state.sub.sprint ? state.sub.sprint.ref : null;
+    try {
+      state.sub = await api(`/v1/admin/submissions/${id}`, { method: 'PATCH', body: JSON.stringify(body) }); renderSubmission(); loadActivity();
+      const now = state.sub.sprint ? state.sub.sprint.ref : null;
+      // Reopening an issue in a closed sprint moves it to the current one; say so.
+      toast(body.sprint === undefined && now !== was && now ? `${done} · moved to ${now}, the current sprint` : done);
+    }
     catch (err) { renderOwnerPriority(); toast('Could not update: ' + err.message); }
   }
   $('ownerSel').addEventListener('change', (ev) => { const v = ev.target.value || null; patchSub({ assigned_to: v }, v ? `Assigned to ${v}` : 'Unassigned'); });
@@ -598,6 +614,34 @@
     $('tagInput').hidden = !edit;
     $('tagLine').hidden = !edit && !tags.length;
   }
+  // ---------- sprint ----------
+  let sprintList = null;
+  function renderSprintLine() {
+    const r = state.sub; if (!r) return;
+    const sp = r.sprint; const edit = can('manage_sprints') && !r.is_positive;
+    $('sprintLine').hidden = r.is_positive || (!sp && !edit);
+    $('sprintRef').hidden = !sp;
+    if (sp) { $('sprintRef').textContent = sp.ref; $('sprintRef').href = '/dashboard/sprints/' + encodeURIComponent(sp.ref); $('sprintRef').title = sp.name; }
+    $('sprintText').textContent = sp ? (sp.status === 'active' ? 'current sprint' : sp.status === 'planned' ? 'planned sprint' : 'closed sprint') : 'Not in a sprint';
+    $('sprintSel').hidden = !edit;
+    if (edit && !sprintList) api('/v1/sprints').then((x) => { sprintList = x.items || []; fillSprintSel(); }).catch(() => {});
+    else if (edit) fillSprintSel();
+  }
+  function fillSprintSel() {
+    const r = state.sub; const here = r.sprint ? r.sprint.ref : null; const sel = $('sprintSel');
+    const opts = [['', 'Move to…']];
+    for (const s of [...sprintList].sort((a, b) => a.starts_on.localeCompare(b.starts_on))) {
+      if (s.status === 'closed' || s.ref === here) continue;
+      opts.push([s.ref, `${s.is_current ? 'Current' : s.is_next ? 'Next' : 'Planned'} · ${s.ref}`]);
+    }
+    if (here) opts.push(['__main', 'Main issue list']);
+    sel.replaceChildren(...opts.map(([v, l]) => Object.assign(el('option', null, l), { value: v })));
+  }
+  $('sprintSel').addEventListener('change', (ev) => {
+    const v = ev.target.value; if (!v) return;
+    patchSub({ sprint: v === '__main' ? null : v }, v === '__main' ? 'Moved to the main issue list' : `Moved to ${v}`);
+  });
+
   // ---------- go-live date ----------
   function renderGoLive() {
     const r = state.sub; if (!r) return;
@@ -663,6 +707,11 @@
     diagnosis: (e) => `ran a diagnosis (${e.to_value})`,
     regression: (e) => `flagged it as ${e.to_value} coming back after its fix`,
     go_live: (e) => e.to_value ? (e.from_value ? `moved go-live from ${e.from_value} to ${e.to_value}` : `planned go-live for ${e.to_value}`) : `removed the go-live date (was ${e.from_value})`,
+    sprint: (e) => {
+      const why = e.note && /^Carried over/.test(e.note) ? ' (carried over when the sprint closed)' : e.note && /^Reopened/.test(e.note) ? ' (reopened, so it went to the current sprint)' : '';
+      if (!e.from_value) return `${e.note === 'Filed into the sprint' ? 'filed it into' : 'moved it into'} ${e.to_value}`;
+      return e.to_value ? `moved it from ${e.from_value} to ${e.to_value}${why}` : `moved it from ${e.from_value} to the main issue list${why}`;
+    },
     tag: (e) => {
       const before = (e.from_value || '').split(', ').filter(Boolean); const after = (e.to_value || '').split(', ').filter(Boolean);
       const added = after.filter((t) => !before.includes(t)); const removed = before.filter((t) => !after.includes(t));
@@ -690,7 +739,7 @@
       if (isNote && e.visibility === 'customer') head.appendChild(el('span', 'shared', 'customer-safe'));
       head.appendChild(el('span', 'when', istStamp(e.created_at)));
       li.appendChild(head);
-      if (e.note) { const b = el('div', 'body'); b.replaceChildren(...linkRefs(e.note)); li.appendChild(b); }
+      if (e.note && e.action !== 'sprint') { const b = el('div', 'body'); b.replaceChildren(...linkRefs(e.note)); li.appendChild(b); }
       list.appendChild(li);
     }
   }

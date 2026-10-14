@@ -62,6 +62,9 @@ export interface SubmissionRow {
   tags: string[];
   /** YYYY-MM-DD the fix is planned to go live; optional. */
   go_live_on: string | null;
+  /** The sprint it is in; null = the main issue list. */
+  sprint_id: string | null;
+  sprint: { ref: string; name: string; status: 'planned' | 'active' | 'closed' } | null;
   first_touched_at: Date | null;
   last_activity_at: Date | null;
   resolved_at: Date | null;
@@ -120,6 +123,8 @@ export interface NewSubmission {
   origin: Origin;
   /** Which credential sent it: the app, the CX tool, the admin key, or a signed-in person on the dashboard's Report page. */
   submitted_via: 'app' | 'cx_tool' | 'admin' | 'dashboard';
+  /** Filed straight into a sprint (the app's "current" / "next"), or null for the main list. */
+  sprint_id: string | null;
   cx: { ref: string; url: string | null; channel: string | null; agent: string | null; transcript: string | null } | null;
 }
 
@@ -150,6 +155,8 @@ export interface CommonFilters {
   /** Go-live date within this range, inclusive (YYYY-MM-DD). */
   go_live_from?: string;
   go_live_to?: string;
+  /** 'none' = the main list, 'any' = in some sprint, 'current' / 'next', or a reference (SPR-202610-01). */
+  sprint?: string;
   event_code?: string;
   kind_id?: string;
   user_id?: number;
@@ -221,6 +228,14 @@ export function buildWhere(f: Partial<StatsFilters>, alias = 's'): { where: stri
   if (f.go_live === 'none') add(`${alias}.go_live_on is null`, undefined);
   if (f.go_live_from) add(`${alias}.go_live_on >= ?::date`, f.go_live_from);
   if (f.go_live_to) add(`${alias}.go_live_on <= ?::date`, f.go_live_to);
+  if (f.sprint === 'none') add(`${alias}.sprint_id is null`, undefined);
+  else if (f.sprint === 'any') add(`${alias}.sprint_id is not null`, undefined);
+  else if (f.sprint === 'current') add(`${alias}.sprint_id = (select sp.id from luna_feedback.sprints sp where sp.status = 'active')`, undefined);
+  else if (f.sprint === 'next') {
+    add(`${alias}.sprint_id = (select sp.id from luna_feedback.sprints sp
+      where sp.status = 'planned' and sp.starts_on > (select a.starts_on from luna_feedback.sprints a where a.status = 'active')
+      order by sp.starts_on limit 1)`, undefined);
+  } else if (f.sprint) add(`${alias}.sprint_id = (select sp.id from luna_feedback.sprints sp where sp.ref = ?)`, f.sprint);
   if (f.ai_tag) add(`exists (select 1 from luna_feedback.diagnoses dt where dt.submission_id = ${alias}.id and ? = any(dt.tags))`, f.ai_tag);
   if (f.kind_id) add(`exists (select 1 from luna_feedback.submission_issue_kinds sk where sk.submission_id = ${alias}.id and sk.kind_id = ?::uuid and sk.state = 'linked')`, f.kind_id);
   if (f.user_id !== undefined) add(`${alias}.user_id = ?`, f.user_id);
@@ -235,7 +250,9 @@ const COLUMNS = `id, ref, feature_key, is_positive, occurred_on::text as occurre
   created_at, feedback_text, device_serial, details, screenshots, environment, platform, app_version, build_number, build_channel, firmware_version, os_version,
   device_id, session_id, idempotency_key, schema_version, is_test,
   origin, submitted_via, cx_ref, cx_url, cx_channel, cx_agent, cx_transcript,
-  assigned_to, priority, tags, go_live_on::text as go_live_on, first_touched_at, last_activity_at, resolved_at, status, status_note, status_changed_at, status_changed_by,
+  assigned_to, priority, tags, go_live_on::text as go_live_on,
+  sprint_id, (select json_build_object('ref', sp.ref, 'name', sp.name, 'status', sp.status) from luna_feedback.sprints sp where sp.id = sprint_id) as sprint,
+  first_touched_at, last_activity_at, resolved_at, status, status_note, status_changed_at, status_changed_by,
   jira_key, jira_url, jira_status, jira_synced_at, jira_created_by, ai_status, ai_side, ai_severity, ai_event_codes, ai_checked_at`;
 
 /** Offered on every report even before anyone has used them. */
@@ -265,6 +282,7 @@ export class FeedbackRepo {
       s.client.firmware_version ?? null, s.client.os_version ?? null, s.client.device_id ?? null,
       s.client.session_id ?? null, s.idempotency_key, s.schema_version, s.is_test,
       s.origin, s.submitted_via, s.cx?.ref ?? null, s.cx?.url ?? null, s.cx?.channel ?? null, s.cx?.agent ?? null, s.cx?.transcript ?? null,
+      s.sprint_id,
     ];
     // No conflict target: either unique guard (idempotency key, CX ticket + feature) means "already filed".
     const inserted = await this.db.query<SubmissionRow>(
@@ -272,9 +290,9 @@ export class FeedbackRepo {
          (feature_key, is_positive, occurred_on, user_id, email, issue_categories, feedback_text, device_serial, details, screenshots,
           environment, platform, app_version, build_number, build_channel, firmware_version, os_version, device_id, session_id,
           idempotency_key, schema_version, is_test,
-          origin, submitted_via, cx_ref, cx_url, cx_channel, cx_agent, cx_transcript)
+          origin, submitted_via, cx_ref, cx_url, cx_channel, cx_agent, cx_transcript, sprint_id)
        values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,coalesce($11, 'stage'),$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
-               $23,$24,$25,$26,$27,$28,$29)
+               $23,$24,$25,$26,$27,$28,$29,$30)
        on conflict do nothing
        returning ${COLUMNS}`,
       params,
@@ -338,6 +356,12 @@ export class FeedbackRepo {
 
   async setGoLive(id: string, date: string | null): Promise<SubmissionRow | undefined> {
     const r = await this.db.query<SubmissionRow>(`update luna_feedback.submissions set go_live_on = $2::date where id = $1 returning ${COLUMNS}`, [id, date]);
+    return r.rows[0];
+  }
+
+  /** Puts a report in a sprint, or (null) back on the main list. */
+  async setSprint(id: string, sprintId: string | null): Promise<SubmissionRow | undefined> {
+    const r = await this.db.query<SubmissionRow>(`update luna_feedback.submissions set sprint_id = $2 where id = $1 returning ${COLUMNS}`, [id, sprintId]);
     return r.rows[0];
   }
 

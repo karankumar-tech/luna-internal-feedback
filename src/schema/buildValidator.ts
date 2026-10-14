@@ -166,11 +166,16 @@ function withPositiveVariant<S extends z.AnyZodObject>(strict: S, lenient: S) {
  */
 export function buildSubmissionValidator(feature: FeatureKey, ctx: ValidatorContext) {
   const extra = sharedExtras(feature, ctx);
-  return withPositiveVariant(
-    fieldsToObject(COMMON_FIELDS, ctx).extend(extra),
-    fieldsToObject(COMMON_FIELDS, ctx, true).extend(extra),
-  );
+  const strict = fieldsToObject(COMMON_FIELDS, ctx).extend({ ...extra, sprint: SPRINT_CHOICE });
+  // Same shape for the caller; only the sprint rule differs (positive feedback never goes into one).
+  const lenient = fieldsToObject(COMMON_FIELDS, ctx, true).extend({ ...extra, sprint: SPRINT_ON_POSITIVE }) as unknown as typeof strict;
+  return withPositiveVariant(strict, lenient);
 }
+
+/** Optional: file the issue straight into the current or the next sprint. Absent or null = the main list. */
+const SPRINT_CHOICE = z.enum(['current', 'next'], { errorMap: () => ({ message: 'must be "current" or "next" (or left out for the main list)' }) }).nullable().optional();
+/** Positive feedback never goes into a sprint. */
+const SPRINT_ON_POSITIVE = z.unknown().refine((v) => v === null || v === undefined, 'is only for issues (is_positive: false)').optional();
 
 export type SubmissionInput = z.infer<ReturnType<typeof buildSubmissionValidator>['strict']>;
 
@@ -190,6 +195,7 @@ export function buildCxSubmissionValidator(feature: FeatureKey, ctx: ValidatorCo
     ...sharedExtras(feature, ctx),
     // Named explicitly rather than left to .strict(), so the integration is told why.
     email: z.undefined({ errorMap: () => ({ message: CX_EMAIL_REFUSED }) }),
+    sprint: z.undefined({ errorMap: () => ({ message: 'is not accepted on CX reports: QC can move a CX report into a sprint from the dashboard' }) }),
     device_serial: z.string({ required_error: 'is required: the ring or band serial identifies a CX report' })
       .trim().min(3, 'must be at least 3 characters').max(64, 'must be at most 64 characters'),
     cx: z.object({

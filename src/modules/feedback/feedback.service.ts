@@ -5,7 +5,7 @@ import { buildCxSubmissionValidator, buildSubmissionValidator, zodIssues, type V
 import { DEFAULT_CX_ENVIRONMENT, SCHEMA_VERSION, isFeatureKey, type FeatureKey } from '../../schema/registry.js';
 import { redact } from '../diagnosis/logs/redact.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
-import { MAX_TAGS, normalizeTag, parseSubmissionRef, type FeedbackRepo, type NewSubmission, type Priority, type SubmissionRow, type ListFilters, type StatsFilters, type Screenshot, type SubmissionStatus } from './feedback.repo.js';
+import { MAX_TAGS, TERMINAL_STATUSES, normalizeTag, parseSubmissionRef, type FeedbackRepo, type NewSubmission, type Priority, type SubmissionRow, type ListFilters, type StatsFilters, type Screenshot, type SubmissionStatus } from './feedback.repo.js';
 import type { ActivityRepo, NoteVisibility } from '../activity/activity.repo.js';
 import type { FastifyBaseLogger } from 'fastify';
 
@@ -20,6 +20,14 @@ export interface DeviceHook { onCxSubmission(submissionId: string, log: FastifyB
  * response, for callers that show the answer straight away (the CX tool).
  */
 export interface SimilarityHook { onNewIssue(submissionId: string, log: FastifyBaseLogger, wait: boolean): Promise<void> }
+
+/** Sprints, kept behind a hook so the feedback module does not depend on the sprints module. */
+export interface SprintHook {
+  /** "current", "next" (created when none is planned) or a reference like SPR-202610-01. */
+  resolve(target: string, by: string | null): Promise<{ id: string; ref: string; status: 'planned' | 'active' | 'closed' }>;
+}
+
+const TERMINAL: readonly string[] = TERMINAL_STATUSES;
 
 export interface SubmissionDto extends Omit<SubmissionRow, 'created_at' | 'user_id' | 'idempotency_key' | 'ai_checked_at' | 'status_changed_at' | 'jira_synced_at' | 'first_touched_at' | 'last_activity_at' | 'resolved_at'> {
   user_id: number | null;
@@ -37,6 +45,7 @@ export class FeedbackService {
   private diagnosis: DiagnosisHook | null = null;
   private device: DeviceHook | null = null;
   private similarity: SimilarityHook | null = null;
+  private sprints: SprintHook | null = null;
   private activity: ActivityRepo | null = null;
   /** Screenshot URL validator + cleanup, wired when ImageKit is configured. */
   private screenshots: { isOurUrl: (u: string) => boolean; maxCount: number; deleteFile: (id: string) => Promise<boolean> } | null = null;
@@ -50,6 +59,7 @@ export class FeedbackService {
   setDiagnosisHook(hook: DiagnosisHook | null) { this.diagnosis = hook; }
   setDeviceHook(hook: DeviceHook | null) { this.device = hook; }
   setSimilarityHook(hook: SimilarityHook | null) { this.similarity = hook; }
+  setSprintHook(hook: SprintHook | null) { this.sprints = hook; }
   setActivity(repo: ActivityRepo | null) { this.activity = repo; }
   setScreenshotSupport(s: { isOurUrl: (u: string) => boolean; maxCount: number; deleteFile: (id: string) => Promise<boolean> } | null) { this.screenshots = s; }
 
@@ -78,6 +88,9 @@ export class FeedbackService {
     const parsed = buildSubmissionValidator(feature, ctx).safeParse(body);
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
     const v = parsed.data;
+    const choice = v.sprint as 'current' | 'next' | null | undefined;
+    if (choice && !this.sprints) throw AppError.validation([{ path: 'sprint', message: 'sprints are not available' }]);
+    const sprint = choice ? await this.sprints!.resolve(choice, source.by) : null;
 
     return this.store({
       ...this.commonFields(feature, v),
@@ -90,6 +103,7 @@ export class FeedbackService {
       origin: 'internal',
       submitted_via: source.via,
       cx: null,
+      sprint_id: sprint?.id ?? null,
     }, log, false, source.by);
   }
 
@@ -120,6 +134,7 @@ export class FeedbackService {
       idempotency_key: null,
       origin: 'cx',
       submitted_via: via,
+      sprint_id: null,
       cx: {
         ref: v.cx.ref,
         url: v.cx.url ?? null,
@@ -178,6 +193,7 @@ export class FeedbackService {
   private async store(input: NewSubmission, log: FastifyBaseLogger | undefined, waitForSuggestion: boolean, by: string | null = null) {
     const { row, created } = await this.feedback.insert(input);
     if (created && this.activity) await this.activity.record({ submissionId: row.id, actor: by ?? input.submitted_via, action: 'created', to: row.origin, touch: false });
+    if (created && this.activity && row.sprint) await this.activity.record({ submissionId: row.id, actor: by ?? input.submitted_via, action: 'sprint', to: row.sprint.ref, note: 'Filed into the sprint', touch: false });
     if (created && !row.is_positive && this.diagnosis && log) {
       // Queue + start after the response; never let diagnosis problems break the submit.
       try { await this.diagnosis.onNegativeSubmission(row.id, log); } catch (err) { log.error({ err }, 'could not queue diagnosis'); }
@@ -225,9 +241,35 @@ export class FeedbackService {
   /** `touch`: a team member did it, so it counts as a response and resets "stale". */
   async setStatus(id: string, status: SubmissionStatus, note: string | null, by: string | null, touch = true): Promise<SubmissionDto> {
     const before = await this.row(id);
-    const row = await this.feedback.setStatus(before.id, status, note, by);
+    let row = await this.feedback.setStatus(before.id, status, note, by);
     if (!row) throw AppError.notFound('Submission not found');
     if (before.status !== status || note) await this.activity?.record({ submissionId: row.id, actor: by, action: 'status', from: before.status, to: status, note, touch });
+    // A closed sprint only holds finished issues: one reopened there goes to the current sprint.
+    if (TERMINAL.includes(before.status) && !TERMINAL.includes(status) && row.sprint?.status === 'closed' && this.sprints) {
+      const current = await this.sprints.resolve('current', by).catch(() => null);
+      if (current) {
+        row = (await this.feedback.setSprint(row.id, current.id)) ?? row;
+        await this.activity?.record({ submissionId: row.id, actor: by, action: 'sprint', from: before.sprint?.ref ?? null, to: current.ref, note: 'Reopened, so moved to the current sprint', touch: false });
+      }
+    }
+    return this.toDto(row);
+  }
+
+  /**
+   * Moves a report into a sprint ("current", "next" or a reference), or with null back to the main
+   * list. Only issues go into sprints, and never into a closed one. Bookkeeping, not a response:
+   * it does not reset the attention clock.
+   */
+  async moveToSprint(id: string, target: string | null, by: string | null): Promise<SubmissionDto> {
+    const before = await this.row(id);
+    if (target !== null && before.is_positive) throw AppError.validation([{ path: 'sprint', message: 'only issues can be in a sprint, not "working fine" feedback' }]);
+    if (target !== null && !this.sprints) throw AppError.validation([{ path: 'sprint', message: 'sprints are not available' }]);
+    const dest = target === null ? null : await this.sprints!.resolve(target, by);
+    if (dest?.status === 'closed') throw AppError.conflict(`${dest.ref} is closed: move it to the current or a planned sprint`);
+    if ((before.sprint_id ?? null) === (dest?.id ?? null)) return this.toDto(before);
+    const row = await this.feedback.setSprint(before.id, dest?.id ?? null);
+    if (!row) throw AppError.notFound('Submission not found');
+    await this.activity?.record({ submissionId: row.id, actor: by, action: 'sprint', from: before.sprint?.ref ?? null, to: dest?.ref ?? null, touch: false });
     return this.toDto(row);
   }
 

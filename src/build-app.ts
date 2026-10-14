@@ -47,6 +47,9 @@ import { registerActivityRoutes } from './modules/activity/activity.routes.js';
 import { BenchmarksRepo } from './modules/benchmarks/benchmarks.repo.js';
 import { BenchmarksService } from './modules/benchmarks/benchmarks.service.js';
 import { registerBenchmarkRoutes } from './modules/benchmarks/benchmarks.routes.js';
+import { SprintsRepo } from './modules/sprints/sprints.repo.js';
+import { SprintsService } from './modules/sprints/sprints.service.js';
+import { registerSprintRoutes } from './modules/sprints/sprints.routes.js';
 import { runInBackground } from './modules/diagnosis/background.js';
 import type { Environment } from './schema/registry.js';
 
@@ -63,6 +66,8 @@ export interface BuildOptions {
   imagekit?: ImageKitClient | null;
   /** Test seam: replaces the Jira client built from config. */
   jira?: JiraClient | null;
+  /** Test seam: the clock sprint timing (days left, overdue) is measured against. */
+  now?: () => Date;
   /** Fastify factory. server.ts passes the real import so Vercel's entrypoint detector sees `fastify` imported there. */
   fastify?: typeof Fastify;
 }
@@ -115,6 +120,9 @@ export function buildApp(opts: BuildOptions = {}): App {
   const activity = new ActivityRepo(db);
   service.setActivity(activity);
   kinds.setActivity(activity);
+  // Sprints: a report can be filed into, or moved to, the current or next sprint.
+  const sprints = new SprintsService(new SprintsRepo(db, config.APP_TIMEZONE), config.APP_TIMEZONE, opts.now);
+  service.setSprintHook({ resolve: (target, by) => sprints.resolve(target, by) });
 
   const diagnosisRepo = new DiagnosisRepo(db);
   // Stage and production logs live on different hosts behind the same key. UAT has none until its
@@ -197,6 +205,7 @@ export function buildApp(opts: BuildOptions = {}): App {
     ? new ImageKitClient({ publicKey: config.IMAGEKIT_PUB_KEY, privateKey: config.IMAGEKIT_PRI_KEY, urlEndpoint: config.IMAGEKIT_URL_ENDPOINT, folder: config.IMAGEKIT_FOLDER })
     : null;
   if (imagekit) service.setScreenshotSupport({ isOurUrl: (u) => imagekit.isOurUrl(u), maxCount: config.SCREENSHOT_MAX_COUNT, deleteFile: (id) => imagekit.deleteFile(id) });
+  if (imagekit) sprints.setScreenshotCleanup((id) => imagekit.deleteFile(id));
   else app.log.warn('Screenshot uploads disabled: set IMAGEKIT_PUB_KEY and IMAGEKIT_PRI_KEY to enable');
   registerFeedbackRoutes(app, {
     service, categories, timeZone: config.APP_TIMEZONE, kindsFor: (ids) => kindsRepo.forSubmissions(ids),
@@ -220,7 +229,8 @@ export function buildApp(opts: BuildOptions = {}): App {
   registerCxRoutes(app, { feedback: service, kinds, activity, publicBaseUrl: config.PUBLIC_BASE_URL });
   const attention = new AttentionService(new AttentionRepo(db), config.APP_TIMEZONE);
   registerAttentionRoutes(app, { service: attention, feedback: service });
-  registerHomeRoutes(app, { service: new HomeService(new HomeRepo(db, config.APP_TIMEZONE), { categories, attention, timeZone: config.APP_TIMEZONE }) });
+  registerHomeRoutes(app, { service: new HomeService(new HomeRepo(db, config.APP_TIMEZONE), { categories, attention, timeZone: config.APP_TIMEZONE, currentSprint: () => sprints.currentSummary() }) });
+  registerSprintRoutes(app, { service: sprints });
 
   const benchmarks = new BenchmarksService(new BenchmarksRepo(db));
   if (imagekit) benchmarks.setScreenshotSupport({ isOurUrl: (u) => imagekit.isOurUrl(u), deleteFile: (id) => imagekit.deleteFile(id) });

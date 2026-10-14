@@ -46,6 +46,8 @@
   @container (max-width: 400px) { .two { grid-template-columns: 1fr; } }
 
   .seg.wrapable { flex-wrap: wrap; }
+  .sprintseg button { height: auto; min-height: 32px; padding: 4px 12px; line-height: 16px; text-align: left; }
+  .sprintseg button small { display: block; font-size: 11px; font-weight: 400; color: var(--muted-foreground); }
   .seg button { height: 32px; }
 
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -114,6 +116,7 @@
         <p class="sub">Pick the part of the app, then say whether it went wrong or went well.</p>
         <div class="field" data-path="feature"><span class="lab">Feature <span class="req" aria-hidden="true">*</span></span><div class="seg wrapable" id="features" role="radiogroup" aria-label="Feature"></div><p class="ferr"></p></div>
         <div class="field" data-path="is_positive"><span class="lab" id="kindLab"></span><div class="seg" id="kind" role="radiogroup" aria-labelledby="kindLab"></div><p class="ferr"></p></div>
+        <div class="field" data-path="sprint" id="sprintField" hidden><span class="lab" id="sprintLab">Sprint</span><div class="seg wrapable sprintseg" id="sprintSeg" role="radiogroup" aria-labelledby="sprintLab"></div><p class="help">For issues QA files against a sprint. They go on the Sprints page instead of the Reports list, and QC can move them later.</p><p class="ferr"></p></div>
       </section>
 
       <section class="card">
@@ -191,7 +194,7 @@
   const WHO = ['user_id', 'email', 'device_serial'];
   const KINDS = [['issue', 'Something went wrong'], ['positive', 'It went well']];
 
-  const S = { me: null, schema: null, feature: null, positive: false, shots: [], uploads: null, busy: false, key: null, controls: new Map() };
+  const S = { me: null, schema: null, feature: null, positive: false, shots: [], uploads: null, busy: false, key: null, controls: new Map(), sprint: null, sprintOptions: null };
   const newKey = () => { S.key = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)); };
   newKey();
 
@@ -313,7 +316,7 @@
     const kind = $('kind'); kind.replaceChildren();
     for (const [k, label] of KINDS) {
       const b = el('button', null, label); b.type = 'button'; b.setAttribute('role', 'radio'); b.dataset.kind = k;
-      b.addEventListener('click', () => { S.positive = k === 'positive'; paintKind(); renderCommon(); });
+      b.addEventListener('click', () => { S.positive = k === 'positive'; paintKind(); renderCommon(); paintSprint(); });
       kind.appendChild(b);
     }
     paintKind();
@@ -342,6 +345,26 @@
       if (f.key === 'environment' || f.key === 'platform') client.insertBefore(c.el, grid); else grid.appendChild(c.el);
     }
     S.controls.get('client.environment').set('production');
+  }
+  /** The sprint choice: none, the current or the next sprint, as the app offers. Issues only. */
+  function renderSprint() {
+    const o = S.sprintOptions; const seg = $('sprintSeg'); seg.replaceChildren();
+    if (!o || !o.current) { $('sprintField').hidden = true; return; }
+    const dm = (iso) => new Date(iso + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+    const choices = [[null, 'Not in a sprint', 'Main issue list'],
+      ['current', `Current · ${o.current.ref}`, o.current.overdue_days ? 'overdue, still current' : 'ends ' + dm(o.current.ends_on)]];
+    if (o.next) choices.push(['next', `Next · ${o.next.ref}`, o.next.range.replace(/ \d{4}$/, '')]);
+    for (const [v, label, sub] of choices) {
+      const b = el('button'); b.type = 'button'; b.setAttribute('role', 'radio'); b.dataset.sprint = v || '';
+      b.appendChild(document.createTextNode(label)); b.appendChild(el('small', null, sub));
+      b.addEventListener('click', () => { S.sprint = v; paintSprint(); });
+      seg.appendChild(b);
+    }
+    paintSprint();
+  }
+  function paintSprint() {
+    $('sprintField').hidden = S.positive || !S.sprintOptions || !S.sprintOptions.current;
+    for (const b of $('sprintSeg').children) { const on = (b.dataset.sprint || null) === S.sprint; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); }
   }
   function paintKind() { for (const b of $('kind').children) { const on = (b.dataset.kind === 'positive') === S.positive; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); } }
 
@@ -483,6 +506,7 @@
     }
     if (Object.keys(details).length) body.details = details;
     if (Object.keys(client).length) body.client = client;
+    if (!S.positive && S.sprint) body.sprint = S.sprint;
     if (S.shots.length) body.screenshots = S.shots.filter((s) => !s.pending).map(({ file_id, url, thumbnail_url, name, width, height, size, upload_size, original_width, original_height }) => ({ file_id, url, thumbnail_url, name, width, height, size, upload_size, original_width, original_height }));
     return body;
   }
@@ -583,7 +607,7 @@
       remember(true); newKey();
       $('form').hidden = true; $('done').hidden = false;
       $('doneRef').textContent = dto.ref;
-      $('doneText').textContent = r.status === 200 ? 'This report had already been posted; here it is again.' : body.is_positive ? 'Thanks. Positive feedback is kept with the reports so the team sees what works.' : `Filed under ${featureOf(S.feature).label} as yours. ${dto.is_test ? 'It is marked as test data.' : 'It is on the Reports list now, and the diagnosis will run once the logs for that day are in.'}`;
+      $('doneText').textContent = r.status === 200 ? 'This report had already been posted; here it is again.' : body.is_positive ? 'Thanks. Positive feedback is kept with the reports so the team sees what works.' : `Filed under ${featureOf(S.feature).label} as yours${dto.sprint ? `, in ${dto.sprint.ref}` : ''}. ${dto.is_test ? 'It is marked as test data.' : dto.sprint ? 'It is on the Sprints page now, and the diagnosis will run once the logs for that day are in.' : 'It is on the Reports list now, and the diagnosis will run once the logs for that day are in.'}`;
       $('doneOpen').href = '/dashboard/submissions/' + encodeURIComponent(dto.id);
       try { localStorage.removeItem('luna.home.v1'); } catch {}
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -594,7 +618,7 @@
   $('again').addEventListener('click', () => {
     // The who and device fields stay; what happened is cleared for the next report.
     for (const sc of S.shots) if (sc.preview) URL.revokeObjectURL(sc.preview);
-    S.shots = []; S.positive = false; paintKind(); renderCommon(); renderDetails(); renderShots(); clearErrors();
+    S.shots = []; S.positive = false; paintKind(); renderCommon(); renderDetails(); renderShots(); clearErrors(); paintSprint();
     $('is_test').checked = false;
     $('done').hidden = true; $('form').hidden = false;
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -611,6 +635,11 @@
     catch (err) { const b = $('loadErr'); b.hidden = false; b.textContent = 'Could not load the form: ' + err.message; return; }
     S.uploads = S.schema.uploads && S.schema.uploads.screenshots && S.schema.uploads.screenshots.enabled ? S.schema.uploads.screenshots : null;
     renderStatic();
+    // Sprints are optional: without the endpoint the form simply has no sprint choice.
+    S.sprintOptions = await api('/v1/sprints/options').catch(() => null);
+    const sprintWanted = new URLSearchParams(location.search).get('sprint');
+    S.sprint = sprintWanted === 'current' || sprintWanted === 'next' ? sprintWanted : null;
+    renderSprint();
     const wanted = new URLSearchParams(location.search).get('feature');
     selectFeature(featureOf(wanted) ? wanted : (S.schema.features[0] || {}).key);
     recall(); renderShots();
