@@ -29,7 +29,7 @@ export interface SimilarityCheckRow {
   created_at: Date;
 }
 
-const COLS = `s.id, s.ref, s.feature_key, s.issue_categories, s.feedback_text as text, s.firmware_version, s.app_version, s.platform,
+const COLS = `s.id, s.ref, s.feature_key, s.details->>'app' as app, s.issue_categories, s.feedback_text as text, s.firmware_version, s.app_version, s.platform,
   s.occurred_on::text as occurred_on, s.created_at, s.status, s.origin, s.environment, s.is_positive, s.is_test, s.cx_ref,
   coalesce(s.ai_event_codes, '{}') as event_codes, coalesce(d.tags, '{}') as tags, left(d.summary, 400) as ai_summary,
   coalesce((select json_agg(json_build_object('id', lk.id, 'ref', lk.ref, 'title', lk.title) order by lk.ref)

@@ -9,6 +9,8 @@
 export interface Comparable {
   id: string;
   feature_key: string;
+  /** Which mini app, on an Apps report. Two Apps reports share a feature only when they share the app. */
+  app?: string | null;
   issue_categories: string[];
   /** AI tags from the report's diagnosis, if it has one. */
   tags: string[];
@@ -121,11 +123,13 @@ export function compare(
   let score = 0;
   let signals = 0;
 
-  if (a.feature_key === b.feature_key) { score += WEIGHTS.feature; reasons.push({ kind: 'feature', label: 'same feature' }); }
+  // A crash in Hydration and a crash in Cycle tracker are different problems: for Apps, the app is the feature.
+  const sameFeature = a.feature_key === b.feature_key && (a.app ?? null) === (b.app ?? null);
+  if (sameFeature) { score += WEIGHTS.feature; reasons.push({ kind: 'feature', label: a.app ? 'same app' : 'same feature' }); }
 
   const specific = (cs: string[]) => cs.filter((c) => !CATCH_ALL_CATEGORIES.has(c));
   const cats = jaccard(specific(a.issue_categories), specific(b.issue_categories));
-  if (cats.value > 0 && a.feature_key === b.feature_key) {
+  if (cats.value > 0 && sameFeature) {
     score += WEIGHTS.categories * cats.value;
     signals += 1;
     const label = opts.labelOf ? cats.shared.map((c) => opts.labelOf!(a.feature_key, c)) : cats.shared;

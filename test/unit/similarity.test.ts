@@ -48,6 +48,16 @@ describe('compare', () => {
     expect(isShown(m)).toBe(false);
   });
 
+  it('treats two Apps reports as the same feature only when they are about the same app', () => {
+    const crash = { ...base, feature_key: 'apps', issue_categories: ['app_crashed'], text: 'Crashed when I opened it' };
+    const same = compare({ ...crash, app: 'hydration' }, other({ ...crash, app: 'hydration' }));
+    expect(same.reasons.map((r) => r.kind)).toEqual(expect.arrayContaining(['feature', 'categories']));
+    expect(same.reasons.find((r) => r.kind === 'feature')!.label).toBe('same app');
+    const different = compare({ ...crash, app: 'hydration' }, other({ ...crash, app: 'cycle_tracker' }));
+    expect(different.reasons.map((r) => r.kind)).not.toContain('feature');
+    expect(different.reasons.map((r) => r.kind)).not.toContain('categories');
+  });
+
   it('counts shared diagnosis tags and catalog events', () => {
     const m = compare({ ...base, tags: ['sync_timeout', 'ble_disconnect'], event_codes: ['FW-01'] }, other({ tags: ['sync_timeout'], event_codes: ['FW-01', 'RL-07'], text: null }));
     expect(m.reasons.find((r) => r.kind === 'tags')!.label).toBe('sync_timeout');

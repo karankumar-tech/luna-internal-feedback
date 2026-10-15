@@ -18,6 +18,8 @@ export interface HomeReport {
   tags: string[];
   /** YYYY-MM-DD the fix is planned to go live, or null. */
   go_live_on: string | null;
+  /** Which mini app, on an Apps report (details.app); null on every other feature. */
+  app: string | null;
   assigned_to: string | null;
   owner_name: string | null;
   user_id: number | null;
@@ -78,7 +80,7 @@ export class HomeRepo {
     vals.push(pageSize, (page - 1) * pageSize);
     const r = await this.db.query<Omit<HomeReport, 'created_at' | 'user_id'> & { created_at: Date; user_id: string | null; total: string }>(
       `select s.id, s.ref, s.created_at, s.occurred_on::text as occurred_on, s.feature_key, s.is_positive, s.issue_categories,
-              s.feedback_text, s.origin, s.environment, s.status, s.priority, s.tags, s.go_live_on::text as go_live_on, s.assigned_to, u.name as owner_name,
+              s.feedback_text, s.origin, s.environment, s.status, s.priority, s.tags, s.go_live_on::text as go_live_on, s.details->>'app' as app, s.assigned_to, u.name as owner_name,
               s.user_id::text as user_id, s.email, t.name as tester_name, s.device_serial, s.cx_ref, s.ai_status, s.ai_side, s.ai_severity, s.jira_key, s.is_test,
               coalesce(k.kinds, '[]'::json) as kinds,
               case when sp.id is null then null else json_build_object('ref', sp.ref, 'name', sp.name, 'status', sp.status) end as sprint,

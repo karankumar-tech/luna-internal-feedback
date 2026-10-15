@@ -31,7 +31,7 @@ that the team can see what is breaking, where, and how often.
 
 - Reports arrive through `POST /v1/feedback/{feature}` (the app) and `POST /v1/cx/feedback/{feature}`
   (the CX tool, only after an agent judges the issue real). Features: Home, Sleep, Activity, Workout,
-  Other; each has its own categories.
+  Apps (Luna's mini apps, with a required "Which app?" dropdown), Other; each has its own categories.
 - Every report has a reference `LN-00042`; recurring problems are `LNK-0007`. People share these
   references inside the team only.
 - Pages: Dashboard (home), report detail, Issue kinds (problems), Needs attention, Analytics,

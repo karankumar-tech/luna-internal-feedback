@@ -11,7 +11,7 @@ import { buildExcerpt } from './extract.js';
 import { OpenRouterClient, estimateCost } from './ai/openrouter.js';
 import { buildMessages } from './ai/prompt.js';
 import { VERDICT_JSON_SCHEMA, VerdictSchema, type Verdict } from './ai/schema.js';
-import { ENVIRONMENTS, FEATURE_DEFINITIONS, type Environment, type FeatureKey } from '../../schema/registry.js';
+import { ENVIRONMENTS, readableDetails, type Environment } from '../../schema/registry.js';
 import { AppError } from '../../lib/errors.js';
 import { todayInZone } from '../../lib/time.js';
 import { runInBackground } from './background.js';
@@ -275,7 +275,6 @@ export class DiagnosisService {
     }
 
     // 4. extract
-    const feature = FEATURE_DEFINITIONS[sub.feature_key as FeatureKey];
     const excerpt = buildExcerpt(parsed, { feature: sub.feature_key, occurredOn: sub.occurred_on, details: sub.details, fwVersion: entry.fv, appVersion: entry.version_name });
     const windowPatch = { log_window_from: new Date(excerpt.window.from), log_window_to: new Date(excerpt.window.to), log_coverage: excerpt.coverage, log_device: deviceMeta, log_files: usedFiles };
     if (excerpt.coverage === 'none') return this.park(sub.id, trigger, started, 'log files downloaded but no parseable lines', windowPatch, sub.occurred_on);
@@ -291,8 +290,9 @@ export class DiagnosisService {
       submission: {
         occurred_on: sub.occurred_on, is_positive: sub.is_positive,
         issue_categories: sub.issue_categories.map((k) => ({ key: k, label: catLabels.get(k) ?? k })),
-        feedback_text: sub.feedback_text, details: sub.details, origin: sub.origin,
-        detailLabels: Object.fromEntries((feature?.fields ?? []).map((f) => [f.key, f.label])),
+        // Labelled and with option names ("Which app?: Cycle tracker"), as the tester saw them.
+        feedback_text: sub.feedback_text, details: Object.fromEntries(readableDetails(sub.feature_key, sub.details)), origin: sub.origin,
+        detailLabels: {},
         platform: sub.platform, app_version: sub.app_version, firmware_version: sub.firmware_version, os_version: sub.os_version,
       },
       device: entry, excerpt: excerpt.excerpt, windowLabel: `${excerpt.window.label} (${new Date(excerpt.window.from + IST_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ')} → ${new Date(excerpt.window.to + IST_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ')} IST)`,

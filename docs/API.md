@@ -15,7 +15,7 @@
 
 The API does three things for the client:
 
-1. **Describes the form.** `GET /v1/feedback/schema` returns every feature (Home, Sleep, Activity, Workout, Other), its issue categories, and the extra fields to render. The client builds the form from this response rather than hard-coding it, so categories can be added or renamed on the server without an app release.
+1. **Describes the form.** `GET /v1/feedback/schema` returns every feature (Home, Sleep, Activity, Workout, Apps, Other), its issue categories, and the extra fields to render. The client builds the form from this response rather than hard-coding it, so categories can be added or renamed on the server without an app release.
 2. **Accepts submissions.** `POST /v1/feedback/{feature}` validates the payload against the same schema and stores it. The dashboard's own *Report an issue* page (`/dashboard/report`, for anyone with a dashboard account, meant for production and UAT builds) renders the same schema and posts to the same endpoint with its session cookie; those reports carry `submitted_via: "dashboard"` instead of `"app"`.
 3. **Reads submissions back.** `GET /v1/feedback`, `GET /v1/feedback/{id}`, and `GET /v1/feedback/stats` power the dashboard at `/dashboard`; the app does not need them.
 
@@ -261,7 +261,7 @@ Type-specific properties:
 | `date` | `format: "YYYY-MM-DD"`, `allowFuture` (absent = false) | date picker, max = today | `"YYYY-MM-DD"` |
 | `number` | `min`, `max`, `integer`, `unit` | numeric keypad; stepper if `integer` | JSON number |
 | `time_12h` | `format: "HH:MM AM/PM"` | time picker in 12-hour mode | `"HH:MM AM/PM"` |
-| `string` | `maxLength`, `format` (`email`), `options` | text field; a picker if `options` is present | string |
+| `string` | `maxLength`, `format` (`email`), `options`, `optionLabels` | text field; a dropdown if `options` is present, showing `optionLabels[value]` when given | string (the option key) |
 | `multi_select` | `minItems`, `optionsFrom: "issue_categories"` | multi-select chips from the feature's `issue_categories` | array of option `key`s |
 
 **Where fields live in the request body.** Common fields (`common_fields`) go at the top level. Feature fields (`features[].fields`) go inside `details`. The `client` block takes the fields listed in `client_context_fields` (`platform` carries `options`).
@@ -324,7 +324,8 @@ Everything needed to build the form for every active feature.
       "issue_categories": [
         { "key": "wrong_peak_score",      "label": "Wrong peak score" },
         { "key": "peak_score_not_loaded", "label": "Peak score not loaded" },
-        { "key": "guidance_incorrect",    "label": "Guidance incorrect" }
+        { "key": "guidance_incorrect",    "label": "Guidance incorrect" },
+        { "key": "something_else",        "label": "Other" }
       ],
       "fields": [
         { "key": "peak_score_value", "type": "number", "label": "Peak score shown", "required": false, "min": 0, "max": 100 }
@@ -337,7 +338,8 @@ Everything needed to build the form for every active feature.
         { "key": "incorrect_sleep",       "label": "Incorrect sleep" },
         { "key": "sleep_not_recorded",    "label": "Sleep not recorded" },
         { "key": "incorrect_sleep_stage", "label": "Incorrect sleep stage" },
-        { "key": "vitals_not_recorded",   "label": "Vitals not recorded" }
+        { "key": "vitals_not_recorded",   "label": "Vitals not recorded" },
+        { "key": "something_else",        "label": "Other" }
       ],
       "fields": [
         { "key": "actual_start_time",   "type": "time_12h", "format": "HH:MM AM/PM", "label": "Actual sleep start",   "required": false },
@@ -357,7 +359,8 @@ Everything needed to build the form for every active feature.
         { "key": "incorrect_total_calories",  "label": "Incorrect total calories" },
         { "key": "incorrect_active_calories", "label": "Incorrect active calories" },
         { "key": "incorrect_training_load",   "label": "Incorrect training load" },
-        { "key": "workout_not_showing",       "label": "Workout not showing" }
+        { "key": "workout_not_showing",       "label": "Workout not showing" },
+        { "key": "something_else",            "label": "Other" }
       ],
       "fields": [
         { "key": "steps",           "type": "number", "label": "Steps",           "required": false, "integer": true, "min": 0 },
@@ -376,7 +379,8 @@ Everything needed to build the form for every active feature.
         { "key": "incorrect_zones",     "label": "Incorrect zones" },
         { "key": "incorrect_intensity", "label": "Incorrect intensity" },
         { "key": "start_workout_fail",  "label": "Start workout fail" },
-        { "key": "end_workout_fail",    "label": "End workout fail" }
+        { "key": "end_workout_fail",    "label": "End workout fail" },
+        { "key": "something_else",      "label": "Other" }
       ],
       "fields": [
         { "key": "workout_type", "type": "string",   "label": "Workout type",  "required": false, "maxLength": 100 },
@@ -387,6 +391,27 @@ Everything needed to build the form for every active feature.
       "rules": [
         { "kind": "time_pair_distinct", "start": "start_time", "end": "end_time" }
       ]
+    },
+    {
+      "key": "apps", "label": "Apps",
+      "issue_categories": [
+        { "key": "app_not_loading",  "label": "App not loading" },
+        { "key": "app_crashed",      "label": "App crashed or froze" },
+        { "key": "wrong_data",       "label": "Wrong data or numbers" },
+        { "key": "data_missing",     "label": "Data missing" },
+        { "key": "cannot_log_entry", "label": "Could not log or save an entry" },
+        { "key": "plan_or_guidance", "label": "Plan or guidance looks wrong" },
+        { "key": "reminders",        "label": "Reminders or notifications" },
+        { "key": "display_glitch",   "label": "Display or UI glitch" },
+        { "key": "something_else",   "label": "Other" }
+      ],
+      "fields": [
+        { "key": "app", "type": "string", "label": "Which app?", "required": true,
+          "options": ["cycle_tracker", "calorie_tracker", "circadian", "luna_age", "vo2_max", "sleep_planner", "supplement_planner", "hydration", "caffeine_window", "jet_lag_planner", "pregnancy_tracker", "hyrox_training", "running_trainer"],
+          "optionLabels": { "cycle_tracker": "Cycle tracker", "calorie_tracker": "Calorie tracker", "circadian": "Circadian", "luna_age": "Luna Age", "vo2_max": "VO2 max", "sleep_planner": "Sleep planner", "supplement_planner": "Supplement planner", "hydration": "Hydration", "caffeine_window": "Caffeine window", "jet_lag_planner": "Jet lag planner", "pregnancy_tracker": "Pregnancy tracker", "hyrox_training": "Hyrox training", "running_trainer": "Running trainer" },
+          "help": "The app inside Luna you were using when it happened." }
+      ],
+      "rules": []
     },
     {
       "key": "other", "label": "Other",
@@ -422,7 +447,7 @@ One feature only. Response is a single element of `features[]` above (`key`, `la
 
 ### `POST /v1/feedback/{feature}`
 
-Create a submission. `{feature}` is one of `home`, `sleep`, `activity`, `workout`, `other`. Use `other` for anything that does not belong to one screen (crashes, login, pairing, battery, and so on).
+Create a submission. `{feature}` is one of `home`, `sleep`, `activity`, `workout`, `apps`, `other`. Use `apps` for Luna's mini apps (Cycle tracker, Hydration, …) and send which one in `details.app`. Use `other` for anything that does not belong to one screen (crashes, login, pairing, battery, and so on).
 
 **Request body**
 
@@ -548,7 +573,7 @@ List submissions, newest first. Intended for dashboards; the app does not need i
 
 | param | type | notes |
 |---|---|---|
-| `feature` | string | `home` / `sleep` / `activity` / `workout` / `other` |
+| `feature` | string | `home` / `sleep` / `activity` / `workout` / `apps` / `other` |
 | `environment` | string | `stage` / `uat` / `production` |
 | `origin` | string | `internal` (testers, through the app) / `cx` (customers, through CX) |
 | `ref` | string | one report by reference: `LN-00042`, `ln-42` or `42` |
@@ -765,7 +790,7 @@ Where a CX report stands, by reference or id, in the same shape as above. Intern
 
 ## 6. Feature reference
 
-Everything below is also in the schema response. Duplicated here for quick reading. All `details` fields are optional.
+Everything below is also in the schema response. Duplicated here for quick reading. All `details` fields are optional except Apps’ `app`. Every feature’s categories end with a catch-all, `something_else` (shown as “Other”, and “Something else” on the Other feature), for a problem none of the others names.
 
 ### Home
 
@@ -774,6 +799,7 @@ Everything below is also in the schema response. Duplicated here for quick readi
 | `wrong_peak_score` | Wrong peak score |
 | `peak_score_not_loaded` | Peak score not loaded |
 | `guidance_incorrect` | Guidance incorrect |
+| `something_else` | Other |
 
 | `details` field | type | constraints |
 |---|---|---|
@@ -787,6 +813,7 @@ Everything below is also in the schema response. Duplicated here for quick readi
 | `sleep_not_recorded` | Sleep not recorded |
 | `incorrect_sleep_stage` | Incorrect sleep stage |
 | `vitals_not_recorded` | Vitals not recorded |
+| `something_else` | Other |
 
 | `details` field | type | constraints |
 |---|---|---|
@@ -804,6 +831,7 @@ Everything below is also in the schema response. Duplicated here for quick readi
 | `incorrect_active_calories` | Incorrect active calories |
 | `incorrect_training_load` | Incorrect training load |
 | `workout_not_showing` | Workout not showing |
+| `something_else` | Other |
 
 | `details` field | type | constraints |
 |---|---|---|
@@ -823,6 +851,7 @@ Everything below is also in the schema response. Duplicated here for quick readi
 | `incorrect_intensity` | Incorrect intensity |
 | `start_workout_fail` | Start workout fail |
 | `end_workout_fail` | End workout fail |
+| `something_else` | Other |
 
 | `details` field | type | constraints |
 |---|---|---|
@@ -830,6 +859,44 @@ Everything below is also in the schema response. Duplicated here for quick readi
 | `start_time` | time_12h | |
 | `end_time` | time_12h | must differ from `start_time` |
 | `intensity` | string | ≤ 50 chars, free text |
+
+### Apps
+
+Luna's mini apps. Every Apps report, issue or positive, says which app it is about: `details.app` is **required** and must be one of the keys below. Show it as a dropdown of the labels and send the key. Categories are the starting set and are edited from the dashboard.
+
+| category key | label |
+|---|---|
+| `app_not_loading` | App not loading |
+| `app_crashed` | App crashed or froze |
+| `wrong_data` | Wrong data or numbers |
+| `data_missing` | Data missing |
+| `cannot_log_entry` | Could not log or save an entry |
+| `plan_or_guidance` | Plan or guidance looks wrong |
+| `reminders` | Reminders or notifications |
+| `display_glitch` | Display or UI glitch |
+| `something_else` | Other |
+
+| `details` field | type | constraints |
+|---|---|---|
+| `app` | string | **required**, one of the app keys below |
+
+| `app` key | shown as |
+|---|---|
+| `cycle_tracker` | Cycle tracker |
+| `calorie_tracker` | Calorie tracker |
+| `circadian` | Circadian |
+| `luna_age` | Luna Age |
+| `vo2_max` | VO2 max |
+| `sleep_planner` | Sleep planner |
+| `supplement_planner` | Supplement planner |
+| `hydration` | Hydration |
+| `caffeine_window` | Caffeine window |
+| `jet_lag_planner` | Jet lag planner |
+| `pregnancy_tracker` | Pregnancy tracker |
+| `hyrox_training` | Hyrox training |
+| `running_trainer` | Running trainer |
+
+Example: `POST /v1/feedback/apps` with `{ …, "issue_categories": ["wrong_data"], "details": { "app": "hydration" } }`. Missing or unknown `app` → `422` with `details.app` in `issues`.
 
 ### Other
 
@@ -928,6 +995,7 @@ struct FeedbackAPI {
         let integer: Bool?
         let unit: String?
         let options: [String]?
+        let optionLabels: [String: String]?
         let minItems: Int?
         let optionsFrom: String?
     }

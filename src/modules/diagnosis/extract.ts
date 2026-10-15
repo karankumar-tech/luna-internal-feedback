@@ -20,6 +20,7 @@ const FEATURE_WORDS: Record<string, RegExp> = {
   workout: /\b(workout|exercise|hr|heart|gps|map|zone|intensity|start|stop|end|calorie)\b/i,
   activity: /\b(step|steps|calorie|calories|load|training|active|daily)\b/i,
   home: /\b(peak|score|guidance|insight|brief|home)\b/i,
+  apps: /\b(cycle|period|ovulation|calories?|meal|food|circadian|luna ?age|vo2(?: ?max)?|planner|plan|supplements?|hydration|water|caffeine|jet ?lag|pregnan\w*|hyrox|running|trainer|reminders?)\b/i,
   other: /\b(login|otp|auth|token|pair|bond|connect|sync|update|ota|permission|notification)\b/i,
 };
 const STATUS = /\b(4\d\d|5\d\d)\b|status\s*[:=]\s*"?(4|5)\d\d/;

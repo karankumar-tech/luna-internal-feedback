@@ -399,7 +399,7 @@
     const h = el('h3', 'overline', `${feature.label} details`); h.style.marginTop = '24px'; host.appendChild(h);
     const grid = el('div', 'two'); host.appendChild(grid);
     for (const f of feature.fields) {
-      const c = control('details.' + f.key, f, { required: f.required });
+      const c = control('details.' + f.key, f, { required: f.required, optionLabel: f.optionLabels ? (o) => f.optionLabels[o] || o : undefined });
       if (f.type === 'text') host.appendChild(c.el); else grid.appendChild(c.el);
     }
   }

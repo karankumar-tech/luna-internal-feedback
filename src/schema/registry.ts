@@ -2,7 +2,7 @@ import type { FieldDef, FeatureRule } from './fieldTypes.js';
 
 export const SCHEMA_VERSION = 1;
 
-export const FEATURE_KEYS = ['home', 'sleep', 'activity', 'workout', 'other'] as const;
+export const FEATURE_KEYS = ['home', 'sleep', 'activity', 'workout', 'apps', 'other'] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
 export function isFeatureKey(value: string): value is FeatureKey {
@@ -22,6 +22,26 @@ export const COMMON_FIELDS: readonly FieldDef[] = [
     help: 'Fill automatically from the connected ring or band, e.g. R2N08250600302. Not typed by the tester. Used to fetch device logs; email is the fallback.',
   },
 ];
+
+/**
+ * The mini apps inside Luna, for the Apps feature's "Which app?" dropdown. The key is what the app
+ * sends and what is stored; adding one here (and deploying) is all it takes to offer it.
+ */
+export const LUNA_APPS = {
+  cycle_tracker: 'Cycle tracker',
+  calorie_tracker: 'Calorie tracker',
+  circadian: 'Circadian',
+  luna_age: 'Luna Age',
+  vo2_max: 'VO2 max',
+  sleep_planner: 'Sleep planner',
+  supplement_planner: 'Supplement planner',
+  hydration: 'Hydration',
+  caffeine_window: 'Caffeine window',
+  jet_lag_planner: 'Jet lag planner',
+  pregnancy_tracker: 'Pregnancy tracker',
+  hyrox_training: 'Hyrox training',
+  running_trainer: 'Running trainer',
+} as const satisfies Record<string, string>;
 
 export interface FeatureDefinition {
   key: FeatureKey;
@@ -72,6 +92,17 @@ export const FEATURE_DEFINITIONS: Record<FeatureKey, FeatureDefinition> = {
       { kind: 'time_pair_distinct', start: 'start_time', end: 'end_time' },
     ],
   },
+  apps: {
+    key: 'apps',
+    fields: [
+      {
+        key: 'app', type: 'string', label: 'Which app?', required: true,
+        options: Object.keys(LUNA_APPS), optionLabels: { ...LUNA_APPS },
+        help: 'The app inside Luna you were using when it happened.',
+      },
+    ],
+    rules: [],
+  },
   other: {
     key: 'other',
     fields: [
@@ -80,6 +111,21 @@ export const FEATURE_DEFINITIONS: Record<FeatureKey, FeatureDefinition> = {
     rules: [],
   },
 };
+
+/**
+ * A report's details as people read them: each field's label, and an option's label instead of its
+ * key ("Which app?" → "Cycle tracker"). Empty values are left out; unknown keys keep their own name.
+ */
+export function readableDetails(featureKey: string, details: Record<string, unknown>): [label: string, value: string][] {
+  const fields = FEATURE_DEFINITIONS[featureKey as FeatureKey]?.fields ?? [];
+  return Object.entries(details)
+    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+    .map(([k, v]) => {
+      const f = fields.find((x) => x.key === k);
+      const shown = f?.type === 'string' && typeof v === 'string' ? f.optionLabels?.[v] ?? v : String(v);
+      return [f?.label ?? k, shown];
+    });
+}
 
 export const PLATFORMS = ['ios', 'android'] as const;
 export type Platform = (typeof PLATFORMS)[number];

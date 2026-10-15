@@ -166,7 +166,7 @@
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; };
   const fmtN = (n) => new Intl.NumberFormat('en-IN').format(n);
   const days = (d) => d < 1 ? `${Math.max(1, Math.round(d * 24))}h` : `${Math.round(d)}d`;
-  const FEATURE = { home: 'Home', sleep: 'Sleep', activity: 'Activity', workout: 'Workout', other: 'Other' };
+  const FEATURE = { home: 'Home', sleep: 'Sleep', activity: 'Activity', workout: 'Workout', apps: 'Apps', other: 'Other' };
   const HERE = '/dashboard/attention';
 
   async function api(path) {

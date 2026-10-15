@@ -405,6 +405,10 @@
   // ---------- labels ----------
   const featLabel = (k) => (S.labels && S.labels.features[k]) || (k ? k[0].toUpperCase() + k.slice(1) : '');
   const catLabel = (f, k) => (S.labels && S.labels.categories[f] && S.labels.categories[f][k]) || k.replace(/_/g, ' ');
+  /** Which mini app an Apps report is about ("Cycle tracker"), or null. */
+  const appLabel = (r) => r.app ? (S.labels && S.labels.apps && S.labels.apps[r.app]) || r.app.replace(/_/g, ' ') : null;
+  /** "Apps · Cycle tracker" on an Apps report, otherwise the feature alone. */
+  const featureOf = (r) => featLabel(r.feature_key) + (appLabel(r) ? ' · ' + appLabel(r) : '');
   const STATUS = { open: 'Open', triaged: 'Triaged', in_progress: 'In progress', needs_info: 'Needs info', fixed: 'Fixed', resolved: 'Resolved', closed: 'Closed', wont_fix: "Won't fix" };
   const SIDE = { firmware: 'Firmware', sdk: 'Ring SDK', app: 'App', backend: 'Backend', user_expectation: 'Expectation', not_a_bug: 'Not a bug', insufficient_logs: 'Too few logs' };
   const ENV = { stage: 'Stage', uat: 'UAT', production: 'Production' };
@@ -536,7 +540,7 @@
     if (k) return { head: k.title, times: k.reports, said: text, kind: k };
     if (text) return { head: text, said: '', words: true };
     const cats = r.issue_categories.map((c) => catLabel(r.feature_key, c)).join(', ');
-    return { head: r.is_positive ? `${featLabel(r.feature_key)} working fine` : cats || featLabel(r.feature_key), said: '', plain: true };
+    return { head: r.is_positive ? `${appLabel(r) || featLabel(r.feature_key)} working fine` : cats || featureOf(r), said: '', plain: true };
   }
   /** The main list leaves sprint issues out; say how many the current sprint holds and link there. */
   function renderSprintHint() {
@@ -588,7 +592,7 @@
       const add = (node) => { const s = typeof node === 'string' ? el('span', null, node) : node; meta.appendChild(s); return s; };
       add(el('span', 'ref', r.ref));
       if (h.kind) add(el('span', 'ref', h.kind.ref)).title = h.kind.title;
-      add(featLabel(r.feature_key) + (r.issue_categories.length ? ' — ' + r.issue_categories.map((c) => catLabel(r.feature_key, c)).join(', ') : ''));
+      add(featureOf(r) + (r.issue_categories.length ? ' — ' + r.issue_categories.map((c) => catLabel(r.feature_key, c)).join(', ') : ''));
       for (const t of r.tags || []) {
         const b = el('button', 'utag', t); b.type = 'button'; b.title = `Show reports tagged ${t}`;
         b.addEventListener('click', () => { S.filters.tag = t; S.page = 1; changed(); });
@@ -856,7 +860,7 @@
     } catch (err) { toast('Could not export: ' + err.message); return; }
     if (!rows.length) { toast('Nothing to export'); return; }
     const cols = [['ref', (r) => r.ref], ['received', (r) => r.created_at], ['happened', (r) => r.occurred_on], ['problem', (r) => (r.kinds || []).map((k) => `${k.ref} ${k.title}`).join(' | ')],
-      ['feature', (r) => featLabel(r.feature_key)], ['categories', (r) => r.issue_categories.map((c) => catLabel(r.feature_key, c)).join(' | ')], ['text', (r) => r.feedback_text],
+      ['feature', (r) => featLabel(r.feature_key)], ['app', (r) => appLabel(r)], ['categories', (r) => r.issue_categories.map((c) => catLabel(r.feature_key, c)).join(' | ')], ['text', (r) => r.feedback_text],
       ['result', (r) => r.is_positive ? 'working fine' : 'issue'], ['status', (r) => r.status], ['priority', (r) => r.priority], ['tags', (r) => (r.tags || []).join(' | ')], ['go_live', (r) => r.go_live_on], ['sprint', (r) => r.sprint ? r.sprint.ref : ''], ['owner', (r) => r.assigned_to], ['source', (r) => r.origin],
       ['environment', (r) => r.environment], ['user_id', (r) => r.user_id], ['ring', (r) => r.device_serial], ['cx_ticket', (r) => r.cx_ref], ['ai_side', (r) => r.ai_side], ['ai_severity', (r) => r.ai_severity], ['jira', (r) => r.jira_key], ['test', (r) => r.is_test]];
     const esc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };

@@ -20,7 +20,11 @@ export interface TextField extends Base { type: 'text'; maxLength: number; multi
 export interface DateField extends Base { type: 'date'; format: 'YYYY-MM-DD'; allowFuture?: boolean }
 export interface NumberField extends Base { type: 'number'; min?: number; max?: number; integer?: boolean; unit?: string }
 export interface Time12hField extends Base { type: 'time_12h'; format: 'HH:MM AM/PM' }
-export interface StringField extends Base { type: 'string'; maxLength?: number; format?: 'email'; options?: string[] }
+export interface StringField extends Base {
+  type: 'string'; maxLength?: number; format?: 'email'; options?: string[];
+  /** What to show for each option, keyed by the value that is sent. Options without one show the value. */
+  optionLabels?: Record<string, string>;
+}
 export interface MultiSelectField extends Base { type: 'multi_select'; minItems: number; optionsFrom: 'issue_categories' }
 
 export type FieldDef =

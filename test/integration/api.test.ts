@@ -67,14 +67,22 @@ describe('health & auth', () => {
 });
 
 describe('GET /v1/feedback/schema', () => {
-  it('returns all four features with seeded categories and registry fields', async () => {
+  it('returns every feature with seeded categories and registry fields', async () => {
     const r = await app.inject({ method: 'GET', url: '/v1/feedback/schema', headers: appHeaders });
     expect(r.statusCode).toBe(200);
     const body = r.json();
     expect(body.schema_version).toBe(1);
-    expect(body.features.map((f: { key: string }) => f.key)).toEqual(['home', 'sleep', 'activity', 'workout', 'other']);
+    expect(body.features.map((f: { key: string }) => f.key)).toEqual(['home', 'sleep', 'activity', 'workout', 'apps', 'other']);
     const counts = Object.fromEntries(body.features.map((f: { key: string; issue_categories: unknown[] }) => [f.key, f.issue_categories.length]));
-    expect(counts).toEqual({ home: 3, sleep: 4, activity: 5, workout: 8, other: 9 });
+    expect(counts).toEqual({ home: 4, sleep: 5, activity: 6, workout: 9, apps: 9, other: 9 });
+    // Every feature ends with its catch-all: "Other", or "Something else" on the Other feature.
+    for (const f of body.features) expect(f.issue_categories.at(-1)).toEqual({ key: 'something_else', label: f.key === 'other' ? 'Something else' : 'Other' });
+    const apps = body.features.find((f: { key: string }) => f.key === 'apps');
+    expect(apps.label).toBe('Apps');
+    expect(apps.fields).toHaveLength(1);
+    expect(apps.fields[0]).toMatchObject({ key: 'app', type: 'string', required: true, label: 'Which app?' });
+    expect(apps.fields[0].options).toHaveLength(13);
+    expect(apps.fields[0].optionLabels).toMatchObject({ cycle_tracker: 'Cycle tracker', luna_age: 'Luna Age', vo2_max: 'VO2 max', running_trainer: 'Running trainer' });
     const sleep = body.features.find((f: { key: string }) => f.key === 'sleep');
     expect(sleep.fields.map((f: { key: string }) => f.key)).toEqual(['actual_start_time', 'actual_end_time', 'recorded_start_time', 'recorded_end_time']);
     expect(sleep.rules).toHaveLength(2);
@@ -121,6 +129,23 @@ describe('POST /v1/feedback/:feature', () => {
     expect(b.created_at).toMatch(/Z$/);
     expect(b.created_at_ist).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \+05:30$/);
     expect(b).not.toHaveProperty('idempotency_key');
+  });
+
+  it('stores an Apps report with the app it is about, and refuses one without', async () => {
+    const r = await app.inject({
+      method: 'POST', url: '/v1/feedback/apps', headers: appHeaders,
+      payload: validBody({ issue_categories: ['wrong_data'], details: { app: 'caffeine_window' } }),
+    });
+    expect(r.statusCode).toBe(201);
+    expect(r.json()).toMatchObject({ feature_key: 'apps', issue_categories: ['wrong_data'], details: { app: 'caffeine_window' } });
+
+    const missing = await app.inject({ method: 'POST', url: '/v1/feedback/apps', headers: appHeaders, payload: validBody({ issue_categories: ['wrong_data'] }) });
+    expect(missing.statusCode).toBe(422);
+    expect(missing.json().error.issues).toContainEqual({ path: 'details.app', message: 'Required' });
+
+    const unknown = await app.inject({ method: 'POST', url: '/v1/feedback/apps', headers: appHeaders, payload: validBody({ issue_categories: ['wrong_data'], details: { app: 'meditation' } }) });
+    expect(unknown.statusCode).toBe(422);
+    expect(unknown.json().error.issues[0].path).toBe('details.app');
   });
 
   it('stores sleep with normalised times', async () => {
@@ -239,7 +264,7 @@ describe('GET /v1/feedback/stats', () => {
     expect(b.totals.negative).toBe(b.totals.submissions);
     expect(b.totals.users).toBe(1);
     expect(b.by_day).toEqual([{ date: '2026-09-01', positive: 0, negative: b.totals.submissions }]);
-    expect(b.by_feature.map((f: { feature_key: string }) => f.feature_key)).toEqual(['home', 'sleep', 'activity', 'workout', 'other']);
+    expect(b.by_feature.map((f: { feature_key: string }) => f.feature_key)).toEqual(['home', 'sleep', 'activity', 'workout', 'apps', 'other']);
     expect(b.by_feature.find((f: { feature_key: string }) => f.feature_key === 'sleep').negative).toBe(1);
     const cat = b.by_category.find((c: { key: string }) => c.key === 'end_workout_fail');
     expect(cat).toMatchObject({ feature_key: 'workout', label: 'End workout fail', count: 1 });

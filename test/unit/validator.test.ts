@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildSubmissionValidator, zodIssues } from '../../src/schema/buildValidator.js';
-import { FEATURE_KEYS, FEATURE_DEFINITIONS, COMMON_FIELDS } from '../../src/schema/registry.js';
+import { FEATURE_KEYS, FEATURE_DEFINITIONS, COMMON_FIELDS, LUNA_APPS, readableDetails } from '../../src/schema/registry.js';
 
 const NOW = new Date('2026-09-02T10:00:00Z'); // 15:30 IST, Sep 2
 const ctx = (categoryKeys: string[]) => ({ categoryKeys, timeZone: 'Asia/Kolkata', now: NOW });
@@ -32,7 +32,8 @@ describe('registry sanity', () => {
 
 describe('common fields', () => {
   it('accepts a minimal valid body for every feature', () => {
-    for (const k of FEATURE_KEYS) expect(issuesOf(k, base)).toEqual([]);
+    // Apps is the one feature with a required detail: which app.
+    for (const k of FEATURE_KEYS) expect(issuesOf(k, k === 'apps' ? { ...base, details: { app: 'hydration' } } : base)).toEqual([]);
   });
 
   it('requires the mandatory fields', () => {
@@ -146,6 +147,29 @@ describe('workout', () => {
   });
   it('rejects identical start/end', () => {
     expect(issuesOf('workout', { ...base, details: { start_time: '6:00 AM', end_time: '06:00 AM' } })[0]?.path).toBe('details.end_time');
+  });
+});
+
+describe('apps', () => {
+  it('requires which app, for issues and positive feedback alike', () => {
+    expect(issuesOf('apps', base)).toEqual([{ path: 'details.app', message: 'Required' }]);
+    expect(issuesOf('apps', { ...base, details: {} })[0]?.path).toBe('details.app');
+    expect(issuesOf('apps', { is_positive: true, user_id: 10482, email: 'tester@luna.app' })[0]?.path).toBe('details.app');
+  });
+  it('accepts every listed app by its key and nothing else', () => {
+    for (const app of Object.keys(LUNA_APPS)) expect(issuesOf('apps', { ...base, details: { app } })).toEqual([]);
+    expect(issuesOf('apps', { ...base, details: { app: 'Cycle tracker' } })[0]).toMatchObject({ path: 'details.app', message: expect.stringMatching(/^must be one of: cycle_tracker, /) });
+  });
+  it('offers the apps as a labelled dropdown in the schema', () => {
+    const field = FEATURE_DEFINITIONS.apps.fields[0]!;
+    expect(field).toMatchObject({ key: 'app', type: 'string', required: true });
+    expect(field.type === 'string' && field.options).toEqual(Object.keys(LUNA_APPS));
+    expect(field.type === 'string' && field.optionLabels?.hyrox_training).toBe('Hyrox training');
+    expect(Object.keys(LUNA_APPS)).toHaveLength(13);
+  });
+  it('reads details back with labels and option names', () => {
+    expect(readableDetails('apps', { app: 'jet_lag_planner' })).toEqual([['Which app?', 'Jet lag planner']]);
+    expect(readableDetails('activity', { steps: 8000, total_calories: null })).toEqual([['Steps', '8000']]);
   });
 });
 

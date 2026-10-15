@@ -488,7 +488,9 @@
     const dl = (host, pairs) => { host.replaceChildren(); for (const [k, v, mono] of pairs) { host.appendChild(el('dt', null, k)); const dd = el('dd', mono ? 'mono' : null); if (v instanceof Node) dd.appendChild(v); else dd.textContent = v == null || v === '' ? '—' : v; host.appendChild(dd); } };
     const order = f.fields.map((x) => x.key);
     const det = Object.entries(r.details || {}).sort(([a], [b]) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999));
-    dl($('details'), det.length ? det.map(([k, v]) => [((f.fields.find((x) => x.key === k) || { label: k }).label), v, true]) : [['—', 'none entered']]);
+    // A dropdown's value shows as its option's name ("Which app?" → "Cycle tracker").
+    const field = (k) => f.fields.find((x) => x.key === k) || { label: k };
+    dl($('details'), det.length ? det.map(([k, v]) => { const fd = field(k); const named = fd.optionLabels && fd.optionLabels[v]; return [fd.label, named || v, !named]; }) : [['—', 'none entered']]);
     if (r.origin === 'cx') {
       // A customer: no email is ever stored. The CX tool holds their contact details.
       dl($('reporter'), [

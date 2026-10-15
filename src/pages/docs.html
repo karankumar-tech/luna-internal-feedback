@@ -147,7 +147,7 @@
   <h2>Overview</h2>
   <p>The API does three things for the client.</p>
   <ol>
-    <li><strong>Describes the form.</strong> <code>GET /v1/feedback/schema</code> returns every feature (Home, Sleep, Activity, Workout, Other), its issue categories, and the extra fields to render. Build the form from this response rather than hard-coding it, so categories can be added or renamed on the server without an app release.</li>
+    <li><strong>Describes the form.</strong> <code>GET /v1/feedback/schema</code> returns every feature (Home, Sleep, Activity, Workout, Apps, Other), its issue categories, and the extra fields to render. Build the form from this response rather than hard-coding it, so categories can be added or renamed on the server without an app release.</li>
     <li><strong>Accepts submissions.</strong> <code>POST /v1/feedback/{feature}</code> validates the payload against the same schema and stores it.</li>
     <li><strong>Reads submissions back.</strong> <code>GET /v1/feedback</code> and <code>/stats</code> power the <a href="/dashboard">dashboard</a>; the app does not need them.</li>
   </ol>
@@ -360,7 +360,7 @@ x-api-key: &lt;APP_API_KEY&gt;
     <tr><td><code>date</code></td><td><code>format</code>, <code>allowFuture</code> (absent = false)</td><td>date picker, max = today</td><td><code>"YYYY-MM-DD"</code></td></tr>
     <tr><td><code>number</code></td><td><code>min</code>, <code>max</code>, <code>integer</code>, <code>unit</code></td><td>numeric keypad; stepper if <code>integer</code></td><td>JSON number</td></tr>
     <tr><td><code>time_12h</code></td><td><code>format</code></td><td>time picker in 12-hour mode</td><td><code>"HH:MM AM/PM"</code></td></tr>
-    <tr><td><code>string</code></td><td><code>maxLength</code>, <code>format</code> (<code>email</code>), <code>options</code></td><td>text field; a picker if <code>options</code> is present</td><td>string</td></tr>
+    <tr><td><code>string</code></td><td><code>maxLength</code>, <code>format</code> (<code>email</code>), <code>options</code>, <code>optionLabels</code></td><td>text field; a dropdown if <code>options</code> is present, showing <code>optionLabels[value]</code> when given</td><td>string (the option key)</td></tr>
     <tr><td><code>multi_select</code></td><td><code>minItems</code>, <code>optionsFrom</code></td><td>multi-select chips from the feature's <code>issue_categories</code></td><td>array of option <code>key</code>s</td></tr>
   </table></div>
   <p><strong>Where fields live in the request body.</strong> <code>common_fields</code> go at the top level. <code>features[].fields</code> go inside <code>details</code>. The <code>client</code> block takes the fields listed in <code>client_context_fields</code> (same shape as any other field definition; <code>platform</code> carries <code>options</code>).</p>
@@ -412,7 +412,8 @@ x-api-key: &lt;APP_API_KEY&gt;
       "issue_categories": [
         { "key": "wrong_peak_score",      "label": "Wrong peak score" },
         { "key": "peak_score_not_loaded", "label": "Peak score not loaded" },
-        { "key": "guidance_incorrect",    "label": "Guidance incorrect" }
+        { "key": "guidance_incorrect",    "label": "Guidance incorrect" },
+        { "key": "something_else",        "label": "Other" }
       ],
       "fields": [
         { "key": "peak_score_value", "type": "number", "label": "Peak score shown", "required": false, "min": 0, "max": 100 }
@@ -425,7 +426,8 @@ x-api-key: &lt;APP_API_KEY&gt;
         { "key": "incorrect_sleep",       "label": "Incorrect sleep" },
         { "key": "sleep_not_recorded",    "label": "Sleep not recorded" },
         { "key": "incorrect_sleep_stage", "label": "Incorrect sleep stage" },
-        { "key": "vitals_not_recorded",   "label": "Vitals not recorded" }
+        { "key": "vitals_not_recorded",   "label": "Vitals not recorded" },
+        { "key": "something_else",        "label": "Other" }
       ],
       "fields": [
         { "key": "actual_start_time",   "type": "time_12h", "format": "HH:MM AM/PM", "label": "Actual sleep start",   "required": false },
@@ -445,7 +447,8 @@ x-api-key: &lt;APP_API_KEY&gt;
         { "key": "incorrect_total_calories",  "label": "Incorrect total calories" },
         { "key": "incorrect_active_calories", "label": "Incorrect active calories" },
         { "key": "incorrect_training_load",   "label": "Incorrect training load" },
-        { "key": "workout_not_showing",       "label": "Workout not showing" }
+        { "key": "workout_not_showing",       "label": "Workout not showing" },
+        { "key": "something_else",            "label": "Other" }
       ],
       "fields": [
         { "key": "steps",           "type": "number", "label": "Steps",           "required": false, "integer": true, "min": 0 },
@@ -464,7 +467,8 @@ x-api-key: &lt;APP_API_KEY&gt;
         { "key": "incorrect_zones",     "label": "Incorrect zones" },
         { "key": "incorrect_intensity", "label": "Incorrect intensity" },
         { "key": "start_workout_fail",  "label": "Start workout fail" },
-        { "key": "end_workout_fail",    "label": "End workout fail" }
+        { "key": "end_workout_fail",    "label": "End workout fail" },
+        { "key": "something_else",      "label": "Other" }
       ],
       "fields": [
         { "key": "workout_type", "type": "string",   "label": "Workout type",  "required": false, "maxLength": 100 },
@@ -475,6 +479,27 @@ x-api-key: &lt;APP_API_KEY&gt;
       "rules": [
         { "kind": "time_pair_distinct", "start": "start_time", "end": "end_time" }
       ]
+    },
+    {
+      "key": "apps", "label": "Apps",
+      "issue_categories": [
+        { "key": "app_not_loading",  "label": "App not loading" },
+        { "key": "app_crashed",      "label": "App crashed or froze" },
+        { "key": "wrong_data",       "label": "Wrong data or numbers" },
+        { "key": "data_missing",     "label": "Data missing" },
+        { "key": "cannot_log_entry", "label": "Could not log or save an entry" },
+        { "key": "plan_or_guidance", "label": "Plan or guidance looks wrong" },
+        { "key": "reminders",        "label": "Reminders or notifications" },
+        { "key": "display_glitch",   "label": "Display or UI glitch" },
+        { "key": "something_else",   "label": "Other" }
+      ],
+      "fields": [
+        { "key": "app", "type": "string", "label": "Which app?", "required": true,
+          "options": ["cycle_tracker", "calorie_tracker", "circadian", "luna_age", "vo2_max", "sleep_planner", "supplement_planner", "hydration", "caffeine_window", "jet_lag_planner", "pregnancy_tracker", "hyrox_training", "running_trainer"],
+          "optionLabels": { "cycle_tracker": "Cycle tracker", "calorie_tracker": "Calorie tracker", "circadian": "Circadian", "luna_age": "Luna Age", "vo2_max": "VO2 max", "sleep_planner": "Sleep planner", "supplement_planner": "Supplement planner", "hydration": "Hydration", "caffeine_window": "Caffeine window", "jet_lag_planner": "Jet lag planner", "pregnancy_tracker": "Pregnancy tracker", "hyrox_training": "Hyrox training", "running_trainer": "Running trainer" },
+          "help": "The app inside Luna you were using when it happened." }
+      ],
+      "rules": []
     },
     {
       "key": "other", "label": "Other",
@@ -504,7 +529,7 @@ x-api-key: &lt;APP_API_KEY&gt;
 
   <hr class="ep">
   <div id="ep-submit" class="endpoint"><span class="method post">POST</span><code class="path">/v1/feedback/{feature}</code><span class="auth">x-api-key</span></div>
-  <p>Create a submission. <code>{feature}</code> is one of <code>home</code>, <code>sleep</code>, <code>activity</code>, <code>workout</code>, <code>other</code>. Use <code>other</code> for anything that does not belong to one screen (crashes, login, pairing, battery, and so on).</p>
+  <p>Create a submission. <code>{feature}</code> is one of <code>home</code>, <code>sleep</code>, <code>activity</code>, <code>workout</code>, <code>apps</code>, <code>other</code>. Use <code>apps</code> for Luna's mini apps (Cycle tracker, Hydration, …) and send which one in <code>details.app</code>. Use <code>other</code> for anything that does not belong to one screen (crashes, login, pairing, battery, and so on).</p>
   <h4>Request body</h4>
   <div class="tbl"><table>
     <tr><th>field</th><th>type</th><th>required</th><th>notes</th></tr>
@@ -608,7 +633,7 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
   <p>List submissions, newest first. Used by the dashboard; the app does not need it.</p>
   <div class="tbl"><table>
     <tr><th>param</th><th>type</th><th>notes</th></tr>
-    <tr><td><code>feature</code></td><td>string</td><td><code>home</code> / <code>sleep</code> / <code>activity</code> / <code>workout</code> / <code>other</code></td></tr>
+    <tr><td><code>feature</code></td><td>string</td><td><code>home</code> / <code>sleep</code> / <code>activity</code> / <code>workout</code> / <code>apps</code> / <code>other</code></td></tr>
     <tr><td><code>environment</code></td><td>string</td><td><code>stage</code> / <code>uat</code> / <code>production</code></td></tr>
     <tr><td><code>origin</code></td><td>string</td><td><code>internal</code> (testers, through the app) / <code>cx</code> (customers, through CX)</td></tr>
     <tr><td><code>ref</code></td><td>string</td><td>one report by reference: <code>LN-00042</code>, <code>ln-42</code> or <code>42</code></td></tr>
@@ -770,14 +795,15 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
 <section class="block" id="features">
   <div class="overline">06</div>
   <h2>Feature reference</h2>
-  <p>Everything below is also in the schema response; duplicated for quick reading. All <code>details</code> fields are optional.</p>
+  <p>Everything below is also in the schema response; duplicated for quick reading. All <code>details</code> fields are optional except Apps’ <code>app</code>. Every feature’s categories end with a catch-all, <code>something_else</code> (shown as “Other”, and “Something else” on the Other feature), for a problem none of the others names.</p>
   <div class="two">
     <div>
       <h3>Home</h3>
       <div class="tbl"><table><tr><th>category key</th><th>label</th></tr>
         <tr><td><code>wrong_peak_score</code></td><td>Wrong peak score</td></tr>
         <tr><td><code>peak_score_not_loaded</code></td><td>Peak score not loaded</td></tr>
-        <tr><td><code>guidance_incorrect</code></td><td>Guidance incorrect</td></tr></table></div>
+        <tr><td><code>guidance_incorrect</code></td><td>Guidance incorrect</td></tr>
+        <tr><td><code>something_else</code></td><td>Other</td></tr></table></div>
       <div class="tbl"><table><tr><th>details field</th><th>type</th><th>constraints</th></tr>
         <tr><td><code>peak_score_value</code></td><td>number</td><td>0–100</td></tr></table></div>
     </div>
@@ -787,7 +813,8 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
         <tr><td><code>incorrect_sleep</code></td><td>Incorrect sleep</td></tr>
         <tr><td><code>sleep_not_recorded</code></td><td>Sleep not recorded</td></tr>
         <tr><td><code>incorrect_sleep_stage</code></td><td>Incorrect sleep stage</td></tr>
-        <tr><td><code>vitals_not_recorded</code></td><td>Vitals not recorded</td></tr></table></div>
+        <tr><td><code>vitals_not_recorded</code></td><td>Vitals not recorded</td></tr>
+        <tr><td><code>something_else</code></td><td>Other</td></tr></table></div>
       <div class="tbl"><table><tr><th>details field</th><th>type</th><th>constraints</th></tr>
         <tr><td><code>actual_start_time</code></td><td>time_12h</td><td></td></tr>
         <tr><td><code>actual_end_time</code></td><td>time_12h</td><td>must differ from <code>actual_start_time</code></td></tr>
@@ -801,7 +828,8 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
         <tr><td><code>incorrect_total_calories</code></td><td>Incorrect total calories</td></tr>
         <tr><td><code>incorrect_active_calories</code></td><td>Incorrect active calories</td></tr>
         <tr><td><code>incorrect_training_load</code></td><td>Incorrect training load</td></tr>
-        <tr><td><code>workout_not_showing</code></td><td>Workout not showing</td></tr></table></div>
+        <tr><td><code>workout_not_showing</code></td><td>Workout not showing</td></tr>
+        <tr><td><code>something_else</code></td><td>Other</td></tr></table></div>
       <div class="tbl"><table><tr><th>details field</th><th>type</th><th>constraints</th></tr>
         <tr><td><code>steps</code></td><td>number</td><td>integer ≥ 0</td></tr>
         <tr><td><code>active_calories</code></td><td>number</td><td>≥ 0, kcal</td></tr>
@@ -817,12 +845,43 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
         <tr><td><code>incorrect_zones</code></td><td>Incorrect zones</td></tr>
         <tr><td><code>incorrect_intensity</code></td><td>Incorrect intensity</td></tr>
         <tr><td><code>start_workout_fail</code></td><td>Start workout fail</td></tr>
-        <tr><td><code>end_workout_fail</code></td><td>End workout fail</td></tr></table></div>
+        <tr><td><code>end_workout_fail</code></td><td>End workout fail</td></tr>
+        <tr><td><code>something_else</code></td><td>Other</td></tr></table></div>
       <div class="tbl"><table><tr><th>details field</th><th>type</th><th>constraints</th></tr>
         <tr><td><code>workout_type</code></td><td>string</td><td>≤ 100 chars, free text</td></tr>
         <tr><td><code>start_time</code></td><td>time_12h</td><td></td></tr>
         <tr><td><code>end_time</code></td><td>time_12h</td><td>must differ from <code>start_time</code></td></tr>
         <tr><td><code>intensity</code></td><td>string</td><td>≤ 50 chars, free text</td></tr></table></div>
+    </div>
+    <div>
+      <h3>Apps</h3>
+      <p>Luna's mini apps. Every Apps report, issue or positive, says which app it is about: <code>details.app</code> is <strong>required</strong>. Show it as a dropdown of the labels and send the key. Missing or unknown → <code>422</code> on <code>details.app</code>. Categories are the starting set and are edited from the dashboard.</p>
+      <div class="tbl"><table><tr><th>category key</th><th>label</th></tr>
+        <tr><td><code>app_not_loading</code></td><td>App not loading</td></tr>
+        <tr><td><code>app_crashed</code></td><td>App crashed or froze</td></tr>
+        <tr><td><code>wrong_data</code></td><td>Wrong data or numbers</td></tr>
+        <tr><td><code>data_missing</code></td><td>Data missing</td></tr>
+        <tr><td><code>cannot_log_entry</code></td><td>Could not log or save an entry</td></tr>
+        <tr><td><code>plan_or_guidance</code></td><td>Plan or guidance looks wrong</td></tr>
+        <tr><td><code>reminders</code></td><td>Reminders or notifications</td></tr>
+        <tr><td><code>display_glitch</code></td><td>Display or UI glitch</td></tr>
+        <tr><td><code>something_else</code></td><td>Other</td></tr></table></div>
+      <div class="tbl"><table><tr><th>details field</th><th>type</th><th>constraints</th></tr>
+        <tr><td><code>app</code></td><td>string</td><td><strong>required</strong>, one of the app keys below</td></tr></table></div>
+      <div class="tbl"><table><tr><th>app key</th><th>shown as</th></tr>
+        <tr><td><code>cycle_tracker</code></td><td>Cycle tracker</td></tr>
+        <tr><td><code>calorie_tracker</code></td><td>Calorie tracker</td></tr>
+        <tr><td><code>circadian</code></td><td>Circadian</td></tr>
+        <tr><td><code>luna_age</code></td><td>Luna Age</td></tr>
+        <tr><td><code>vo2_max</code></td><td>VO2 max</td></tr>
+        <tr><td><code>sleep_planner</code></td><td>Sleep planner</td></tr>
+        <tr><td><code>supplement_planner</code></td><td>Supplement planner</td></tr>
+        <tr><td><code>hydration</code></td><td>Hydration</td></tr>
+        <tr><td><code>caffeine_window</code></td><td>Caffeine window</td></tr>
+        <tr><td><code>jet_lag_planner</code></td><td>Jet lag planner</td></tr>
+        <tr><td><code>pregnancy_tracker</code></td><td>Pregnancy tracker</td></tr>
+        <tr><td><code>hyrox_training</code></td><td>Hyrox training</td></tr>
+        <tr><td><code>running_trainer</code></td><td>Running trainer</td></tr></table></div>
     </div>
     <div>
       <h3>Other</h3>
@@ -907,6 +966,7 @@ struct FeedbackAPI {
         let integer: Bool?
         let unit: String?
         let options: [String]?
+        let optionLabels: [String: String]?
         let minItems: Int?
         let optionsFrom: String?
     }

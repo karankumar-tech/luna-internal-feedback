@@ -1,6 +1,6 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { AppError } from '../../lib/errors.js';
-import { FEATURE_DEFINITIONS, type FeatureKey } from '../../schema/registry.js';
+import { readableDetails } from '../../schema/registry.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
 import type { DiagnosisRepo } from '../diagnosis/diagnosis.repo.js';
 import type { FeedbackRepo, SubmissionRow } from '../feedback/feedback.repo.js';
@@ -91,10 +91,7 @@ export class JiraService {
 
     const featureLabel = feature?.label ?? sub.feature_key;
     const categories = sub.issue_categories.map((k) => categoryLabels.get(k) ?? k);
-    const detailLabels = new Map((FEATURE_DEFINITIONS[sub.feature_key as FeatureKey]?.fields ?? []).map((f) => [f.key, f.label]));
-    const details = Object.entries(sub.details)
-      .filter(([, v]) => v !== null && v !== undefined && v !== '')
-      .map(([k, v]) => [detailLabels.get(k) ?? k, String(v)] as [string, string]);
+    const details = readableDetails(sub.feature_key, sub.details);
 
     const summary = buildSummary(sub, featureLabel, categories, kinds.map((k) => k.title));
     const description = buildDescription({

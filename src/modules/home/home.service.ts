@@ -1,4 +1,5 @@
 import { todayInZone } from '../../lib/time.js';
+import { LUNA_APPS } from '../../schema/registry.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
 import type { AttentionService } from '../attention/attention.service.js';
 import type { HomeListFilters, HomeRepo } from './home.repo.js';
@@ -47,7 +48,8 @@ export class HomeService {
       },
       /** Real issues received in the last 7 days, by category. A report can name several. */
       categories,
-      labels,
+      /** Names to print keys with: features, their categories, and the Apps feature's apps. */
+      labels: { ...labels, apps: LUNA_APPS },
       counts: { mine: counts.mine, untouched: counts.untouched, stale: counts.stale, cx_waiting: counts.cx_waiting },
       reports: { ...first, page: 1, page_size: HOME_PAGE_SIZE },
       /** Sprint issues are not on this list; this says how many open ones the current sprint holds. */
