@@ -4,7 +4,7 @@ import type { Details, HrQuality, Kind, MetricValue, NormalizedRecording, Rec, R
 import type { ProgressSession } from './progress.js';
 
 /** A recording without its samples: what is needed to say which device it is. */
-export interface RecordingHead { id: string; session_id: string; source_name: string; device_tag: string; device_label: string | null; logged: boolean }
+export interface RecordingHead { id: string; session_id: string; source_name: string; device_tag: string; device_label: string | null; logged: boolean; activity: string | null }
 
 type Queryable = Pick<pg.PoolClient, 'query'> | Db;
 
@@ -221,7 +221,7 @@ export class BenchmarksRepo {
   async heads(sessionIds: string[], q: Queryable = this.db): Promise<RecordingHead[]> {
     if (!sessionIds.length) return [];
     const r = await q.query<RecordingHead>(
-      `select id, session_id, source_name, device_tag, device_label, logged
+      `select id, session_id, source_name, device_tag, device_label, logged, activity
          from luna_feedback.benchmark_recordings where session_id = any($1::uuid[]) order by created_at, source_name`,
       [sessionIds],
     );
@@ -383,6 +383,20 @@ export class BenchmarksRepo {
       [q.tester, q.source, q.from, q.to, q.by, q.at, q.keep],
     );
     return [...new Set(r.rows.map((x) => x.session_id))];
+  }
+
+  /**
+   * Every workout type a device has logged, as recorded or as a person set it: what a workout can be
+   * changed to. It grows as workouts of new types are imported.
+   */
+  async activityKeys(q: Queryable = this.db): Promise<string[]> {
+    const r = await q.query<{ key: string }>(
+      `select distinct x.key from luna_feedback.benchmark_recordings r
+         join luna_feedback.benchmark_sessions s on s.id = r.session_id
+         cross join lateral (values (r.activity), (r.details->'activity_set'->>'from')) as x(key)
+        where s.kind = 'workout' and r.logged and coalesce(x.key, '') <> ''`,
+    );
+    return r.rows.map((x) => x.key);
   }
 
   /**

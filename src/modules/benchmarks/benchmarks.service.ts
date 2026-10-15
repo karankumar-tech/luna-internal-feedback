@@ -170,7 +170,7 @@ export class BenchmarksService {
    * with it: a device whose clock is off records the same workout as a separate session. One where
    * a device logged something in both is left out: that device recorded two things.
    */
-  private async nearby(session: SessionRow, mine: RecordingHead[]) {
+  private async nearby(session: SessionRow, mine: RecordingHead[], limit = 5) {
     // A day of steps is that day: the one before and after are other days, never the same one.
     if (session.kind === 'steps') return [];
     const others = (await this.repo.overlapping(session.tester, session.kind, session.started_at - NEARBY_S, session.ended_at + NEARBY_S))
@@ -183,13 +183,34 @@ export class BenchmarksService {
       if (recs.some((r) => r.logged && loggedHere.has(r.source_name))) continue;
       out.push({
         id: o.id, ref: o.ref, activity: o.activity, title: o.title, started_at: iso(o.started_at), ended_at: iso(o.ended_at),
-        devices: displayOrder(recs.map((r) => ({ tag: r.device_tag, logged: r.logged, label: r.device_label || r.source_name }))),
+        /** activity: the workout type a device logged, null for one that only wrote readings. */
+        devices: displayOrder(recs.map((r) => ({ tag: r.device_tag, logged: r.logged, label: r.device_label || r.source_name, activity: r.logged ? r.activity : null }))),
         /** Seconds from this session's start to the other's: positive when the other starts later. */
         starts_after_s: Math.round(o.started_at - session.started_at),
+        overlaps: o.started_at < session.ended_at && o.ended_at > session.started_at,
         likely_same: looksLikeSameSession({ start: session.started_at, end: session.ended_at }, { start: o.started_at, end: o.ended_at }),
       });
     }
-    return out.sort((a, b) => Number(b.likely_same) - Number(a.likely_same) || Math.abs(a.starts_after_s) - Math.abs(b.starts_after_s)).slice(0, 5);
+    return out.sort((a, b) => Number(b.likely_same) - Number(a.likely_same) || Math.abs(a.starts_after_s) - Math.abs(b.starts_after_s)).slice(0, limit);
+  }
+
+  /**
+   * The session close to this one in which another device logged a workout of this type: once a
+   * person has said what this workout was, the same workout recorded as a session of its own (a clock
+   * that is off, or a device started late). It has to start within 20 minutes at a similar length, or
+   * share time with this one; "other workout" says too little to go on.
+   */
+  private async sameWorkoutNearby(session: SessionRow, mine: RecordingHead[], activity: string) {
+    if (session.kind !== 'workout' || activity === 'other') return null;
+    const near = await this.nearby(session, mine, Infinity);
+    return near.find((n) => (n.likely_same || n.overlaps) && n.devices.some((d) => d.logged && d.activity === activity)) ?? null;
+  }
+
+  /** The workout types a recording can be changed to: every type a device has logged so far, "other workout" last. */
+  async activities() {
+    return (await this.repo.activityKeys())
+      .map((key) => ({ key, label: activityLabel(key) }))
+      .sort((a, b) => Number(a.key === 'other') - Number(b.key === 'other') || a.label.localeCompare(b.label));
   }
 
   /**
@@ -429,7 +450,9 @@ export class BenchmarksService {
    *
    * activity changes the workout type a device logged (Garmin's "HIIT" that was strength training).
    * activity_scope 'tester' makes it every workout of this tester that this source logged as that type,
-   * stored and imported from then on; 'session' (the default) only this one.
+   * stored and imported from then on; 'session' (the default) only this one. When no other device logged
+   * this workout, and another device logged one of the new type close by, that session is this workout
+   * too: it is merged in and the two are compared (`merged` names it).
    *
    * excluded leaves a device out of a day of steps (it was not worn the whole day), or takes it back in.
    */
@@ -480,7 +503,15 @@ export class BenchmarksService {
       }
       await this.recompute(c, session.id, session.kind);
     });
-    return { ...(await this.get(session.id)), also_changed: also.sort() };
+    let merged: string | null = null;
+    if (patch.activity !== undefined) {
+      const heads = await this.repo.heads([session.id]);
+      if (!heads.some((h) => h.logged && h.id !== rec.id)) {
+        const same = await this.sameWorkoutNearby((await this.repo.session(session.id))!, heads, patch.activity);
+        if (same) { await this.merge(session.id, same.id); merged = same.ref; }
+      }
+    }
+    return { ...(await this.get(session.id)), also_changed: also.sort(), merged };
   }
 
   async remove(idOrRef: string): Promise<{ deleted: string }> {

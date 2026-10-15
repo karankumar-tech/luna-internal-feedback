@@ -720,7 +720,7 @@ describe('a workout type changed by hand', () => {
 
     const r = await patch(a, (await garminOf(a)).id, { activity: 'traditional_strength_training' });
     expect(r.statusCode).toBe(200);
-    expect(r.json()).toMatchObject({ activity: 'traditional_strength_training', also_changed: [] });
+    expect(r.json()).toMatchObject({ activity: 'traditional_strength_training', also_changed: [], merged: null });
     expect(r.json().summary.findings.map((f: { title: string }) => f.title)).not.toContain('Logged as different workouts');
     expect((await garminOf(a)).details.activity_set).toMatchObject({ from: 'high_intensity_interval_training', to: 'traditional_strength_training', scope: 'session', by: email('qc') });
     // One workout only: the next import of a Garmin HIIT stays HIIT.
@@ -757,7 +757,70 @@ describe('a workout type changed by hand', () => {
     expect((await patch(a, garmin.id, { activity_scope: 'tester' })).statusCode).toBe(422);
     expect((await patch(a, garmin.id, { excluded: true })).statusCode).toBe(422);
     const tags = (await app.inject({ method: 'GET', url: '/v1/admin/benchmarks/device-tags', headers: admin })).json();
-    expect(tags.activities[0]).toEqual({ key: 'traditional_strength_training', label: 'Strength training' });
+    expect(tags.activities).toContainEqual({ key: 'high_intensity_interval_training', label: 'HIIT' });
+  });
+});
+
+describe('a workout type that names another device’s workout close by', () => {
+  // Luna logs a strength session as functional strength. Garmin logs the same session as strength
+  // training with a clock 16 minutes out, so it imports as a session of its own, and Luna's session
+  // only holds readings Garmin wrote during it (no heart rate).
+  const GARMIN = `Garmin Connect M ${run}`, LUNA_M = `Luna M ${run}`, POLAR_M = `Polar M ${run}`;
+  const FUNCTIONAL = 'HKWorkoutActivityTypeFunctionalStrengthTraining', STRENGTH = 'HKWorkoutActivityTypeTraditionalStrengthTraining', HIIT = 'HKWorkoutActivityTypeHighIntensityIntervalTraining';
+  const M = T0 + 6_000_000;
+  const typed = (source: string, t: number, activity: string) => ({ source, logged: true, samples: { HKQuantityTypeIdentifierHeartRate: heartRate(t, 1800, 2, (x) => 120 + 15 * Math.sin(x / 200)) }, workout: { ...workout(t, t + 1800, 0, 200), activity, stats: [] } });
+  const readings = (source: string, t: number) => ({ source, logged: false, samples: { HKQuantityTypeIdentifierActiveEnergyBurned: { unit: 'kcal', t0: t, s: [0, 900], e: [900, 1800], v: [40, 45] } } });
+  const session = async (t: number, recordings: unknown[]) => (await post({ ...body(t, recordings), end: t + 1800 })).json().session.ref as string;
+  const patch = (ref: string, rid: string, payload: unknown) => app.inject({ method: 'PATCH', url: `/v1/admin/benchmarks/${ref}/recordings/${rid}`, headers: as('qc'), payload: payload as object });
+  const recOf = async (ref: string, source: string) => (await get(ref)).recordings.find((x: { source_name: string }) => x.source_name === source);
+  let luna = '', garmin = '';
+
+  it('offers every workout type a device has logged, and the list grows with the imports', async () => {
+    const odd = `HKWorkoutActivityTypeBenchOdd${run}`, key = `bench_odd${run}`;
+    const types = async () => (await app.inject({ method: 'GET', url: '/v1/admin/benchmarks/device-tags', headers: admin })).json().activities as { key: string; label: string }[];
+    expect((await types()).map((a) => a.key)).not.toContain(key);
+    await session(M - 500_000, [typed(POLAR_M, M - 500_000, odd)]);
+    const after = await types();
+    expect(after).toContainEqual({ key, label: `Bench odd${run}` });
+    expect(after.map((a) => a.label)).toEqual([...after.map((a) => a.label)].sort((a, b) => Number(a === 'Other workout') - Number(b === 'Other workout') || a.localeCompare(b)));
+  });
+
+  it('lists the other session with the type its device logged', async () => {
+    luna = await session(M, [typed(LUNA_M, M, FUNCTIONAL), readings(GARMIN, M)]);
+    garmin = await session(M + 1000, [typed(GARMIN, M + 1000, STRENGTH)]);
+    expect(garmin).not.toBe(luna);
+    const s = await get(luna);
+    expect(s.summary).toMatchObject({ pairs: [], why: 'Garmin did not log this workout; Garmin has no heart rate for it' });
+    expect(s.nearby).toHaveLength(1);
+    expect(s.nearby[0]).toMatchObject({ ref: garmin, likely_same: true, overlaps: true, devices: [{ label: GARMIN, logged: true, activity: 'traditional_strength_training' }] });
+  });
+
+  it('leaves the other session alone for a type that no device close by logged', async () => {
+    const r = await patch(luna, (await recOf(luna, LUNA_M)).id, { activity: 'high_intensity_interval_training' });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({ ref: luna, activity: 'high_intensity_interval_training', merged: null, summary: { pairs: [] } });
+    expect(r.json().nearby.map((n: { ref: string }) => n.ref)).toEqual([garmin]);
+  });
+
+  it('merges it in once the type is the one that device logged, and compares the two', async () => {
+    const r = await patch(luna, (await recOf(luna, LUNA_M)).id, { activity: 'traditional_strength_training' });
+    expect(r.statusCode).toBe(200);
+    const s = r.json();
+    expect(s).toMatchObject({ ref: luna, activity: 'traditional_strength_training', merged: garmin, nearby: [] });
+    // Garmin's own recording took the place of the readings it wrote during Luna's.
+    expect(s.recordings.map((x: { source_name: string; logged: boolean }) => [x.source_name, x.logged])).toEqual([[LUNA_M, true], [GARMIN, true]]);
+    expect(s.summary.pairs[0].hr).not.toBeNull();
+    expect(s.summary.why).toBeNull();
+    expect((await app.inject({ method: 'GET', url: `/v1/admin/benchmarks/${garmin}`, headers: admin })).statusCode).toBe(404);
+  });
+
+  it('merges nothing into a session that another device logged too', async () => {
+    const t = M + 200_000;
+    const both = await session(t, [typed(LUNA_M, t, STRENGTH), typed(POLAR_M, t, STRENGTH)]);
+    const hiit = await session(t + 1000, [typed(GARMIN, t + 1000, HIIT)]);
+    const r = await patch(both, (await recOf(both, LUNA_M)).id, { activity: 'high_intensity_interval_training' });
+    expect(r.json()).toMatchObject({ merged: null });
+    expect(r.json().nearby.map((n: { ref: string }) => n.ref)).toEqual([hiit]);
   });
 });
 

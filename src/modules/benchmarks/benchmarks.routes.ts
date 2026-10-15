@@ -4,7 +4,7 @@ import { AppError } from '../../lib/errors.js';
 import { actorOf } from '../../lib/actor.js';
 import { requirePermission } from '../../plugins/auth.js';
 import { zodIssues } from '../../schema/buildValidator.js';
-import { CHOOSABLE_ACTIVITIES, DEVICE_TAGS, tagLabel } from './metrics.js';
+import { DEVICE_TAGS, tagLabel } from './metrics.js';
 import { XLSX_TYPE, type ExportFile } from './export.js';
 import { SCREENSHOT_PRE_TRANSFORMATION, SCREENSHOT_TYPES, type ScreenshotUploads } from '../feedback/feedback.routes.js';
 import { BENCHMARK_MAX_SCREENSHOTS, type BenchmarksService } from './benchmarks.service.js';
@@ -214,8 +214,11 @@ export function registerBenchmarkRoutes(app: FastifyInstance, deps: { service: B
   /** A tester's streaks, weekly goals, bests, badges and nudges, with everyone's leaderboard; without a tester, the leaderboard alone. */
   app.get('/v1/admin/benchmarks/progress', async (req) => service.progress(parse(ProgressQuery, req.query ?? {})));
 
-  /** The brands a device can be tagged as (any other tag, a-z, 0-9, _, is accepted too), and the workout types to offer. */
-  app.get('/v1/admin/benchmarks/device-tags', async () => ({ items: DEVICE_TAGS.map(({ tag, label }) => ({ tag, label })), activities: CHOOSABLE_ACTIVITIES }));
+  /**
+   * The brands a device can be tagged as (any other tag, a-z, 0-9, _, is accepted too), and the workout
+   * types to offer: every type a device has logged so far, so the list grows with the imports.
+   */
+  app.get('/v1/admin/benchmarks/device-tags', async () => ({ items: DEVICE_TAGS.map(({ tag, label }) => ({ tag, label })), activities: await service.activities() }));
 
   app.get<{ Params: { id: string } }>('/v1/admin/benchmarks/:id', async (req) => service.get(req.params.id));
 

@@ -112,16 +112,6 @@ const ACTIVITY_LABELS: Record<string, string> = {
   core_training: 'Core training',
 };
 
-/**
- * Workout types a person can change a recording to, most likely first: a device's own choice is not
- * always what was done (testers pick HIIT on Garmin for a strength session). Any other Apple Health
- * type is accepted by the API as well.
- */
-export const CHOOSABLE_ACTIVITIES = [
-  'traditional_strength_training', 'functional_strength_training', 'high_intensity_interval_training', 'core_training', 'cross_training',
-  'mixed_cardio', 'running', 'walking', 'hiking', 'cycling', 'elliptical', 'rowing', 'stair_climbing', 'yoga', 'pilates', 'dance', 'swimming', 'other',
-].map((key) => ({ key, label: activityLabel(key) }));
-
 /** "HKWorkoutActivityTypeTraditionalStrengthTraining" -> "traditional_strength_training". */
 export function activityKey(identifier: string | null | undefined): string {
   if (!identifier) return 'other';

@@ -102,6 +102,7 @@
   .acts { display: flex; flex-direction: column; gap: 4px; margin-top: 3px; font-family: var(--sans); white-space: normal; }
   .acts select { padding: 3px 8px; font-size: 12px; line-height: 16px; max-width: 190px; }
   .acts .ask { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 11px; color: var(--gray-dark); max-width: 300px; }
+  .acts .ask .merge-note { flex-basis: 100%; color: var(--black); }
   /* hours one device missed: the theme's yellow, which no device line uses */
   .chart rect.quiet { fill: var(--yellow); opacity: .35; }
   tr.out td { color: var(--gray-dark); }
@@ -678,18 +679,46 @@
   const canEnter = (r, f) => state.canManage && state.s.kind === 'workout' && r.logged && (f.luna ? r.device_tag === 'luna' : onFoot(r)) && (manualOf(r, f) !== null || !r.metrics[f.metric]);
 
   /**
+   * Workout types other devices logged in sessions close to this one, when no other device logged this
+   * one: picking one of them says the two are the same workout, and the server merges that session in.
+   * Mirrors the server's test: about the same start and length, or sharing time; never "other workout".
+   */
+  /** A device by its brand ("Garmin", as the list shows it) rather than the app that wrote it ("Connect"). */
+  const brandOf = (d) => { const t = state.tags.find((x) => x.tag === d.tag); return t && d.tag !== 'other' ? t.label : d.label; };
+  function typesLoggedClose(r) {
+    const out = new Map();
+    if (state.s.recordings.some((x) => x.logged && x.id !== r.id)) return out;
+    for (const n of state.s.nearby || []) {
+      if (!n.likely_same && !n.overlaps) continue;
+      for (const d of n.devices) if (d.logged && d.activity && d.activity !== 'other' && !out.has(d.activity)) out.set(d.activity, { ref: n.ref, device: brandOf(d) });
+    }
+    return out;
+  }
+
+  /**
    * The workout type a device logged, which a person may correct (testers pick HIIT on Garmin for a
-   * strength session). After picking a type, they say how far it reaches: this workout, or every one
+   * strength session). The choices are every type a device has logged so far, those logged close to
+   * this workout first. After picking a type, they say how far it reaches: this workout, or every one
    * this tester's device logged as the same type, stored and imported from now on.
    */
   function activityEditor(host, r) {
     const was = r.activity || 'other';
     const set = r.details.activity_set;
     const from = (set && set.from) || was;
+    const close = typesLoggedClose(r);
     const box = el('div', 'acts');
     const sel = el('select'); sel.setAttribute('aria-label', `Workout type of ${nameOf(r)}`);
-    const keys = state.activities.map((a) => a.key);
-    for (const k of [...new Set([was, from, ...keys])]) { const o = el('option', null, (state.activities.find((a) => a.key === k) || {}).label || activityLabel(k)); o.value = k; sel.appendChild(o); }
+    const labelOf = (k) => (state.activities.find((a) => a.key === k) || {}).label || activityLabel(k);
+    const option = (host, k, text) => { const o = el('option', null, text || labelOf(k)); o.value = k; host.appendChild(o); };
+    const rest = [...new Set([was, from, ...state.activities.map((a) => a.key)])].filter((k) => k === was || !close.has(k));
+    if (close.size) {
+      const near = el('optgroup'); near.label = 'Logged close to this one';
+      for (const [k, c] of close) if (k !== was) option(near, k, `${labelOf(k)} · ${c.device}, ${c.ref}`);
+      const all = el('optgroup'); all.label = 'Every type logged so far';
+      for (const k of rest) option(all, k);
+      if (near.children.length) sel.appendChild(near);
+      sel.appendChild(all);
+    } else for (const k of rest) option(sel, k);
     sel.value = was;
     box.appendChild(sel);
     if (set && set.from !== set.to) box.appendChild(el('small', null, `${nameOf(r)} logged it as ${inText(set.from)}${set.scope === 'tester' ? `; all of ${state.s.tester}'s are taken as ${inText(set.to)}` : ''}`));
@@ -697,6 +726,8 @@
       if (sel.value === was) return;
       const to = sel.value;
       const ask = el('div', 'ask');
+      const match = close.get(to);
+      if (match) ask.appendChild(el('span', 'merge-note', `${match.device} logged ${inText(to)} close to this one (${match.ref}): it is merged in here and compared.`));
       ask.appendChild(document.createTextNode(`${activityLabel(to)}: `));
       const one = el('button', 'btn small', 'This workout'); one.type = 'button';
       const all = el('button', 'btn small', `All of ${state.s.tester}'s ${nameOf(r)} ${inText(from)} workouts`); all.type = 'button';
@@ -715,7 +746,8 @@
     await change(async () => {
       const res = await api(`/v1/admin/benchmarks/${state.s.id}/recordings/${r.id}`, { method: 'PATCH', body: { activity: to, activity_scope: scope } });
       const also = res.also_changed || [];
-      setTimeout(() => toast(also.length ? `Saved here and on ${also.length} other session${also.length === 1 ? '' : 's'}: ${also.slice(0, 6).join(', ')}${also.length > 6 ? '…' : ''}` : scope === 'tester' ? `Saved. ${state.s.tester}'s next imports follow it.` : 'Saved'), 0);
+      const saved = also.length ? `Saved here and on ${also.length} other session${also.length === 1 ? '' : 's'}: ${also.slice(0, 6).join(', ')}${also.length > 6 ? '…' : ''}` : scope === 'tester' ? `Saved. ${state.s.tester}'s next imports follow it` : 'Saved';
+      setTimeout(() => toast(res.merged ? `${saved}. ${res.merged} was the same workout: merged in here and compared.` : scope === 'tester' && !also.length ? `${saved}.` : saved), 0);
       return res;
     });
   }
@@ -846,7 +878,8 @@
       const ref = el('td'); const link = el('a', 'mono', n.ref); link.href = '/dashboard/benchmarks/' + encodeURIComponent(n.ref); ref.appendChild(link); tr.appendChild(ref);
       tr.appendChild(el('td', 'rowlabel', n.title || (isSleep() ? 'Sleep' : activityLabel(n.activity))));
       tr.appendChild(el('td', 'val', `${clock(a)} to ${clock(b)}, ${duration(b - a)}`));
-      tr.appendChild(el('td', null, n.devices.filter((d) => d.logged).map((d) => d.label).join(', ') || '—'));
+      // Which type each device logged: setting this workout's type to one of them merges that session in.
+      tr.appendChild(el('td', null, n.devices.filter((d) => d.logged).map((d) => d.activity && !isSleep() ? `${d.label} (${inText(d.activity)})` : d.label).join(', ') || '—'));
       const how = el('td');
       how.appendChild(document.createTextNode(a >= s1 ? `starts ${span(a - s1)} after this one ends` : b <= s0 ? `ends ${span(s0 - b)} before this one starts` : `overlaps it, starting ${span(a - s0)} ${a < s0 ? 'earlier' : 'later'}`));
       if (n.likely_same) how.appendChild(el('small', null, 'about the same length, minutes apart: looks like the same session'));

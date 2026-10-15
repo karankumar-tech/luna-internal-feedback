@@ -395,7 +395,12 @@ type, stored ones and the ones imported from then on (`activity_scope=tester`; a
 on its own session is left as set). The session takes the reference's type, so a Garmin HIIT changed
 to strength training makes it a strength session compared with Luna's. What the device logged is
 kept (`details.activity_set.from`); `check` shows the type an import will take (`activity_as`).
-When the two logged it as different workouts, the session says so.
+When the two logged it as different workouts, the session says so. The types offered are every type
+a device has logged so far (the list grows with the imports), with the ones other devices logged
+close to this workout first. When no other device logged this workout and one did log a workout of
+the new type close by (starting within 20 minutes at a similar length, or sharing time), that
+session is the same workout: it is merged in and compared (`merged` in the response names it).
+"Other workout" is never matched on, and only the session being edited is merged.
 
 **One workout, two sessions.** A device whose clock is off writes the same workout to Health at a
 different time, and recordings that do not overlap are not grouped. The session page lists this
@@ -527,8 +532,8 @@ to half an hour, 10 s beyond), on round clock times; "Every reading" shows the r
 | `POST /v1/admin/benchmarks/check` | which workouts, nights and days of steps from an export are one session, and which are stored; `last_build` is the Luna build last entered for the tester |
 | `POST /v1/admin/benchmarks/import` | one session's recordings (201 created, 200 updated or unchanged), with the Luna build optionally; a stored session that gains a device keeps its own build |
 | `PATCH /v1/admin/benchmarks/{id}` | title, notes, tester, test flag, and the Luna build: `firmware_version`, `app_version`, `platform` (`ios`/`android`; `null` or `""` clears) |
-| `PATCH /v1/admin/benchmarks/{id}/recordings/{rid}` | brand tag and device name; for a workout Luna logged `distance_km` and `active_kcal` (typed in from its app, since Luna does not always write them to Apple Health); for any device's run, walk or hike `max_pace_s` (seconds per km); for a logged workout `activity` with `activity_scope` `session` or `tester` (the response's `also_changed` lists the other sessions changed); for a day of steps `excluded`. `null` clears one; redoes the comparison |
-| `GET /v1/admin/benchmarks/device-tags` | the brands a device can be tagged as, and the workout types offered (`activities`) |
+| `PATCH /v1/admin/benchmarks/{id}/recordings/{rid}` | brand tag and device name; for a workout Luna logged `distance_km` and `active_kcal` (typed in from its app, since Luna does not always write them to Apple Health); for any device's run, walk or hike `max_pace_s` (seconds per km); for a logged workout `activity` with `activity_scope` `session` or `tester` (the response's `also_changed` lists the other sessions changed, and `merged` the session close by that logged the new type and was merged in, or null); for a day of steps `excluded`. `null` clears one; redoes the comparison |
+| `GET /v1/admin/benchmarks/device-tags` | the brands a device can be tagged as, and the workout types offered (`activities`: every type a device has logged so far, by name, "Other workout" last) |
 | `POST /v1/admin/benchmarks/{id}/merge` | `{ "other": id or BM-ref }` joins another session into this one |
 | `GET /v1/admin/benchmarks/screenshot-auth` | ImageKit upload credentials for one screenshot |
 | `POST /v1/admin/benchmarks/{id}/screenshots` | `{ file_id, url, name?, width?, height?, size? }` attaches an uploaded image (409 once there are 6) |
