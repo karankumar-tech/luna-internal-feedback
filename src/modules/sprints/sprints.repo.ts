@@ -253,6 +253,20 @@ export class SprintsRepo {
     return r.rows;
   }
 
+  /** Real issues by platform and app version, for the page's "By platform" block and its version filter. */
+  async byBuild(sprintId: string): Promise<{ platform: string | null; app_version: string | null; open: number; done: number }[]> {
+    const r = await this.db.query<{ platform: string | null; app_version: string | null; open: number; done: number }>(
+      `select s.platform, s.app_version,
+              count(*) filter (where s.status not in ${TERMINAL})::int as open,
+              count(*) filter (where s.status in ${TERMINAL})::int as done
+         from luna_feedback.submissions s
+        where s.sprint_id = $1 and not s.is_test
+        group by s.platform, s.app_version`,
+      [sprintId],
+    );
+    return r.rows;
+  }
+
   /**
    * Real issues filed into the sprint on each of its days (received, in the app's time zone).
    * Issues carried in from the sprint before are left out: they were filed then, not now.

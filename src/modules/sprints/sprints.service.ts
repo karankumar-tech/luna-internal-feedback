@@ -2,6 +2,7 @@ import type pg from 'pg';
 import { z } from 'zod';
 import { AppError } from '../../lib/errors.js';
 import { todayInZone } from '../../lib/time.js';
+import { compareVersions, parseVersion } from '../../lib/version.js';
 import { parseSubmissionRef, type Screenshot } from '../feedback/feedback.repo.js';
 import { CARRIED_NOTE, type SprintCounts, type SprintRow, type SprintsRepo } from './sprints.repo.js';
 import { daysBetween, defaultName, halfLabel, halfOf, parseSprintRef, rangeLabel, refFor, sprintAfter, timing } from './cycle.js';
@@ -13,6 +14,31 @@ export interface SprintSummary { id: string; ref: string; name: string; status: 
 export type CloseDestination = 'next' | 'main' | string;
 
 const MAX_DAYS = 62;
+
+/**
+ * A sprint's issues by platform (iOS first, then Android, then reports that did not say) and the
+ * app versions they came from, newest first, each with the platforms that sent it.
+ */
+export function splitBuilds(rows: { platform: string | null; app_version: string | null; open: number; done: number }[]) {
+  const platforms = new Map<string | null, { platform: string | null; open: number; done: number }>();
+  const versions = new Map<string, { app_version: string; platforms: string[]; issues: number }>();
+  for (const r of rows) {
+    const p = platforms.get(r.platform) ?? { platform: r.platform, open: 0, done: 0 };
+    p.open += r.open; p.done += r.done; platforms.set(r.platform, p);
+    if (!r.app_version) continue;
+    const v = versions.get(r.app_version) ?? { app_version: r.app_version, platforms: [], issues: 0 };
+    v.issues += r.open + r.done;
+    if (r.platform && !v.platforms.includes(r.platform)) v.platforms.push(r.platform);
+    versions.set(r.app_version, v);
+  }
+  const rank = (p: string | null) => (p === 'ios' ? 0 : p === 'android' ? 1 : p ? 2 : 3);
+  return {
+    by_platform: [...platforms.values()].sort((a, b) => rank(a.platform) - rank(b.platform) || String(a.platform).localeCompare(String(b.platform))),
+    app_versions: [...versions.values()]
+      .map((v) => ({ ...v, platforms: v.platforms.sort((a, b) => rank(a) - rank(b)) }))
+      .sort((a, b) => (compareVersions(b.app_version, a.app_version) ?? (parseVersion(a.app_version) ? -1 : parseVersion(b.app_version) ? 1 : a.app_version.localeCompare(b.app_version)))),
+  };
+}
 const summary = (s: SprintRow): SprintSummary => ({ id: s.id, ref: s.ref, name: s.name, status: s.status });
 
 export class SprintsService {
@@ -87,8 +113,8 @@ export class SprintsService {
   /** One sprint with everything its page shows. `me`: the viewer's email, for "Mine". */
   async get(refOrAlias: string, me: string | null) {
     const s = await this.find(refOrAlias);
-    const [{ today, current, next }, all, counts, byFeature, perDay, mine] = await Promise.all([
-      this.context(), this.repo.all(), this.repo.counts([s.id]), this.repo.byFeature(s.id), this.repo.perDay(s), me ? this.repo.mineOpen(s.id, me) : Promise.resolve(0),
+    const [{ today, current, next }, all, counts, byFeature, builds, perDay, mine] = await Promise.all([
+      this.context(), this.repo.all(), this.repo.counts([s.id]), this.repo.byFeature(s.id), this.repo.byBuild(s.id), this.repo.perDay(s), me ? this.repo.mineOpen(s.id, me) : Promise.resolve(0),
     ]);
     const ordered = [...all].sort((a, b) => a.starts_on.localeCompare(b.starts_on));
     const i = ordered.findIndex((x) => x.id === s.id);
@@ -97,6 +123,7 @@ export class SprintsService {
       today,
       mine_open: mine,
       by_feature: byFeature,
+      ...splitBuilds(builds),
       per_day: perDay,
       /** What the next sprint is or will be called, for "close it to start …". */
       follows: next && current && s.id === current.id ? next.ref : sprintAfter(s.ends_on).ref,

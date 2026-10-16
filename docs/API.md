@@ -237,6 +237,8 @@ The schema response advertises the same under `uploads.screenshots` (`enabled: f
 
 The response echoes `screenshots`. The dashboard shows them on the submission page, and the AI diagnosis reads the first two alongside the logs. Screenshots on test submissions are deleted from ImageKit together with the test data. Base64 images in the body and URLs from other hosts are rejected with `422`.
 
+Screenshots can also be added to a report after it was filed, from its page on the dashboard (`POST /v1/admin/submissions/{id}/screenshots`, §8), up to the same five per report. Each added one carries `added_by` and `added_at`; the reporter's own never do.
+
 ---
 
 ## 4. Rendering a form from the schema
@@ -578,6 +580,7 @@ List submissions, newest first. Intended for dashboards; the app does not need i
 | `origin` | string | `internal` (testers, through the app) / `cx` (customers, through CX) |
 | `ref` | string | one report by reference: `LN-00042`, `ln-42` or `42` |
 | `platform` | string | `ios` / `android` |
+| `app_version` | string | the app version the report came from, exactly as sent (`2.4.0`) |
 | `is_test` | `true` / `false` | omit for both |
 | `user_id` | integer | |
 | `from`, `to` | date | inclusive bounds on `occurred_on` |
@@ -676,6 +679,8 @@ Every new issue is matched against open problems when it arrives; a clear match 
 | `POST` | `/v1/admin/submissions/{id}/ask-reporter` | `{ "questions": [...] }` posts the questions as a note (customer-safe on CX reports) and sets `needs_info` |
 | `POST` | `/v1/admin/submissions/{id}/tags` | `{ "add"?: [...], "remove"?: [...] }` (`tag_reports`: admin, QC, developer) → the report. Tags are lowercased, spaces become dashes; letters, digits, `.`, `_` and `-`, up to 30 characters and 10 per report |
 | `GET` | `/v1/admin/tags` | `{ items: [{ tag, count }] }`: tags in use, most used first, plus `app` and `firmware` |
+| `POST` | `/v1/admin/submissions/{id}/screenshots` | `{ "screenshots": [...] }`: images uploaded first with `GET /v1/uploads/screenshot-auth`, each shaped as on a new report (§3c). `add_screenshots`: admin, QC, developer, CX. Each is stored with `added_by` and `added_at`; files the report already holds are skipped. `409` when the report would go past five → `201` with the report |
+| `DELETE` | `/v1/admin/submissions/{id}/screenshots/{file_id}` | removes a screenshot added on the dashboard and deletes the image: whoever added it, or QC and admins. The reporter's own cannot be removed (`409`) → the report |
 | `POST` | `/v1/admin/submissions/bulk` | `{ "ids": [...], "status"?, "assigned_to"?, "priority"?, "is_test"?, "kind_id"?, "add_tags"?, "remove_tags"?, "sprint"? }` → `{ updated, failed: [{ id, error }] }` |
 | `GET` | `/v1/admin/assignees` | everyone a report can be assigned to |
 
@@ -693,7 +698,7 @@ List, stats and the attention page accept `assigned_to` (an email, `me` or `none
 | method | path | body / notes |
 |---|---|---|
 | `GET` | `/v1/sprints` | every sprint, newest first, with `counts` (`issues`, `open`, `done`, `by_status`, `p0_open`, `p1_open`, `unassigned_open`, `carried_in`, `carried_out`), timing (`days`, `day`, `days_left`, `overdue_days`, `starts_in`), `is_current`, `is_next` and `delete_blocked_by` |
-| `GET` | `/v1/sprints/{ref}` | one sprint (`current` and `next` work too) plus `by_feature`, `per_day`, `mine_open`, `prev`/`after` refs and `follows` (the sprint closing it would start) |
+| `GET` | `/v1/sprints/{ref}` | one sprint (`current` and `next` work too) plus `by_feature`, `by_platform` (`[{ platform, open, done }]`, iOS first; `platform` null for reports that did not say), `app_versions` (`[{ app_version, platforms, issues }]`, newest first), `per_day`, `mine_open`, `prev`/`after` refs and `follows` (the sprint closing it would start) |
 | `POST` | `/v1/admin/sprints` | `{ "starts_on"?, "ends_on"?, "name"?, "goal"? }` (`manage_sprints`: admin, QC). Without dates it takes the next free half month. One sprint per half month, no overlaps, at most two months long, never before the current sprint |
 | `PATCH` | `/v1/admin/sprints/{ref}` | `{ "name"?, "goal"?, "starts_on"?, "ends_on"? }`. The start stays in its half (the reference never changes) and is fixed once the sprint is current. `409` on a closed sprint |
 | `POST` | `/v1/admin/sprints/{ref}/close` | `{ "default": "next" \| "main", "overrides"?: { "<id or LN-ref>": "next" \| "main" \| "SPR-…" } }`. The current sprint only: moves its open issues (history note "Carried over when … closed"), closes it, makes the next sprint current and plans one after it → `{ closed, current, next, moved, to_next, to_main, to_other }` |

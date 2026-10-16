@@ -63,6 +63,18 @@
   .gallery .cap { font-family: var(--mono); font-size: 10px; line-height: 14px; color: var(--gray-dark); padding: 6px 8px; }
   .gallery .cap div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .gallery .cap div:first-child { color: var(--black); }
+  .gallery .tile { position: relative; min-width: 0; }
+  .gallery .tile.busy a { pointer-events: none; }
+  .gallery .tile.busy img { opacity: .45; }
+  .gallery .tile .pct { position: absolute; left: 0; right: 0; top: 40%; text-align: center; font-size: 12px; font-weight: 500; color: var(--black); }
+  .gallery .rm { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: rgba(0,0,0,.72); color: var(--white); font-size: 15px; line-height: 24px; cursor: pointer; }
+  .gallery .rm:hover, .gallery .rm:focus-visible { background: var(--crit); outline: none; }
+  .shots-head { display: flex; justify-content: space-between; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 10px; }
+  .shots-head > div { display: flex; align-items: baseline; gap: 6px 12px; flex-wrap: wrap; min-width: 0; }
+  .shots-head .acts { align-items: center; margin-left: auto; }
+  .shots-head .acts span:empty { display: none; }
+  .shots-drop { border: 1px dashed var(--gray-mid); border-radius: var(--r-l); padding: 22px 16px; text-align: center; color: var(--gray-dark); font-size: 13px; line-height: 18px; }
+  #shotsCard.over { border-color: var(--black); box-shadow: 0 0 0 1px var(--black); }
   .files { font-size: 13px; }
   .files .row { display: grid; grid-template-columns: 78px 1fr auto; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border-ghost); align-items: center; }
   .files .src { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--gray-dark); }
@@ -297,11 +309,16 @@
           <dl id="client"></dl>
         </section>
         <section class="card" id="shotsCard" hidden>
-          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px">
-            <h2>Screenshots</h2>
-            <span class="tertiary" style="font-size:12px" id="shotsSub"></span>
+          <div class="shots-head">
+            <div><h2>Screenshots</h2><span class="tertiary" style="font-size:12px" id="shotsSub"></span></div>
+            <div class="acts">
+              <span class="tertiary" style="font-size:12px" id="shotsStatus" role="status"></span>
+              <button class="btn small" id="btnShots" type="button" hidden>Add screenshots</button>
+              <input type="file" id="shotsFile" accept="image/jpeg,image/png,image/webp,image/heic" multiple hidden>
+            </div>
           </div>
           <div class="gallery" id="gallery"></div>
+          <div class="shots-drop" id="shotsEmpty" hidden>No screenshots yet. Drop images here, paste one, or use Add screenshots.</div>
         </section>
         <section class="card">
           <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
@@ -503,31 +520,161 @@
     } else {
       dl($('reporter'), [['User ID', r.user_id, true], ['Email', r.email], ['Device serial', r.device_serial, true], ['Occurred on', r.occurred_on, true], ['Submitted (IST)', r.created_at_ist, true], ['Filed from', r.submitted_via === 'dashboard' ? 'the dashboard' : 'the Luna app'], ['Reference', r.ref, true], ['Record', r.id, true]]);
     }
-    const shots = r.screenshots || [];
-    $('shotsCard').hidden = shots.length === 0;
-    if (shots.length) {
-      $('shotsSub').textContent = `${shots.length} attached by the tester · click one to see them full size`;
-      const g = $('gallery'); g.replaceChildren();
-      const sized = (sc, tr) => { try { const u = new URL(sc.url); u.searchParams.set('tr', tr); return u.toString(); } catch { return sc.thumbnail_url || sc.url; } };
-      const kb = (n) => n >= 1024 * 1024 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB';
-      const items = shots.map((sc) => ({ url: sc.url, thumb: sized(sc, 'w-160,q-70'), name: sc.name || 'screenshot', caption: [sc.width && sc.height ? `${sc.width}×${sc.height}` : null, sc.size ? kb(sc.size) : null].filter(Boolean).join(' · ') }));
-      shots.forEach((sc, i) => {
-        // A plain click opens the viewer here; Cmd/Ctrl-click still opens the image in a new tab.
-        const a = el('a'); a.href = sc.url; a.target = '_blank'; a.rel = 'noopener'; a.setAttribute('aria-label', `View ${sc.name || 'screenshot'} full size`);
-        a.addEventListener('click', (e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return; e.preventDefault(); LunaShell.viewer(items, i, a); });
-        const img = el('img'); img.alt = sc.name || 'screenshot'; img.loading = 'lazy';
-        img.src = sized(sc, 'w-480,q-80');
-        a.appendChild(img);
-        const cap = el('div', 'cap');
-        cap.appendChild(el('div', null, [sc.original_width && sc.original_height ? `sent ${sc.original_width}×${sc.original_height}` : null, sc.upload_size ? (sc.original_width ? '' : 'sent ') + kb(sc.upload_size) : null].filter(Boolean).join(' · ') || (sc.upload_size == null ? 'sent size not reported by app' : '')));
-        cap.appendChild(el('div', null, [sc.width && sc.height ? `stored ${sc.width}×${sc.height}` : null, sc.size ? kb(sc.size) : null].filter(Boolean).join(' · ')));
-        cap.title = sc.name || 'screenshot';
-        a.appendChild(cap);
-        g.appendChild(a);
-      });
-    }
+    renderShots();
     dl($('client'), [['Platform', r.platform], ['App version', r.app_version, true], ['Build', r.build_number, true], ['Channel', r.build_channel, true], ['Firmware', r.firmware_version, true], ['OS', r.os_version], ['Device ID', r.device_id, true], ['Session', r.session_id, true]]);
   }
+
+  // ---------- screenshots: the reporter's, and any added here later ----------
+  // Added ones go straight to ImageKit with a short-lived signature, then are attached in one request.
+  const uploadsCfg = () => { const u = state.schema && state.schema.uploads && state.schema.uploads.screenshots; return u && u.enabled ? u : null; };
+  const maxShots = () => (uploadsCfg() && uploadsCfg().max_count) || 5;
+  const canAddShots = () => can('add_screenshots') && !!uploadsCfg();
+  const mayRemoveShot = (sc) => !!sc.added_by && (can('manage_triage') || sc.added_by === (state.me && state.me.email));
+  let shotsBusy = false;
+  let pendingShots = [];
+
+  function renderShots() {
+    const r = state.sub; const shots = r.screenshots || []; const max = maxShots();
+    const adding = canAddShots();
+    $('shotsCard').hidden = !shots.length && !pendingShots.length && !adding;
+    $('btnShots').hidden = !adding;
+    $('btnShots').disabled = shotsBusy || shots.length >= max;
+    $('btnShots').title = shots.length >= max ? `A report holds at most ${max} screenshots. Remove one to add another.` : `Up to ${max} per report; resized so the longest side is 1600 px`;
+    $('shotsEmpty').hidden = shots.length > 0 || pendingShots.length > 0 || !adding;
+    const added = shots.filter((sc) => sc.added_by).length; const sent = shots.length - added;
+    const by = r.origin === 'cx' ? 'the CX tool' : 'the tester';
+    const sub = [];
+    if (adding) sub.push(shots.length ? `${shots.length} of ${max}` : `None yet · up to ${max}`);
+    if (shots.length) {
+      if (added) { if (sent) sub.push(`${sent} from ${by}`); sub.push(`${added} added here`); }
+      else sub.push(adding ? `attached by ${by}` : `${shots.length} attached by ${by}`);
+      sub.push('click one to see them full size');
+    }
+    $('shotsSub').textContent = sub.join(' · ');
+    const g = $('gallery'); g.replaceChildren(); g.hidden = !shots.length && !pendingShots.length;
+    const sized = (sc, tr) => { try { const u = new URL(sc.url); u.searchParams.set('tr', tr); return u.toString(); } catch { return sc.thumbnail_url || sc.url; } };
+    const kb = (n) => n >= 1024 * 1024 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB';
+    const who = (x) => { const n = nameOf(x); return n === x && x.includes('@') ? x.split('@')[0] : n; };
+    const addedLine = (sc) => ['added by ' + who(sc.added_by), sc.added_at ? new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' }).format(new Date(sc.added_at)) : null].filter(Boolean).join(' · ');
+    const items = shots.map((sc) => ({ url: sc.url, thumb: sized(sc, 'w-160,q-70'), name: sc.name || 'screenshot', caption: [sc.added_by ? addedLine(sc) : null, sc.width && sc.height ? `${sc.width}×${sc.height}` : null, sc.size ? kb(sc.size) : null].filter(Boolean).join(' · ') }));
+    shots.forEach((sc, i) => {
+      const tile = el('div', 'tile');
+      // A plain click opens the viewer here; Cmd/Ctrl-click still opens the image in a new tab.
+      const a = el('a'); a.href = sc.url; a.target = '_blank'; a.rel = 'noopener'; a.setAttribute('aria-label', `View ${sc.name || 'screenshot'} full size`);
+      a.addEventListener('click', (e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return; e.preventDefault(); LunaShell.viewer(items, i, a); });
+      const img = el('img'); img.alt = sc.name || 'screenshot'; img.loading = 'lazy';
+      img.src = sized(sc, 'w-480,q-80');
+      a.appendChild(img);
+      const cap = el('div', 'cap');
+      cap.appendChild(el('div', null, sc.added_by ? addedLine(sc)
+        : [sc.original_width && sc.original_height ? `sent ${sc.original_width}×${sc.original_height}` : null, sc.upload_size ? (sc.original_width ? '' : 'sent ') + kb(sc.upload_size) : null].filter(Boolean).join(' · ') || (sc.upload_size == null ? 'sent size not reported by app' : '')));
+      cap.appendChild(el('div', null, [sc.width && sc.height ? `stored ${sc.width}×${sc.height}` : null, sc.size ? kb(sc.size) : null].filter(Boolean).join(' · ')));
+      cap.title = [sc.name || 'screenshot', sc.added_by ? addedLine(sc) : null].filter(Boolean).join(' · ');
+      a.appendChild(cap); tile.appendChild(a);
+      if (mayRemoveShot(sc) && !shotsBusy) {
+        const rm = el('button', 'rm', '×'); rm.type = 'button'; rm.title = 'Remove'; rm.setAttribute('aria-label', `Remove ${sc.name || 'screenshot'}`);
+        rm.addEventListener('click', () => removeShot(sc));
+        tile.appendChild(rm);
+      }
+      g.appendChild(tile);
+    });
+    for (const p of pendingShots) {
+      const tile = el('div', 'tile busy'); const a = el('a');
+      const img = el('img'); img.alt = ''; img.src = p.preview; a.appendChild(img);
+      const cap = el('div', 'cap'); cap.appendChild(el('div', null, p.name));
+      a.appendChild(cap); tile.appendChild(a); tile.appendChild(el('div', 'pct', p.failed ? 'Not uploaded' : p.done ? 'Uploaded' : 'Uploading…'));
+      g.appendChild(tile);
+    }
+  }
+
+  /** Longest side at most 1600 px, as JPEG, as the app is told to do before it uploads. */
+  async function shrink(file) {
+    const r = (uploadsCfg() && uploadsCfg().client_resize) || { max_dimension: 1600, jpeg_quality: 0.8 };
+    try {
+      const bmp = await createImageBitmap(file);
+      const k = Math.min(1, r.max_dimension / Math.max(bmp.width, bmp.height));
+      const original = { width: bmp.width, height: bmp.height };
+      if (k === 1 && file.size <= 600 * 1024) return { blob: file, original };
+      const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
+      const blob = await new Promise((done) => c.toBlob(done, 'image/jpeg', r.jpeg_quality || 0.8));
+      return { blob: blob || file, original };
+    } catch { return { blob: file, original: null }; } // A format this browser cannot draw (HEIC outside Safari) goes up as it is.
+  }
+
+  /** Uploads one image to ImageKit and returns what the report stores about it. */
+  async function uploadShot(file) {
+    const auth = await api(uploadsCfg().auth_endpoint || '/v1/uploads/screenshot-auth');
+    const { blob, original } = await shrink(file);
+    if (blob.size > auth.max_bytes) throw new Error(`larger than ${Math.round(auth.max_bytes / 1048576)} MB even after resizing`);
+    const name = blob === file ? file.name : file.name.replace(/\.[^.]+$/, '') + '.jpg';
+    const fd = new FormData();
+    fd.append('file', blob, name); fd.append('fileName', name); fd.append('publicKey', auth.public_key);
+    fd.append('signature', auth.signature); fd.append('expire', String(auth.expire)); fd.append('token', auth.token);
+    fd.append('folder', auth.folder); fd.append('useUniqueFileName', 'true'); fd.append('tags', (auth.tags || ['luna-feedback']).join(','));
+    fd.append('transformation', JSON.stringify(auth.transformation));
+    const r = await fetch(auth.upload_url, { method: 'POST', body: fd });
+    const up = await r.json().catch(() => null);
+    if (!r.ok || !up || !up.fileId) throw new Error((up && up.message) || `upload failed (HTTP ${r.status})`);
+    return {
+      file_id: up.fileId, url: up.url, thumbnail_url: up.thumbnailUrl || null, name: (up.name || name).slice(0, 200),
+      width: up.width || null, height: up.height || null, size: up.size || null,
+      upload_size: blob.size, original_width: original ? original.width : null, original_height: original ? original.height : null,
+    };
+  }
+
+  async function addShots(files) {
+    if (!canAddShots() || shotsBusy) return;
+    let list = [...files].filter((f) => /^image\//.test(f.type) || /\.(heic|jpe?g|png|webp)$/i.test(f.name));
+    if (!list.length) { toast('Only images can be added as screenshots.'); return; }
+    const max = maxShots(); const room = max - (state.sub.screenshots || []).length;
+    if (room <= 0) { toast(`This report already has ${max} screenshots. Remove one to add another.`); return; }
+    const left = list.length - room; list = list.slice(0, room);
+    shotsBusy = true;
+    pendingShots = list.map((f) => ({ name: f.name, preview: URL.createObjectURL(f) }));
+    const ready = []; const failed = [];
+    try {
+      for (let i = 0; i < list.length; i++) {
+        $('shotsStatus').textContent = `Uploading ${i + 1} of ${list.length}…`; renderShots();
+        try { ready.push(await uploadShot(list[i])); pendingShots[i].done = true; }
+        catch (err) { failed.push(`${list[i].name} (${err.message})`); pendingShots[i].failed = true; }
+      }
+      if (ready.length) {
+        $('shotsStatus').textContent = 'Attaching…';
+        state.sub = await api(`/v1/admin/submissions/${id}/screenshots`, { method: 'POST', body: JSON.stringify({ screenshots: ready }) });
+        loadActivity();
+      }
+      const n = ready.length;
+      const msg = [n ? (n === 1 ? 'Screenshot added' : `${n} screenshots added`) : '', failed.length ? `Could not upload ${failed.join(', ')}` : '', left > 0 ? `${left} left out: a report holds at most ${max}` : ''].filter(Boolean).join('. ');
+      toast(msg);
+    } catch (err) {
+      toast(err.status === 403 ? 'Your role cannot add screenshots.' : 'Could not add the screenshots: ' + err.message);
+    } finally {
+      for (const p of pendingShots) URL.revokeObjectURL(p.preview);
+      pendingShots = []; shotsBusy = false; $('shotsStatus').textContent = ''; renderShots();
+    }
+  }
+
+  async function removeShot(sc) {
+    if (!confirm(`Remove ${sc.name || 'this screenshot'} from ${state.sub.ref}? The image is deleted.`)) return;
+    try {
+      state.sub = await api(`/v1/admin/submissions/${id}/screenshots/${encodeURIComponent(sc.file_id)}`, { method: 'DELETE' });
+      renderShots(); loadActivity(); toast('Screenshot removed');
+    } catch (err) { toast('Could not remove it: ' + err.message); }
+  }
+
+  $('btnShots').addEventListener('click', () => $('shotsFile').click());
+  $('shotsFile').addEventListener('change', (e) => { const files = [...e.target.files]; e.target.value = ''; addShots(files); });
+  const hasFiles = (e) => canAddShots() && e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+  $('shotsCard').addEventListener('dragover', (e) => { if (!hasFiles(e)) return; e.preventDefault(); $('shotsCard').classList.add('over'); });
+  $('shotsCard').addEventListener('dragleave', (e) => { if (!$('shotsCard').contains(e.relatedTarget)) $('shotsCard').classList.remove('over'); });
+  $('shotsCard').addEventListener('drop', (e) => { if (!hasFiles(e)) return; e.preventDefault(); $('shotsCard').classList.remove('over'); addShots(e.dataTransfer.files); });
+  // A pasted image (a screenshot copied to the clipboard) is added; pasted text goes where it always did.
+  document.addEventListener('paste', (e) => {
+    if (!canAddShots() || !state.sub) return;
+    const files = [...((e.clipboardData && e.clipboardData.files) || [])].filter((f) => /^image\//.test(f.type));
+    if (files.length) { e.preventDefault(); addShots(files); }
+  });
 
   // ---------- event catalog (for naming the codes a verdict cites) ----------
   async function loadCatalog() {
@@ -715,6 +862,10 @@
     diagnosis: (e) => `ran a diagnosis (${e.to_value})`,
     regression: (e) => `flagged it as ${e.to_value} coming back after its fix`,
     go_live: (e) => e.to_value ? (e.from_value ? `moved go-live from ${e.from_value} to ${e.to_value}` : `planned go-live for ${e.to_value}`) : `removed the go-live date (was ${e.from_value})`,
+    screenshot: (e) => {
+      const d = (Number(e.to_value) || 0) - (Number(e.from_value) || 0); const n = Math.abs(d);
+      return `${d >= 0 ? 'added' : 'removed'} ${n === 1 ? 'a screenshot' : n + ' screenshots'}`;
+    },
     sprint: (e) => {
       const why = e.note && /^Carried over/.test(e.note) ? ' (carried over when the sprint closed)' : e.note && /^Reopened/.test(e.note) ? ' (reopened, so it went to the current sprint)' : '';
       if (!e.from_value) return `${e.note === 'Filed into the sprint' ? 'filed it into' : 'moved it into'} ${e.to_value}`;

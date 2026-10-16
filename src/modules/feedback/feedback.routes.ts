@@ -4,7 +4,7 @@ import { AppError } from '../../lib/errors.js';
 import { actorOf } from '../../lib/actor.js';
 import { requirePermission } from '../../plugins/auth.js';
 import { buildFeatureSchema, buildSchemaResponse, etagFor } from '../../schema/buildSchemaResponse.js';
-import { zodIssues } from '../../schema/buildValidator.js';
+import { screenshotSchema, zodIssues } from '../../schema/buildValidator.js';
 import { isValidCalendarDate, todayInZone } from '../../lib/time.js';
 import { ENVIRONMENTS, ORIGINS, PLATFORMS } from '../../schema/registry.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
@@ -35,6 +35,8 @@ export const CommonQuery = z.object({
   environment: z.enum(ENVIRONMENTS).optional(),
   origin: z.enum(ORIGINS).optional(),
   platform: z.enum(PLATFORMS).optional(),
+  /** The app version the report was sent from, as the app gives it (2.4.0). */
+  app_version: z.string().trim().min(1).max(40).optional(),
   is_test: IsTest,
   status: z.enum(SUBMISSION_STATUSES).optional(),
   jira: z.enum(['any', 'none']).optional(),
@@ -274,6 +276,20 @@ export function registerFeedbackRoutes(
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
     return service.setGoLive(req.params.id, parsed.data.go_live_on, actorOf(req));
   });
+
+  // ---- screenshots added after filing (QC, developers, CX); uploaded first via /v1/uploads/screenshot-auth ----
+  app.post<{ Params: { id: string } }>('/v1/admin/submissions/:id/screenshots', { onRequest: requirePermission('add_screenshots') }, async (req, reply) => {
+    const parsed = z.object({
+      // URLs are checked by the service, so a server without uploads says so rather than "not an ImageKit URL".
+      screenshots: z.array(screenshotSchema(() => true)).min(1).max(uploads?.maxCount ?? 5, `at most ${uploads?.maxCount ?? 5} screenshots`),
+    }).strict().safeParse(req.body);
+    if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
+    return reply.code(201).send(await service.addScreenshots(req.params.id, parsed.data.screenshots, actorOf(req)));
+  });
+
+  /** Removes a screenshot added on the dashboard: by whoever added it, or QC. The reporter's own stay. */
+  app.delete<{ Params: { id: string; fileId: string } }>('/v1/admin/submissions/:id/screenshots/:fileId', { onRequest: requirePermission('add_screenshots') }, async (req) =>
+    service.removeScreenshot(req.params.id, req.params.fileId, actorOf(req), can(req.actor, 'manage_triage')));
 
   /** Tags to offer: those in use (most used first) and the common ones. */
   app.get('/v1/admin/tags', async () => ({ items: await service.knownTags() }));

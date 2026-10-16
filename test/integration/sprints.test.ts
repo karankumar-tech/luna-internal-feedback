@@ -201,6 +201,36 @@ describe('reading sprints', () => {
     expect((await app.inject({ method: 'GET', url: '/v1/sprints/SPR-209901-01', headers: adminHeaders })).statusCode).toBe(404);
     expect((await app.inject({ method: 'GET', url: '/v1/sprints/nope', headers: adminHeaders })).statusCode).toBe(422);
   });
+
+  it('splits a sprint by platform and app version, and lists its issues by either', async () => {
+    const plat = (s: { by_platform: { platform: string | null; open: number; done: number }[] }, p: string) => s.by_platform.find((x) => x.platform === p) ?? { open: 0, done: 0 };
+    const v = (minor: number) => `7.${minor}.${USER}`; // versions only this run sends
+    const before = await sprint('current');
+    const a = await report({ sprint: 'current', client: { platform: 'ios', app_version: v(9), environment: 'stage' } });
+    const b = await report({ sprint: 'current', client: { platform: 'ios', app_version: v(10) } });
+    const c = await report({ sprint: 'current', client: { platform: 'android', app_version: v(9), environment: 'uat' } });
+    await app.inject({ method: 'PATCH', url: `/v1/admin/submissions/${b.id}`, headers: as('qc'), payload: { status: 'resolved' } });
+
+    const s = await sprint('current');
+    expect(s.by_platform[0].platform).toBe('ios');
+    expect(plat(s, 'ios').open - plat(before, 'ios').open).toBe(1);
+    expect(plat(s, 'ios').done - plat(before, 'ios').done).toBe(1);
+    expect(plat(s, 'android').open - plat(before, 'android').open).toBe(1);
+    // Newest first, as numbers (7.10 after 7.9), each with the platforms that sent it.
+    expect(s.app_versions.filter((x: { app_version: string }) => x.app_version.endsWith(`.${USER}`))).toEqual([
+      { app_version: v(10), platforms: ['ios'], issues: 1 },
+      { app_version: v(9), platforms: ['ios', 'android'], issues: 2 },
+    ]);
+
+    const refs = async (q: string) => (await homeRefs(`&sprint=current${q}`)).sort();
+    expect(await refs('&platform=ios')).toEqual(expect.arrayContaining([a.ref, b.ref]));
+    expect(await refs('&platform=ios')).not.toContain(c.ref);
+    expect(await refs(`&app_version=${v(9)}`)).toEqual([a.ref, c.ref].sort());
+    expect(await refs(`&platform=android&app_version=${v(9)}`)).toEqual([c.ref]);
+    expect(await refs(`&environment=stage&app_version=${v(9)}`)).toEqual([a.ref]);
+    expect(await refs(`&state=open&platform=ios&app_version=${v(10)}`)).toEqual([]);
+    expect((await app.inject({ method: 'GET', url: '/v1/home/reports?platform=windows', headers: adminHeaders })).statusCode).toBe(422);
+  });
 });
 
 describe('closing a sprint', () => {

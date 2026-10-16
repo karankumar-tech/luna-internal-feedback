@@ -34,6 +34,8 @@ export const PERMISSIONS = {
   tag_reports: ['admin', 'qc', 'developer'],
   /** Set or clear the date a report's fix is planned to go live. */
   set_go_live: ['admin', 'qc', 'developer'],
+  /** Add screenshots to a report already filed. Removing someone else's takes manage_triage. */
+  add_screenshots: ['admin', 'qc', 'developer', 'cx'],
   /** Create, edit and link issue kinds; confirm or reject suggested links; merge kinds. */
   manage_kinds: ['admin', 'qc', 'developer'],
   /** Say "this report looks like that problem" for someone who can manage kinds to confirm. */

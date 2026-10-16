@@ -41,6 +41,12 @@ export interface SubmissionDto extends Omit<SubmissionRow, 'created_at' | 'user_
   jira_synced_at: string | null;
 }
 
+/** The fields of a screenshot that are stored, with the ones not sent as null. */
+const shotOf = (x: Screenshot): Screenshot => ({
+  file_id: x.file_id, url: x.url, thumbnail_url: x.thumbnail_url ?? null, name: x.name ?? null, width: x.width ?? null, height: x.height ?? null, size: x.size ?? null,
+  upload_size: x.upload_size ?? null, original_width: x.original_width ?? null, original_height: x.original_height ?? null,
+});
+
 export class FeedbackService {
   private diagnosis: DiagnosisHook | null = null;
   private device: DeviceHook | null = null;
@@ -173,10 +179,7 @@ export class FeedbackService {
       is_positive: v.is_positive as boolean,
       occurred_on: (v.occurred_on as string | null | undefined) ?? todayInZone(this.timeZone),
       issue_categories: (v.issue_categories as string[] | null | undefined) ?? [],
-      screenshots: ((v.screenshots as Screenshot[] | null | undefined) ?? []).map((x) => ({
-        file_id: x.file_id, url: x.url, thumbnail_url: x.thumbnail_url ?? null, name: x.name ?? null, width: x.width ?? null, height: x.height ?? null, size: x.size ?? null,
-        upload_size: x.upload_size ?? null, original_width: x.original_width ?? null, original_height: x.original_height ?? null,
-      })),
+      screenshots: ((v.screenshots as Screenshot[] | null | undefined) ?? []).map(shotOf),
       details,
       schema_version: SCHEMA_VERSION,
       is_test: v.is_test === true,
@@ -315,6 +318,54 @@ export class FeedbackService {
     const row = await this.feedback.setGoLive(before.id, date);
     if (!row) throw AppError.notFound('Submission not found');
     await this.activity?.record({ submissionId: row.id, actor: by, action: 'go_live', from: before.go_live_on, to: date, touch: true });
+    return this.toDto(row);
+  }
+
+  /** True for an image from our own ImageKit upload flow; false when uploads are not set up. */
+  isScreenshotUrl(u: string): boolean { return this.screenshots ? this.screenshots.isOurUrl(u) : false; }
+
+  /**
+   * Screenshots added to a report already filed, uploaded first as the app's are, up to the limit a
+   * new report has. Each one records who added it. Files the report already holds are skipped.
+   */
+  async addScreenshots(id: string, shots: Screenshot[], by: string | null): Promise<SubmissionDto> {
+    if (!this.screenshots) throw AppError.validation([{ path: 'screenshots', message: 'screenshot uploads are not configured on the server' }], 'Uploads unavailable');
+    const bad = shots.findIndex((s) => !this.screenshots!.isOurUrl(s.url));
+    if (bad >= 0) throw AppError.validation([{ path: `screenshots.${bad}.url`, message: 'must be an ImageKit URL from the screenshot upload flow' }]);
+    const before = await this.row(id);
+    const held = new Set(before.screenshots.map((s) => s.file_id));
+    const at = new Date().toISOString();
+    const fresh = shots
+      .filter((s, i) => !held.has(s.file_id) && shots.findIndex((x) => x.file_id === s.file_id) === i)
+      .map((s) => ({ ...shotOf(s), added_by: by, added_at: at }));
+    if (!fresh.length) return this.toDto(before);
+    const max = this.screenshots.maxCount;
+    const row = await this.feedback.addScreenshots(before.id, fresh, max);
+    if (!row) {
+      const room = Math.max(0, max - before.screenshots.length);
+      throw AppError.conflict(room
+        ? `${before.ref} has ${before.screenshots.length} screenshots and holds at most ${max}: ${room} more fit`
+        : `${before.ref} already has ${max} screenshots. Remove one to add another.`);
+    }
+    await this.activity?.record({ submissionId: row.id, actor: by, action: 'screenshot', from: String(before.screenshots.length), to: String(row.screenshots.length), touch: true });
+    return this.toDto(row);
+  }
+
+  /**
+   * Takes off a screenshot added on the dashboard and deletes the image. What the reporter sent stays
+   * as their evidence. The person who added it may remove it, and so may QC (`mayRemoveAny`).
+   */
+  async removeScreenshot(id: string, fileId: string, by: string | null, mayRemoveAny: boolean): Promise<SubmissionDto> {
+    const before = await this.row(id);
+    const shot = before.screenshots.find((s) => s.file_id === fileId);
+    if (!shot) throw AppError.notFound('No such screenshot on this report');
+    if (!shot.added_by) throw AppError.conflict('This screenshot came with the report; only screenshots added on the dashboard can be removed');
+    if (!mayRemoveAny && shot.added_by !== by) throw AppError.forbidden(`Only ${shot.added_by} or QC can remove this screenshot`);
+    const row = await this.feedback.removeScreenshot(before.id, fileId);
+    if (!row) throw AppError.notFound('No such screenshot on this report');
+    await this.activity?.record({ submissionId: row.id, actor: by, action: 'screenshot', from: String(before.screenshots.length), to: String(row.screenshots.length), touch: true });
+    // Best effort: the report no longer points at it either way.
+    if (this.screenshots) await this.screenshots.deleteFile(fileId).catch(() => false);
     return this.toDto(row);
   }
 

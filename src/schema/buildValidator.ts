@@ -124,9 +124,25 @@ function sharedExtras(feature: FeatureKey, ctx: ValidatorContext) {
     }
   }
 
-  const screenshot = z.object({
+  const screenshot = screenshotSchema(ctx.isScreenshotUrl);
+  return {
+    details: details.optional().default({}),
+    client: clientContextSchema(ctx).optional().nullable(),
+    /** Images uploaded to ImageKit via GET /v1/uploads/screenshot-auth, then referenced here. */
+    screenshots: z.array(screenshot).max(ctx.maxScreenshots ?? 5, `at most ${ctx.maxScreenshots ?? 5} screenshots`).optional().nullable(),
+    /** Marks integration/demo submissions so they can be filtered and deleted without touching real feedback. */
+    is_test: z.boolean().optional().default(false),
+  };
+}
+
+/**
+ * One screenshot uploaded to ImageKit (GET /v1/uploads/screenshot-auth) and then referenced: sent
+ * with a new report, or added to one later from the dashboard. Absent `isScreenshotUrl` = refused.
+ */
+export function screenshotSchema(isScreenshotUrl?: (url: string) => boolean) {
+  return z.object({
     file_id: z.string().trim().min(1).max(120),
-    url: z.string().trim().url().max(1000).refine((u) => (ctx.isScreenshotUrl ? ctx.isScreenshotUrl(u) : false), 'must be an ImageKit URL from the screenshot upload flow'),
+    url: z.string().trim().url().max(1000).refine((u) => (isScreenshotUrl ? isScreenshotUrl(u) : false), 'must be an ImageKit URL from the screenshot upload flow'),
     thumbnail_url: z.string().trim().url().max(1000).optional().nullable(),
     name: z.string().trim().max(200).optional().nullable(),
     width: z.number().int().positive().optional().nullable(),
@@ -137,14 +153,6 @@ function sharedExtras(feature: FeatureKey, ctx: ValidatorContext) {
     original_width: z.number().int().positive().optional().nullable(),
     original_height: z.number().int().positive().optional().nullable(),
   }).strict();
-  return {
-    details: details.optional().default({}),
-    client: clientContextSchema(ctx).optional().nullable(),
-    /** Images uploaded to ImageKit via GET /v1/uploads/screenshot-auth, then referenced here. */
-    screenshots: z.array(screenshot).max(ctx.maxScreenshots ?? 5, `at most ${ctx.maxScreenshots ?? 5} screenshots`).optional().nullable(),
-    /** Marks integration/demo submissions so they can be filtered and deleted without touching real feedback. */
-    is_test: z.boolean().optional().default(false),
-  };
 }
 
 /**

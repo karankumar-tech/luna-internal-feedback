@@ -87,6 +87,8 @@
   .bar .track i { display: block; height: 100%; }
   .bar .num { font-family: var(--mono); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
   .bars { list-style: none; margin: 0; padding: 0; }
+  .bar.static { cursor: default; }
+  .bar.static:hover { background: none; }
 
   .pages .gap { color: var(--gray-dark); padding: 0 2px; font-size: 12px; }
   .list.dim { opacity: .5; transition: opacity .15s; }
@@ -362,10 +364,15 @@
     <div class="chipsrow" id="chips" hidden></div>
     <div class="fpanel" id="fpanel" hidden>
       <div class="fgrid">
+        <label class="field"><span>Platform</span><select data-f="platform"></select></label>
+        <label class="field"><span>App version</span><select data-f="app_version"></select></label>
+        <label class="field"><span>Environment</span><select data-f="environment"></select></label>
         <label class="field"><span>Feature</span><select data-f="feature"></select></label>
+        <label class="field"><span>Category</span><select data-f="category"></select></label>
         <label class="field"><span>Status</span><select data-f="status"></select></label>
         <label class="field"><span>Priority</span><select data-f="priority"></select></label>
         <label class="field"><span>Owner</span><select data-f="assigned_to"></select></label>
+        <label class="field"><span>Tag</span><select data-f="tag"></select></label>
       </div>
     </div>
     <div class="bulkbar" id="bulkbar" hidden>
@@ -530,12 +537,14 @@
   // ---------- labels ----------
   const STATUS = { open: 'Open', triaged: 'Triaged', in_progress: 'In progress', needs_info: 'Needs info', fixed: 'Fixed', resolved: 'Resolved', closed: 'Closed', wont_fix: "Won't fix" };
   const TERMINAL = ['resolved', 'closed', 'wont_fix'];
+  const PLATFORM = { ios: 'iOS', android: 'Android' };
+  const ENV = { stage: 'Stage', uat: 'UAT', production: 'Production' };
   const L = { features: {}, categories: {} };
   const featLabel = (k) => L.features[k] || (k ? k[0].toUpperCase() + k.slice(1) : '');
   const catLabel = (f, k) => (L.categories[f] && L.categories[f][k]) || k.replace(/_/g, ' ');
 
   // ---------- state ----------
-  const S = { me: null, list: null, sel: null, detail: null, tab: 'open', f: {}, page: 1, items: null, picked: new Set(), people: null, seq: 0 };
+  const S = { me: null, list: null, sel: null, detail: null, tab: 'open', f: {}, page: 1, items: null, picked: new Set(), people: null, tags: null, seq: 0 };
   const can = (p) => !!(S.me && S.me.permissions && S.me.permissions[p]);
   const sp = (ref) => (S.list ? S.list.items.find((s) => s.ref === ref) : null);
   const ordered = () => (S.list ? [...S.list.items].sort((a, b) => a.starts_on.localeCompare(b.starts_on)) : []);
@@ -625,6 +634,21 @@
     const seg = (cls, n, label) => (n ? `<i class="${cls}" style="flex-grow:${n}" title="${label}: ${n}"></i>` : '');
     const feats = d.by_feature || [];
     const max = Math.max(1, ...feats.map((x) => x.open + x.done));
+    const plats = d.by_platform || [];
+    const pmax = Math.max(1, ...plats.map((x) => x.open + x.done));
+    const platRow = (x) => {
+      const inner = `<span class="lbl"><b>${x.platform ? esc(PLATFORM[x.platform] || x.platform) : 'Not reported'}</b><small>${x.open ? x.open + ' open' : 'all done'}</small></span>
+          <span class="track" aria-hidden="true"><i class="o" style="width:${(x.open / pmax) * 100}%"></i><i class="d" style="width:${(x.done / pmax) * 100}%"></i></span>
+          <span class="num">${x.open}/${x.open + x.done}</span>`;
+      return x.platform
+        ? `<li><button type="button" class="bar${S.f.platform === x.platform ? ' on' : ''}" data-platform="${esc(x.platform)}" aria-pressed="${S.f.platform === x.platform}">${inner}</button></li>`
+        : `<li><div class="bar static" title="Sent without a platform, such as reports filed on the dashboard without one">${inner}</div></li>`;
+    };
+    const byPlatform = plats.some((x) => x.platform) ? `
+      <div>
+        <div class="blk-head"><h3>By platform</h3><span class="sub">Pick one to list its issues</span></div>
+        <ul class="bars">${plats.map(platRow).join('')}</ul>
+      </div>` : '';
     const right = c.issues ? `
       <div>
         <div class="blk-head"><h3>Where it stands</h3><span class="sub">${c.issues} ${c.issues === 1 ? 'issue' : 'issues'}</span></div>
@@ -637,6 +661,7 @@
           <li><i class="s-done"></i>Done <b>${c.done}</b></li>
         </ul>
       </div>
+      ${byPlatform}
       <div>
         <div class="blk-head"><h3>By feature</h3><span class="sub">Pick one to list its issues</span></div>
         <ul class="bars">${feats.map((x) => `<li><button type="button" class="bar${S.f.feature === x.feature_key ? ' on' : ''}" data-feature="${esc(x.feature_key)}" aria-pressed="${S.f.feature === x.feature_key}">
@@ -671,11 +696,12 @@
     const cn = $('sprint').querySelector('[data-close-sprint]'); if (cn) cn.addEventListener('click', openClose);
     const ed = $('btnEdit'); if (ed) ed.addEventListener('click', () => openEdit(d));
     $('btnMore').addEventListener('click', (ev) => openMenu(ev.currentTarget, sp(d.ref) || d));
-    $('sprint').querySelectorAll('[data-feature]').forEach((b) => b.addEventListener('click', () => {
-      S.f.feature = S.f.feature === b.dataset.feature ? undefined : b.dataset.feature; S.page = 1;
-      syncFilterPanel(); renderSprint(); loadList();
+    const pickBar = (k, v) => {
+      setFilter(k, S.f[k] === v ? undefined : v);
       $('issues').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
-    }));
+    };
+    $('sprint').querySelectorAll('[data-feature]').forEach((b) => b.addEventListener('click', () => pickBar('feature', b.dataset.feature)));
+    $('sprint').querySelectorAll('[data-platform]').forEach((b) => b.addEventListener('click', () => pickBar('platform', b.dataset.platform)));
     $('btnReport').href = '/dashboard/report?sprint=' + (d.is_next ? 'next' : 'current');
     document.title = `Luna Pulse · ${d.ref}`;
   }
@@ -772,11 +798,36 @@
 
   // ---------- filters ----------
   const FILTERS = {
+    platform: { label: 'Platform', options: () => Object.entries(PLATFORM) },
+    app_version: { label: 'App version', options: () => versionOptions(), chip: (v) => v },
+    environment: { label: 'Environment', options: () => Object.entries(ENV) },
     feature: { label: 'Feature', options: () => Object.entries(L.features) },
+    category: { label: 'Category', options: () => categoryOptions() },
     status: { label: 'Status', options: () => Object.entries(STATUS) },
     priority: { label: 'Priority', options: () => [['p0', 'P0'], ['p1', 'P1'], ['p2', 'P2'], ['p3', 'P3'], ['none', 'Not set']] },
     assigned_to: { label: 'Owner', options: () => [['me', 'Me'], ['none', 'Nobody'], ...(S.people || []).map((p) => [p.email, p.name || p.email])] },
+    tag: { label: 'Tag', options: () => [['none', 'Untagged'], ...(S.tags || []).map((t) => [t.tag, t.tag])] },
   };
+  /** The app versions this sprint's issues came from, newest first; only the picked platform's when one is picked. */
+  function versionOptions() {
+    const all = (S.detail && S.detail.app_versions) || [];
+    const shown = all.filter((v) => !S.f.platform || v.platforms.includes(S.f.platform));
+    const out = shown.map((v) => [v.app_version, `${v.app_version}${v.platforms.length ? ' · ' + v.platforms.map((p) => PLATFORM[p] || p).join(', ') : ''} (${v.issues})`]);
+    if (S.f.app_version && !out.some(([v]) => v === S.f.app_version)) out.push([S.f.app_version, S.f.app_version]);
+    return out;
+  }
+  /**
+   * What went wrong: the picked feature's categories, or every feature's, named with their feature.
+   * A category several features share (Other) is one choice, since the filter matches it in all of them.
+   */
+  function categoryOptions() {
+    const f = S.f.feature; const by = new Map();
+    for (const [fk, cats] of Object.entries(L.categories)) {
+      if (f && fk !== f) continue;
+      for (const [ck, label] of Object.entries(cats)) { const x = by.get(ck) || { label, feats: [] }; x.feats.push(fk); by.set(ck, x); }
+    }
+    return [...by].map(([ck, x]) => [ck, f || x.feats.length > 1 ? x.label : `${x.label} · ${featLabel(x.feats[0])}`]).sort((a, b) => a[1].localeCompare(b[1]));
+  }
   function fillFilterPanel() {
     for (const [k, f] of Object.entries(FILTERS)) {
       const sel = document.querySelector(`[data-f="${k}"]`);
@@ -785,15 +836,25 @@
     syncFilterPanel();
   }
   function syncFilterPanel() { document.querySelectorAll('[data-f]').forEach((sel) => { sel.value = S.f[sel.dataset.f] || ''; }); }
-  document.querySelectorAll('[data-f]').forEach((sel) => sel.addEventListener('change', () => {
-    S.f[sel.dataset.f] = sel.value || undefined; S.page = 1;
-    if (sel.dataset.f === 'status' && sel.value && S.tab !== 'all') S.tab = 'all';
+  /** One filter changed (undefined clears it): the list, the card's bars, the chips and the address follow. */
+  function setFilter(k, v) {
+    S.f[k] = v || undefined; S.page = 1;
+    if (k === 'status' && v && S.tab !== 'all') S.tab = 'all';
+    // A category belongs to a feature; a version list follows the platform.
+    if (k === 'feature' && v && S.f.category && !categoryOptions().some(([c]) => c === S.f.category)) S.f.category = undefined;
+    const versionOn = (p) => ((S.detail && S.detail.app_versions) || []).some((x) => x.app_version === S.f.app_version && x.platforms.includes(p));
+    if (k === 'platform' && v && S.f.app_version && !versionOn(v)) S.f.app_version = undefined;
+    fillFilterPanel(); writeUrl();
     if (S.detail) renderSprint();
     loadList();
-  }));
+  }
+  document.querySelectorAll('[data-f]').forEach((sel) => sel.addEventListener('change', () => setFilter(sel.dataset.f, sel.value)));
   function chipLabel(k, v) {
-    const opt = FILTERS[k].options().find(([o]) => o === v);
-    return k === 'feature' ? featLabel(v) : `${FILTERS[k].label}: ${opt ? opt[1] : v}`;
+    const f = FILTERS[k]; if (!f) return v;
+    if (k === 'feature') return featLabel(v);
+    if (k === 'category') return `${f.label}: ${S.f.feature ? catLabel(S.f.feature, v) : (categoryOptions().find(([o]) => o === v) || [, v])[1]}`;
+    const opt = f.chip ? null : f.options().find(([o]) => o === v);
+    return `${f.label}: ${f.chip ? f.chip(v) : opt ? opt[1] : v}`;
   }
   function renderChips() {
     const on = Object.entries(S.f).filter(([, v]) => v);
@@ -802,9 +863,14 @@
     $('chips').innerHTML = on.map(([k, v]) => `<span class="fchip">${esc(chipLabel(k, v))}<button type="button" data-unf="${k}" aria-label="Remove filter: ${esc(chipLabel(k, v))}"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button></span>`).join('')
       + (on.length > 1 ? '<button class="clearall" type="button" data-unf="*">Clear all</button>' : '');
     $('chips').querySelectorAll('[data-unf]').forEach((b) => b.addEventListener('click', () => {
-      if (b.dataset.unf === '*') S.f = {}; else delete S.f[b.dataset.unf];
-      S.page = 1; syncFilterPanel(); if (S.detail) renderSprint(); loadList();
+      if (b.dataset.unf === '*') { S.f = {}; S.page = 1; fillFilterPanel(); writeUrl(); if (S.detail) renderSprint(); loadList(); }
+      else setFilter(b.dataset.unf, undefined);
     }));
+  }
+  async function loadTags() {
+    if (S.tags) return;
+    S.tags = await api('/v1/admin/tags').then((x) => x.items || []).catch(() => []);
+    fillFilterPanel();
   }
   async function loadPeople() {
     if (S.people) return S.people;
@@ -817,7 +883,7 @@
   $('btnFilter').addEventListener('click', () => {
     const open = $('fpanel').hidden;
     $('fpanel').hidden = !open; $('btnFilter').setAttribute('aria-expanded', String(open));
-    if (open) { loadPeople(); const first = $('fpanel').querySelector('select'); if (first) first.focus(); }
+    if (open) { loadPeople(); loadTags(); const first = $('fpanel').querySelector('select'); if (first) first.focus(); }
   });
 
   // ---------- bulk ----------
@@ -1071,25 +1137,26 @@
   /** After a change: everything on the page, keeping the sprint, tab and filters. */
   async function refresh() {
     try { await Promise.all([reloadList(), loadDetail()]); } catch (err) { toast('Could not refresh: ' + err.message); }
-    renderStrip(); renderSprint(); renderTable(); await loadList();
+    renderStrip(); fillFilterPanel(); renderSprint(); renderTable(); await loadList();
   }
+  /** The address keeps the sprint, the tab and the filters, so a filtered view can be shared. */
   function writeUrl() {
     const path = '/dashboard/sprints/' + encodeURIComponent(S.sel);
-    const q = S.tab !== defaultTab() ? '?tab=' + S.tab : '';
-    if (location.pathname + location.search !== path + q) history.replaceState(null, '', path + q);
+    const q = qs(Object.assign({ tab: S.tab !== defaultTab() ? S.tab : undefined }, S.f));
+    if (location.pathname + location.search !== path + (q ? '?' + q : '')) history.replaceState(null, '', path + (q ? '?' + q : ''));
   }
   function defaultTab() { const s = sp(S.sel); return s && s.is_current ? 'open' : 'all'; }
   async function select(ref, opts = {}) {
     if (!ref) return;
     const changedSprint = S.sel !== ref;
     S.sel = ref;
-    if (changedSprint || opts.first) { S.f = {}; S.picked.clear(); S.page = 1; if (!opts.tab) S.tab = defaultTab(); syncFilterPanel(); }
+    if (changedSprint || opts.first) { S.f = Object.assign({}, opts.f); S.picked.clear(); S.page = 1; if (!opts.tab) S.tab = defaultTab(); syncFilterPanel(); }
     if (opts.tab) S.tab = opts.tab;
     writeUrl(); renderStrip(); renderTable(); renderTabs();
     $('list').classList.add('dim');
     try { await loadDetail(); } catch (err) { toast('Could not load ' + ref + ': ' + err.message); return; }
     if (S.sel !== ref) return;
-    renderSprint(); renderTabs(); loadList();
+    fillFilterPanel(); renderSprint(); renderTabs(); loadList();
   }
 
   document.querySelectorAll('#tabs [data-tab]').forEach((b) => b.addEventListener('click', () => { if (S.tab === b.dataset.tab) return; S.tab = b.dataset.tab; S.page = 1; writeUrl(); loadList(); renderTabs(); }));
@@ -1116,8 +1183,11 @@
     const alias = want === 'CURRENT' ? S.list.current : want === 'NEXT' ? S.list.next : want;
     const known = alias && sp(alias) ? alias : null;
     if (want && !known) toast(`No sprint ${want}; showing the current one`);
-    const tab = new URLSearchParams(location.search).get('tab');
-    await select(known || S.list.current || S.list.items[0].ref, { first: true, tab: ['open', 'done', 'all', 'mine'].includes(tab) ? tab : null });
+    const params = new URLSearchParams(location.search);
+    const tab = params.get('tab');
+    const f = Object.fromEntries(Object.keys(FILTERS).map((k) => [k, params.get(k) || undefined]).filter(([, v]) => v));
+    if (f.tag || f.assigned_to) { loadTags(); loadPeople(); }
+    await select(known || S.list.current || S.list.items[0].ref, { first: true, f, tab: ['open', 'done', 'all', 'mine'].includes(tab) ? tab : null });
   }
   start();
 })();

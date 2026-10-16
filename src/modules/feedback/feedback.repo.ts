@@ -12,6 +12,9 @@ export interface Screenshot {
   upload_size?: number | null;
   original_width?: number | null;
   original_height?: number | null;
+  /** Added later on the dashboard (not sent with the report): who added it, and when. */
+  added_by?: string | null;
+  added_at?: string | null;
 }
 
 export interface SubmissionRow {
@@ -143,6 +146,7 @@ export interface CommonFilters {
   /** p0..p3, or 'none' for no priority set. */
   priority?: string;
   platform?: string;
+  app_version?: string;
   is_test?: boolean;
   status?: string;
   /** 'any' = linked to some Jira ticket, 'none' = not linked. */
@@ -217,6 +221,7 @@ export function buildWhere(f: Partial<StatsFilters>, alias = 's'): { where: stri
   if (f.priority === 'none') add(`${alias}.priority is null`, undefined);
   else if (f.priority) add(`${alias}.priority = ?`, f.priority);
   if (f.platform) add(`${alias}.platform = ?`, f.platform);
+  if (f.app_version) add(`${alias}.app_version = ?`, f.app_version);
   if (f.is_test !== undefined) add(`${alias}.is_test = ?`, f.is_test);
   if (f.status) add(`${alias}.status = ?`, f.status);
   if (f.jira === 'any') add(`${alias}.jira_key is not null`, undefined);
@@ -365,6 +370,30 @@ export class FeedbackRepo {
   /** Puts a report in a sprint, or (null) back on the main list. */
   async setSprint(id: string, sprintId: string | null): Promise<SubmissionRow | undefined> {
     const r = await this.db.query<SubmissionRow>(`update luna_feedback.submissions set sprint_id = $2 where id = $1 returning ${COLUMNS}`, [id, sprintId]);
+    return r.rows[0];
+  }
+
+  /** Adds screenshots, unless that would take the report past `max`: undefined then (or when it is gone). */
+  async addScreenshots(id: string, shots: Screenshot[], max: number): Promise<SubmissionRow | undefined> {
+    const r = await this.db.query<SubmissionRow>(
+      `update luna_feedback.submissions set screenshots = screenshots || $2::jsonb
+        where id = $1 and jsonb_array_length(screenshots) + jsonb_array_length($2::jsonb) <= $3
+        returning ${COLUMNS}`,
+      [id, JSON.stringify(shots), max],
+    );
+    return r.rows[0];
+  }
+
+  /** Takes one screenshot off a report. Undefined when the report does not hold that file. */
+  async removeScreenshot(id: string, fileId: string): Promise<SubmissionRow | undefined> {
+    const r = await this.db.query<SubmissionRow>(
+      `update luna_feedback.submissions
+          set screenshots = coalesce((select jsonb_agg(x order by ord) from jsonb_array_elements(screenshots) with ordinality as e(x, ord)
+                                       where x->>'file_id' <> $2), '[]'::jsonb)
+        where id = $1 and screenshots @> jsonb_build_array(jsonb_build_object('file_id', $2::text))
+        returning ${COLUMNS}`,
+      [id, fileId],
+    );
     return r.rows[0];
   }
 
