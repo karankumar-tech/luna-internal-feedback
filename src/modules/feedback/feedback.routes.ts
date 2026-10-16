@@ -255,7 +255,8 @@ export function registerFeedbackRoutes(
     if (assigned_to !== undefined) dto = await service.assign(req.params.id, assigned_to, by);
     if (priority !== undefined) dto = await service.setPriority(req.params.id, priority, by);
     if (platform !== undefined) dto = await service.setPlatform(req.params.id, platform, by);
-    if (status !== undefined) dto = await service.setStatus(req.params.id, status, status_note ?? null, by, isTeamAction(req));
+    // Fixed / Won't fix hands the report back to its reporter, unless this change names an owner.
+    if (status !== undefined) dto = await service.setStatus(req.params.id, status, status_note ?? null, by, isTeamAction(req), assigned_to === undefined);
     // After the status: an explicit sprint wins over the move a reopen makes.
     if (sprint !== undefined) dto = await service.moveToSprint(req.params.id, sprint, by);
     return dto ?? service.get(req.params.id);

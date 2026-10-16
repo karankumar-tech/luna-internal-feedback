@@ -56,6 +56,16 @@ export class UsersRepo {
 
   /** Everyone who can sign in: anyone may own a report. */
   /** Display names for the accounts among these emails (lowercased), for naming testers on report lists. */
+  /** Accounts that are not disabled, by email (any case) or id. */
+  async activeAccounts(emails: string[], ids: readonly string[]): Promise<{ id: string; email: string }[]> {
+    const r = await this.db.query<{ id: string; email: string }>(
+      `select id, email from luna_feedback.dashboard_users
+        where not is_disabled and (lower(email) = any($1::text[]) or id = any($2::uuid[]))`,
+      [[...new Set(emails.map((e) => e.trim().toLowerCase()))], [...ids]],
+    );
+    return r.rows;
+  }
+
   async namesFor(emails: string[]): Promise<Map<string, string>> {
     const wanted = [...new Set(emails.map((e) => e.toLowerCase()))];
     if (!wanted.length) return new Map();

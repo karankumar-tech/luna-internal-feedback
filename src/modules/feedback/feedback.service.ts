@@ -7,6 +7,7 @@ import { redact } from '../diagnosis/logs/redact.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
 import { MAX_TAGS, TERMINAL_STATUSES, normalizeTag, parseSubmissionRef, type FeedbackRepo, type NewSubmission, type Priority, type SubmissionRow, type ListFilters, type StatsFilters, type Screenshot, type SubmissionStatus } from './feedback.repo.js';
 import type { ActivityRepo, NoteVisibility } from '../activity/activity.repo.js';
+import { ASSIGN_BACK_DEFAULTS, ASSIGN_BACK_STATUSES, assignBackTo, type ActiveAccount } from './assign-back.js';
 import type { FastifyBaseLogger } from 'fastify';
 
 /** Minimal hook so the feedback module does not depend on the diagnosis module directly. */
@@ -53,6 +54,8 @@ export class FeedbackService {
   private similarity: SimilarityHook | null = null;
   private sprints: SprintHook | null = null;
   private activity: ActivityRepo | null = null;
+  /** Active dashboard accounts by email or id, for handing a fixed report back (wired in build-app). */
+  private accounts: ((emails: string[], ids: readonly string[]) => Promise<ActiveAccount[]>) | null = null;
   /** Screenshot URL validator + cleanup, wired when ImageKit is configured. */
   private screenshots: { isOurUrl: (u: string) => boolean; maxCount: number; deleteFile: (id: string) => Promise<boolean> } | null = null;
 
@@ -67,6 +70,7 @@ export class FeedbackService {
   setSimilarityHook(hook: SimilarityHook | null) { this.similarity = hook; }
   setSprintHook(hook: SprintHook | null) { this.sprints = hook; }
   setActivity(repo: ActivityRepo | null) { this.activity = repo; }
+  setAccountLookup(fn: ((emails: string[], ids: readonly string[]) => Promise<ActiveAccount[]>) | null) { this.accounts = fn; }
   setScreenshotSupport(s: { isOurUrl: (u: string) => boolean; maxCount: number; deleteFile: (id: string) => Promise<boolean> } | null) { this.screenshots = s; }
 
   toDto(row: SubmissionRow): SubmissionDto {
@@ -242,11 +246,16 @@ export class FeedbackService {
   }
 
   /** `touch`: a team member did it, so it counts as a response and resets "stale". */
-  async setStatus(id: string, status: SubmissionStatus, note: string | null, by: string | null, touch = true): Promise<SubmissionDto> {
+  /**
+   * `assignBack`: a report newly marked Fixed or Won't fix goes back to whoever filed it (see
+   * assign-back.ts). Callers pass false when the same change names an owner itself.
+   */
+  async setStatus(id: string, status: SubmissionStatus, note: string | null, by: string | null, touch = true, assignBack = true): Promise<SubmissionDto> {
     const before = await this.row(id);
     let row = await this.feedback.setStatus(before.id, status, note, by);
     if (!row) throw AppError.notFound('Submission not found');
     if (before.status !== status || note) await this.activity?.record({ submissionId: row.id, actor: by, action: 'status', from: before.status, to: status, note, touch });
+    if (assignBack && before.status !== status && ASSIGN_BACK_STATUSES.includes(status)) row = await this.handBack(row, status, by);
     // A closed sprint only holds finished issues: one reopened there goes to the current sprint.
     if (TERMINAL.includes(before.status) && !TERMINAL.includes(status) && row.sprint?.status === 'closed' && this.sprints) {
       const current = await this.sprints.resolve('current', by).catch(() => null);
@@ -256,6 +265,23 @@ export class FeedbackService {
       }
     }
     return this.toDto(row);
+  }
+
+  /** Assigns a report just marked Fixed or Won't fix to its reporter, or to QC's default owner. */
+  private async handBack(row: SubmissionRow, status: SubmissionStatus, by: string | null): Promise<SubmissionRow> {
+    if (!this.accounts) return row;
+    const filer = row.submitted_via === 'dashboard' ? await this.activity?.filedBy(row.id) ?? null : null;
+    const reporters = [filer, row.email].filter((x): x is string => !!x && x.includes('@'));
+    const to = assignBackTo(reporters, await this.accounts(reporters, ASSIGN_BACK_DEFAULTS.map((d) => d.id)));
+    if (!to || to.email === row.assigned_to) return row;
+    const updated = await this.feedback.setAssignee(row.id, to.email);
+    if (!updated) return row;
+    const marked = `marked ${status === 'fixed' ? 'Fixed' : "Won't fix"}`;
+    await this.activity?.record({
+      submissionId: row.id, actor: by, action: 'assign', from: row.assigned_to, to: to.email, touch: false,
+      note: to.reason === 'reporter' ? `back to the reporter, ${marked}` : `${marked}; the reporter has no dashboard account`,
+    });
+    return updated;
   }
 
   /**

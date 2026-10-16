@@ -88,7 +88,7 @@ export function registerActivityRoutes(app: FastifyInstance, deps: {
         if (body.priority !== undefined) await feedback.setPriority(id, body.priority, by);
         if (body.platform !== undefined) await feedback.setPlatform(id, body.platform, by);
         if (!qc) await assertNotFinished(feedback, id);
-        if (body.status !== undefined) await feedback.setStatus(id, body.status, null, by, team);
+        if (body.status !== undefined) await feedback.setStatus(id, body.status, null, by, team, body.assigned_to === undefined);
         if (body.kind_id) await kinds.link((await feedback.row(id)).id, body.kind_id, 'manual', null, by);
         if (body.add_tags?.length || body.remove_tags?.length) await feedback.changeTags(id, { add: body.add_tags, remove: body.remove_tags }, by);
         if (body.sprint !== undefined) await feedback.moveToSprint(id, body.sprint, by);

@@ -56,6 +56,15 @@ export class ActivityRepo {
     return r.rows[0]!;
   }
 
+  /** Who filed a report: the actor of its "created" event (a dashboard user's email, or the credential). */
+  async filedBy(submissionId: string): Promise<string | null> {
+    const r = await this.db.query<{ actor: string | null }>(
+      `select actor from luna_feedback.submission_events where submission_id = $1 and action = 'created' order by created_at limit 1`,
+      [submissionId],
+    );
+    return r.rows[0]?.actor ?? null;
+  }
+
   /** A report's history, oldest first. `customerOnly` keeps just the notes CX may pass on. */
   async list(submissionId: string, opts: { customerOnly?: boolean } = {}): Promise<EventRow[]> {
     const r = await this.db.query<EventRow>(

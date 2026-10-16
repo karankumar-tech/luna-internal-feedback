@@ -187,6 +187,7 @@ export function buildApp(opts: BuildOptions = {}): App {
   const sessionSecret = sessionSecretFrom(config.DASHBOARD_KEY);
 
   const usersRepo = new UsersRepo(db);
+  service.setAccountLookup((emails, ids) => usersRepo.activeAccounts(emails, ids));
   const users = new UsersService(usersRepo, {
     maxAgeDays: config.PASSWORD_MAX_AGE_DAYS,
     historyDepth: config.PASSWORD_HISTORY_DEPTH,

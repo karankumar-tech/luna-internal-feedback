@@ -706,8 +706,11 @@
     if (next === previous) return;
     sel.disabled = true;
     try {
+      const owner = state.sub.assigned_to;
       state.sub = await api(`/v1/admin/submissions/${id}`, { method: 'PATCH', body: JSON.stringify({ status: next }) });
-      toast('Status set to ' + (TRIAGE.find((t) => t[0] === next) || [, next])[1]);
+      // Fixed and Won't fix hand the report back to whoever filed it (or QC's default owner).
+      const back = state.sub.assigned_to && state.sub.assigned_to !== owner ? ` · assigned back to ${nameOf(state.sub.assigned_to)}` : '';
+      toast('Status set to ' + (TRIAGE.find((t) => t[0] === next) || [, next])[1] + back);
       renderSubmission(); loadActivity();
     } catch (err) { sel.value = previous; toast('Could not update status: ' + err.message); }
     finally { renderStatusSelect(); }
@@ -855,7 +858,7 @@
   const ACTION_TEXT = {
     created: (e) => e.to_value === 'cx' ? 'filed it from the CX tool' : 'reported it',
     status: (e) => `moved it ${label(e.from_value)} → ${label(e.to_value)}`,
-    assign: (e) => e.to_value ? `assigned it to ${nameOf(e.to_value)}` : 'unassigned it',
+    assign: (e) => (e.to_value ? `assigned it to ${nameOf(e.to_value)}` : 'unassigned it') + (e.note ? ` (${e.note})` : ''),
     priority: (e) => e.to_value ? `set priority ${e.to_value.toUpperCase()}` : 'cleared the priority',
     note: () => 'added a note',
     ask_reporter: () => 'asked the reporter',
@@ -905,7 +908,7 @@
       if (isNote && e.visibility === 'customer') head.appendChild(el('span', 'shared', 'customer-safe'));
       head.appendChild(el('span', 'when', istStamp(e.created_at)));
       li.appendChild(head);
-      if (e.note && e.action !== 'sprint') { const b = el('div', 'body'); b.replaceChildren(...linkRefs(e.note)); li.appendChild(b); }
+      if (e.note && e.action !== 'sprint' && e.action !== 'assign') { const b = el('div', 'body'); b.replaceChildren(...linkRefs(e.note)); li.appendChild(b); }
       list.appendChild(li);
     }
   }
