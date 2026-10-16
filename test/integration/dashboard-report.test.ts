@@ -112,6 +112,8 @@ describe('posting a report from the dashboard', () => {
     const me = await app.inject({ method: 'GET', url: '/v1/me', headers: asUser() });
     expect(me.json().reporter_profile).toEqual({ user_id: 900779, email: email('biz') });
 
+    expect((await app.inject({ method: 'PATCH', url: '/v1/me/reporter', headers: asUser(), payload: { platform: 'backend' } })).json().reporter_profile.platform).toBe('backend');
+    expect((await app.inject({ method: 'PATCH', url: '/v1/me/reporter', headers: asUser(), payload: { platform: 'web' } })).statusCode).toBe(422);
     expect((await app.inject({ method: 'PATCH', url: '/v1/me/reporter', headers: asUser(), payload: { user_id: -1 } })).statusCode).toBe(422);
     expect((await app.inject({ method: 'PATCH', url: '/v1/me/reporter', headers: asUser(), payload: { nickname: 'x' } })).statusCode).toBe(422);
   });

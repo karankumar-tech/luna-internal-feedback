@@ -381,6 +381,7 @@
       <select id="bStatus" aria-label="Set status"><option value="">Status…</option><option value="open">Open</option><option value="triaged">Triaged</option><option value="in_progress">In progress</option><option value="needs_info">Needs info</option><option value="fixed">Fixed</option><option value="resolved">Resolved</option><option value="closed">Closed</option><option value="wont_fix">Won't fix</option></select>
       <select id="bOwner" aria-label="Set owner"><option value="">Owner…</option><option value="__none">Unassign</option></select>
       <select id="bPrio" aria-label="Set priority"><option value="">Priority…</option><option value="p0">P0</option><option value="p1">P1</option><option value="p2">P2</option><option value="p3">P3</option><option value="__none">Clear</option></select>
+      <select id="bPlat" aria-label="Set platform"><option value="">Platform…</option><option value="ios">iOS</option><option value="android">Android</option><option value="backend">Backend</option><option value="firmware">Firmware</option><option value="__none">Clear</option></select>
       <button class="btn small primary" id="btnBulk" type="button">Apply</button>
       <button class="btn small ghost" id="btnBulkClear" type="button">Clear selection</button>
     </div>
@@ -537,7 +538,7 @@
   // ---------- labels ----------
   const STATUS = { open: 'Open', triaged: 'Triaged', in_progress: 'In progress', needs_info: 'Needs info', fixed: 'Fixed', resolved: 'Resolved', closed: 'Closed', wont_fix: "Won't fix" };
   const TERMINAL = ['resolved', 'closed', 'wont_fix'];
-  const PLATFORM = { ios: 'iOS', android: 'Android' };
+  const PLATFORM = { ios: 'iOS', android: 'Android', backend: 'Backend', firmware: 'Firmware' };
   const ENV = { stage: 'Stage', uat: 'UAT', production: 'Production' };
   const L = { features: {}, categories: {} };
   const featLabel = (k) => L.features[k] || (k ? k[0].toUpperCase() + k.slice(1) : '');
@@ -642,7 +643,7 @@
           <span class="num">${x.open}/${x.open + x.done}</span>`;
       return x.platform
         ? `<li><button type="button" class="bar${S.f.platform === x.platform ? ' on' : ''}" data-platform="${esc(x.platform)}" aria-pressed="${S.f.platform === x.platform}">${inner}</button></li>`
-        : `<li><div class="bar static" title="Sent without a platform, such as reports filed on the dashboard without one">${inner}</div></li>`;
+        : `<li><div class="bar static" title="Sent without a platform. QC can set one on the issue, or for many at once with the bulk bar.">${inner}</div></li>`;
     };
     const byPlatform = plats.some((x) => x.platform) ? `
       <div>
@@ -912,13 +913,14 @@
     if ($('bStatus').value) change.status = $('bStatus').value;
     if ($('bOwner').value) change.assigned_to = $('bOwner').value === '__none' ? null : $('bOwner').value;
     if ($('bPrio').value) change.priority = $('bPrio').value === '__none' ? null : $('bPrio').value;
-    if (!Object.keys(change).length) { toast('Pick where to move them, or a status, owner or priority'); return; }
+    if ($('bPlat').value) change.platform = $('bPlat').value === '__none' ? null : $('bPlat').value;
+    if (!Object.keys(change).length) { toast('Pick where to move them, or a status, owner, priority or platform'); return; }
     const ids = [...S.picked];
     try {
       const out = await api('/v1/admin/submissions/bulk', { method: 'POST', body: JSON.stringify(Object.assign({ ids }, change)) });
       const what = change.sprint !== undefined ? (change.sprint === null ? 'Moved to the main list' : `Moved to ${change.sprint === 'next' ? 'the next sprint' : change.sprint}`) : 'Applied';
       toast(`${what} · ${out.updated} updated${out.failed.length ? ` · ${out.failed.length} failed: ${out.failed[0].error}` : ''}`);
-      S.picked.clear(); ['bMove', 'bStatus', 'bOwner', 'bPrio'].forEach((id) => { $(id).value = ''; });
+      S.picked.clear(); ['bMove', 'bStatus', 'bOwner', 'bPrio', 'bPlat'].forEach((id) => { $(id).value = ''; });
       await refresh();
     } catch (err) { toast('Could not apply: ' + why(err)); }
   });

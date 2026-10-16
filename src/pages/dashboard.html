@@ -351,6 +351,7 @@
         <select id="bStatus" aria-label="Set status"><option value="">Status…</option><option value="triaged">Triaged</option><option value="in_progress">In progress</option><option value="needs_info">Needs info</option><option value="fixed">Fixed</option><option value="resolved">Resolved</option><option value="closed">Closed</option><option value="wont_fix">Won't fix</option></select>
         <select id="bOwner" aria-label="Set owner"><option value="">Owner…</option><option value="__none">Unassign</option></select>
         <select id="bPrio" aria-label="Set priority"><option value="">Priority…</option><option value="p0">P0</option><option value="p1">P1</option><option value="p2">P2</option><option value="p3">P3</option><option value="__none">Clear</option></select>
+        <select id="bPlat" aria-label="Set platform"><option value="">Platform…</option><option value="ios">iOS</option><option value="android">Android</option><option value="backend">Backend</option><option value="firmware">Firmware</option><option value="__none">Clear</option></select>
         <input id="bTag" type="text" list="knownTags" placeholder="Add tag…" aria-label="Add a tag" autocomplete="off" spellcheck="false" maxlength="30">
         <select id="bUntag" aria-label="Remove a tag"><option value="">Remove tag…</option></select>
         <select id="bSprint" aria-label="Move to a sprint" hidden><option value="">Move to sprint…</option></select>
@@ -705,7 +706,7 @@
     { key: 'category', label: 'Category', options: () => categoryOptions() },
     { key: 'origin', label: 'Source', options: () => [['cx', 'Customers (CX)'], ['internal', 'Internal testers']] },
     { key: 'environment', label: 'Environment', options: () => Object.entries(ENV) },
-    { key: 'platform', label: 'Platform', options: () => [['ios', 'iOS'], ['android', 'Android']] },
+    { key: 'platform', label: 'Platform', options: () => [['ios', 'iOS'], ['android', 'Android'], ['backend', 'Backend'], ['firmware', 'Firmware']] },
     { key: 'status', label: 'Status', options: () => Object.entries(STATUS) },
     { key: 'assigned_to', label: 'Owner', options: () => [['me', 'Me'], ['none', 'Nobody'], ...(S.people || []).map((p) => [p.email, p.name || p.email])] },
     { key: 'priority', label: 'Priority', options: () => [['p0', 'P0'], ['p1', 'P1'], ['p2', 'P2'], ['p3', 'P3'], ['none', 'Not set']] },
@@ -904,14 +905,15 @@
     if ($('bStatus').value) change.status = $('bStatus').value;
     if ($('bOwner').value) change.assigned_to = $('bOwner').value === '__none' ? null : $('bOwner').value;
     if ($('bPrio').value) change.priority = $('bPrio').value === '__none' ? null : $('bPrio').value;
+    if ($('bPlat').value) change.platform = $('bPlat').value === '__none' ? null : $('bPlat').value;
     if ($('bTag').value.trim()) change.add_tags = [$('bTag').value.trim()];
     if ($('bUntag').value) change.remove_tags = [$('bUntag').value];
     if ($('bSprint').value) change.sprint = $('bSprint').value === '__main' ? null : $('bSprint').value;
-    if (!Object.keys(change).length) { toast('Pick a status, owner, priority, tag or sprint to apply'); return; }
+    if (!Object.keys(change).length) { toast('Pick a status, owner, priority, platform, tag or sprint to apply'); return; }
     if (change.sprint !== undefined) S.sprints = null; // counts change; fetch again next time
     if (change.add_tags || change.remove_tags) S.tags = null; // counts change; fetch again next time
     bulk(change, 'Applied');
-    $('bStatus').value = ''; $('bOwner').value = ''; $('bPrio').value = ''; $('bTag').value = ''; $('bUntag').value = ''; $('bSprint').value = '';
+    $('bStatus').value = ''; $('bOwner').value = ''; $('bPrio').value = ''; $('bPlat').value = ''; $('bTag').value = ''; $('bUntag').value = ''; $('bSprint').value = '';
   });
   $('btnBulkTest').addEventListener('click', () => bulk({ is_test: true }, 'Marked as test'));
   $('btnBulkClear').addEventListener('click', () => { S.picked.clear(); for (const b of document.querySelectorAll('.item .pick input')) b.checked = false; renderBulk(); });

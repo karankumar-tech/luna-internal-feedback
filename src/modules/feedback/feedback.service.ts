@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { AppError } from '../../lib/errors.js';
 import { formatInZone, todayInZone } from '../../lib/time.js';
 import { buildCxSubmissionValidator, buildSubmissionValidator, zodIssues, type ValidatorContext } from '../../schema/buildValidator.js';
-import { DEFAULT_CX_ENVIRONMENT, SCHEMA_VERSION, isFeatureKey, type FeatureKey } from '../../schema/registry.js';
+import { DEFAULT_CX_ENVIRONMENT, SCHEMA_VERSION, isFeatureKey, type FeatureKey, type Platform } from '../../schema/registry.js';
 import { redact } from '../diagnosis/logs/redact.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
 import { MAX_TAGS, TERMINAL_STATUSES, normalizeTag, parseSubmissionRef, type FeedbackRepo, type NewSubmission, type Priority, type SubmissionRow, type ListFilters, type StatsFilters, type Screenshot, type SubmissionStatus } from './feedback.repo.js';
@@ -290,6 +290,19 @@ export class FeedbackService {
     const row = await this.feedback.setPriority(before.id, priority);
     if (!row) throw AppError.notFound('Submission not found');
     if (before.priority !== priority) await this.activity?.record({ submissionId: row.id, actor: by, action: 'priority', from: before.priority, to: priority, touch: true });
+    return this.toDto(row);
+  }
+
+  /**
+   * QC's call on where an issue lives: the app sends its phone's platform, and QC may change it,
+   * for instance to backend or firmware. The history keeps what it was.
+   */
+  async setPlatform(id: string, platform: Platform | null, by: string | null): Promise<SubmissionDto> {
+    const before = await this.row(id);
+    if (before.platform === platform) return this.toDto(before);
+    const row = await this.feedback.setPlatform(before.id, platform);
+    if (!row) throw AppError.notFound('Submission not found');
+    await this.activity?.record({ submissionId: row.id, actor: by, action: 'platform', from: before.platform, to: platform, touch: true });
     return this.toDto(row);
   }
 

@@ -127,8 +127,13 @@ export function readableDetails(featureKey: string, details: Record<string, unkn
     });
 }
 
-export const PLATFORMS = ['ios', 'android'] as const;
+/**
+ * Where an issue lives: the iOS or Android app (what the app sends on its own), or the backend or the
+ * ring's firmware, which QA picks for issues that are not the app's.
+ */
+export const PLATFORMS = ['ios', 'android', 'backend', 'firmware'] as const;
 export type Platform = (typeof PLATFORMS)[number];
+export const PLATFORM_LABELS: Record<Platform, string> = { ios: 'iOS', android: 'Android', backend: 'Backend', firmware: 'Firmware' };
 
 /**
  * Which ring of the release train the report came from.
@@ -173,7 +178,10 @@ export const CLIENT_CONTEXT_FIELDS: readonly FieldDef[] = [
     key: 'environment', type: 'string', label: 'Environment', required: false, options: [...ENVIRONMENTS],
     help: `Which backend the app is pointed at. Omit it and the server records "${DEFAULT_ENVIRONMENT}".`,
   },
-  { key: 'platform', type: 'string', label: 'Platform', required: false, options: [...PLATFORMS] },
+  {
+    key: 'platform', type: 'string', label: 'Platform', required: false, options: [...PLATFORMS], optionLabels: { ...PLATFORM_LABELS },
+    help: 'The phone the app runs on (ios, android), or backend / firmware for an issue that lives there rather than in the app.',
+  },
   { key: 'app_version', type: 'string', label: 'App version', required: false, maxLength: 200 },
   { key: 'build_number', type: 'string', label: 'Build number', required: false, maxLength: 200 },
   { key: 'build_channel', type: 'string', label: 'Build channel', required: false, maxLength: 200 },

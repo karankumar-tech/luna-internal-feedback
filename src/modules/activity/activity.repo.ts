@@ -3,7 +3,7 @@ import type { Db } from '../../db/pool.js';
 export const EVENT_ACTIONS = [
   'created', 'status', 'assign', 'priority', 'note', 'test_flag',
   'kind_link', 'kind_suggest', 'kind_confirm', 'kind_reject', 'jira', 'diagnosis', 'ask_reporter', 'regression', 'tag', 'go_live',
-  'sprint', 'screenshot',
+  'sprint', 'screenshot', 'platform',
 ] as const;
 export type EventAction = (typeof EVENT_ACTIONS)[number];
 

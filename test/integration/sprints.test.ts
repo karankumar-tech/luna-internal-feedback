@@ -231,6 +231,43 @@ describe('reading sprints', () => {
     expect(await refs(`&state=open&platform=ios&app_version=${v(10)}`)).toEqual([]);
     expect((await app.inject({ method: 'GET', url: '/v1/home/reports?platform=windows', headers: adminHeaders })).statusCode).toBe(422);
   });
+
+  it('takes backend and firmware as platforms: filed that way, or set by QC one at a time or in bulk', async () => {
+    const plat = (s: { by_platform: { platform: string | null; open: number }[] }, p: string) => s.by_platform.find((x) => x.platform === p)?.open ?? 0;
+    const before = await sprint('current');
+    const filed = await report({ sprint: 'current', client: { platform: 'Firmware', app_version: '2.4.0' } });
+    expect((await get(filed.id)).platform).toBe('firmware');
+    const a = await report({ sprint: 'current', client: { platform: 'ios' } });
+    const b = await report({ sprint: 'current', client: { platform: 'android' } });
+    const c = await report({ sprint: 'current', client: { platform: 'android' } });
+
+    // One at a time: QC and admins only, recorded in the history.
+    const patch = (id: string, payload: unknown, who = 'qc') => app.inject({ method: 'PATCH', url: `/v1/admin/submissions/${id}`, headers: as(who), payload: payload as object });
+    expect((await patch(a.id, { platform: 'backend' }, 'dev')).statusCode).toBe(403);
+    expect((await patch(a.id, { platform: 'web' })).statusCode).toBe(422);
+    const set = await patch(a.id, { platform: 'backend' });
+    expect(set.statusCode).toBe(200);
+    expect(set.json().platform).toBe('backend');
+    expect((await history(a.id)).at(-1)).toMatchObject({ action: 'platform', from_value: 'ios', to_value: 'backend' });
+
+    // Many at once, from the bulk bar.
+    const bulk = await app.inject({ method: 'POST', url: '/v1/admin/submissions/bulk', headers: as('qc'), payload: { ids: [b.id, c.ref], platform: 'firmware' } });
+    expect(bulk.json()).toMatchObject({ updated: 2, failed: [] });
+    expect((await get(c.id)).platform).toBe('firmware');
+    expect((await app.inject({ method: 'POST', url: '/v1/admin/submissions/bulk', headers: as('dev'), payload: { ids: [b.id], platform: 'ios' } })).statusCode).toBe(403);
+
+    const s = await sprint('current');
+    expect(plat(s, 'backend') - plat(before, 'backend')).toBe(1);
+    expect(plat(s, 'firmware') - plat(before, 'firmware')).toBe(3);
+    const order = s.by_platform.map((x: { platform: string | null }) => x.platform);
+    expect(order.indexOf('backend')).toBeGreaterThan(order.indexOf('ios'));
+    expect(order.indexOf('firmware')).toBeGreaterThan(order.indexOf('backend'));
+    expect((await homeRefs('&sprint=current&platform=firmware')).sort()).toEqual([filed.ref, b.ref, c.ref].sort());
+
+    // Cleared, it is "not reported" again.
+    expect((await patch(a.id, { platform: null })).json().platform).toBeNull();
+    expect((await history(a.id)).at(-1)).toMatchObject({ action: 'platform', from_value: 'backend', to_value: null });
+  });
 });
 
 describe('closing a sprint', () => {

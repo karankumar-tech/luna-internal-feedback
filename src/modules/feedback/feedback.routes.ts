@@ -232,15 +232,17 @@ export function registerFeedbackRoutes(
       priority: z.enum(PRIORITIES).nullable().optional(),
       /** "current", "next" or a sprint reference; null puts it back on the main list. */
       sprint: z.string().trim().max(20).nullable().optional(),
+      /** Where the issue lives (ios, android, backend, firmware); null clears it. */
+      platform: z.enum(PLATFORMS).nullable().optional(),
     }).strict().refine((b) => Object.values(b).some((v) => v !== undefined), {
-      message: 'send is_test, status, assigned_to, priority or sprint',
+      message: 'send is_test, status, assigned_to, priority, sprint or platform',
     }).safeParse(req.body);
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
-    const { is_test, status, status_note, assigned_to, priority, sprint } = parsed.data;
+    const { is_test, status, status_note, assigned_to, priority, sprint, platform } = parsed.data;
     const by = actorOf(req);
     if (!can(req.actor, 'manage_triage')) {
       // Developers: "fixed" and nothing else, and only on a report QC has not finished with.
-      const onlyFixed = status === 'fixed' && is_test === undefined && assigned_to === undefined && priority === undefined && sprint === undefined;
+      const onlyFixed = status === 'fixed' && is_test === undefined && assigned_to === undefined && priority === undefined && sprint === undefined && platform === undefined;
       if (!onlyFixed) throw AppError.forbidden(`Your role (${req.actor?.role ?? 'unknown'}) can only mark a bug as fixed; QC resolves or closes it`);
       await assertNotFinished(service, req.params.id);
     }
@@ -252,6 +254,7 @@ export function registerFeedbackRoutes(
     let dto = is_test === undefined ? null : await service.setTestFlag(req.params.id, is_test, by);
     if (assigned_to !== undefined) dto = await service.assign(req.params.id, assigned_to, by);
     if (priority !== undefined) dto = await service.setPriority(req.params.id, priority, by);
+    if (platform !== undefined) dto = await service.setPlatform(req.params.id, platform, by);
     if (status !== undefined) dto = await service.setStatus(req.params.id, status, status_note ?? null, by, isTeamAction(req));
     // After the status: an explicit sprint wins over the move a reopen makes.
     if (sprint !== undefined) dto = await service.moveToSprint(req.params.id, sprint, by);

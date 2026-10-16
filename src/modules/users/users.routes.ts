@@ -4,6 +4,7 @@ import { AppError } from '../../lib/errors.js';
 import { ROLES, permissionsOf } from '../../lib/actor.js';
 import { requirePermission } from '../../plugins/auth.js';
 import { zodIssues } from '../../schema/buildValidator.js';
+import { PLATFORMS } from '../../schema/registry.js';
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from './password.js';
 import type { UsersService } from './users.service.js';
 
@@ -58,7 +59,7 @@ export function registerUserRoutes(app: FastifyInstance, deps: { service: UsersS
       email: z.string().trim().email().max(254).nullable().optional(),
       device_serial: str(64),
       environment: z.enum(['stage', 'uat', 'production']).nullable().optional(),
-      platform: z.enum(['ios', 'android']).nullable().optional(),
+      platform: z.enum(PLATFORMS).nullable().optional(),
       app_version: str(200), build_number: str(200), firmware_version: str(200), os_version: str(200),
     }).strict().safeParse(req.body);
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));

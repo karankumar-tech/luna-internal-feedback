@@ -277,6 +277,8 @@
       <select id="ownerSel" class="hdr-sel" title="Who owns this report"><option value="">Unassigned</option></select>
       <label class="overline" for="prioSel">Priority</label>
       <select id="prioSel" title="A person's call; overrides the AI's severity"><option value="">None</option><option value="p0">P0 · now</option><option value="p1">P1 · today</option><option value="p2">P2 · normal</option><option value="p3">P3 · later</option></select>
+      <label class="overline" for="platSel">Platform</label>
+      <select id="platSel" title="Where the issue lives. The app sends its phone's platform; QC can change it, for instance to Backend or Firmware"><option value="">Not set</option><option value="ios">iOS</option><option value="android">Android</option><option value="backend">Backend</option><option value="firmware">Firmware</option></select>
       <a class="jira-link" id="jiraLink" href="#" target="_blank" rel="noopener" hidden></a>
       <button class="btn small" id="btnJira" type="button" hidden>Create Jira ticket</button>
       <button class="btn small" id="btnFlag" type="button" hidden>Mark as test</button>
@@ -420,6 +422,7 @@
   const istStamp = (iso) => { if (!iso) return '—'; const d = new Date(iso); return new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).format(d) + ' IST'; };
   const SIDE_LABEL = { firmware: 'Firmware', sdk: 'Ring SDK', app: 'App', backend: 'Backend', user_expectation: 'User expectation', not_a_bug: 'Not a bug', insufficient_logs: 'Insufficient logs' };
   const STATUS_TEXT = { pending: 'Queued', running: 'Diagnosing…', waiting_logs: 'Waiting for logs', done: 'Done', no_logs: 'No logs', failed: 'Failed' };
+  const PLATFORM = { ios: 'iOS', android: 'Android', backend: 'Backend', firmware: 'Firmware' };
   const TRIAGE = [['open', 'Open'], ['triaged', 'Triaged'], ['in_progress', 'In progress'], ['needs_info', 'Needs info'], ['fixed', 'Fixed'], ['resolved', 'Resolved'], ['closed', 'Closed'], ['wont_fix', "Won't fix"]];
 
   // ---------- load ----------
@@ -455,6 +458,7 @@
     $('statusSel').disabled = !can('manage_triage') && !can('mark_fixed');
     $('ownerSel').disabled = !can('manage_triage');
     $('prioSel').disabled = !can('manage_triage');
+    $('platSel').disabled = !can('manage_triage');
     $('composer').hidden = !can('add_notes');
     $('statusSel').title = can('manage_triage') ? 'Move this ticket through triage' : can('mark_fixed') ? 'Mark the bug as fixed; QC checks it and resolves or closes it' : 'Your role can see the status but not change it';
     $('btnFlag').hidden = !can('manage_triage');
@@ -494,7 +498,7 @@
       m('tester', (acct && acct.name) || (r.email ? r.email.split('@')[0] : String(r.user_id)));
       meta.lastChild.title = 'Luna user ' + r.user_id + (r.email ? ' · ' + r.email : '');
     }
-    m('platform', r.platform === 'ios' ? 'iOS' : r.platform === 'android' ? 'Android' : '—'); m('app', r.app_version || '—'); m('fw', r.firmware_version || '—');
+    m('platform', PLATFORM[r.platform] || r.platform || '—'); m('app', r.app_version || '—'); m('fw', r.firmware_version || '—');
     const envWrap = el('span'); envWrap.appendChild(el('span', 'env ' + (r.environment || 'stage'), r.environment || 'stage')); meta.appendChild(envWrap);
     if (r.status_changed_at) { const s = el('span', 'tertiary'); s.textContent = `${(TRIAGE.find((t) => t[0] === r.status) || [, r.status])[1]} by ${r.status_changed_by || 'someone'} · ${istStamp(r.status_changed_at)}`; meta.appendChild(s); }
     renderStatusSelect();
@@ -725,6 +729,7 @@
     sel.replaceChildren(...options.map(([v, l]) => { const o = el('option', null, l); o.value = v; return o; }));
     sel.value = r.assigned_to || '';
     $('prioSel').value = r.priority || '';
+    $('platSel').value = r.platform || '';
   }
   async function patchSub(body, done) {
     const was = state.sub && state.sub.sprint ? state.sub.sprint.ref : null;
@@ -738,6 +743,7 @@
   }
   $('ownerSel').addEventListener('change', (ev) => { const v = ev.target.value || null; patchSub({ assigned_to: v }, v ? `Assigned to ${v}` : 'Unassigned'); });
   $('prioSel').addEventListener('change', (ev) => { const v = ev.target.value || null; patchSub({ priority: v }, v ? `Priority ${v.toUpperCase()}` : 'Priority cleared'); });
+  $('platSel').addEventListener('change', (ev) => { const v = ev.target.value || null; patchSub({ platform: v }, v ? `Platform ${PLATFORM[v]}` : 'Platform cleared'); });
 
   // ---------- tags ----------
   /** Offered on every report as one-click picks; the server keeps the same list. */
@@ -862,6 +868,7 @@
     diagnosis: (e) => `ran a diagnosis (${e.to_value})`,
     regression: (e) => `flagged it as ${e.to_value} coming back after its fix`,
     go_live: (e) => e.to_value ? (e.from_value ? `moved go-live from ${e.from_value} to ${e.to_value}` : `planned go-live for ${e.to_value}`) : `removed the go-live date (was ${e.from_value})`,
+    platform: (e) => e.to_value ? `set the platform to ${PLATFORM[e.to_value] || e.to_value}${e.from_value ? ` (was ${PLATFORM[e.from_value] || e.from_value})` : ''}` : `cleared the platform (was ${PLATFORM[e.from_value] || e.from_value})`,
     screenshot: (e) => {
       const d = (Number(e.to_value) || 0) - (Number(e.from_value) || 0); const n = Math.abs(d);
       return `${d >= 0 ? 'added' : 'removed'} ${n === 1 ? 'a screenshot' : n + ' screenshots'}`;

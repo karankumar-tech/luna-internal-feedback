@@ -5,6 +5,7 @@ import { actorOf, can, isTeamAction } from '../../lib/actor.js';
 import { requirePermission } from '../../plugins/auth.js';
 import { zodIssues } from '../../schema/buildValidator.js';
 import { PRIORITIES, SUBMISSION_STATUSES } from '../feedback/feedback.repo.js';
+import { PLATFORMS } from '../../schema/registry.js';
 import type { FeedbackService } from '../feedback/feedback.service.js';
 import { assertNotFinished } from '../feedback/feedback.routes.js';
 import type { KindsService } from '../kinds/kinds.service.js';
@@ -60,12 +61,14 @@ export function registerActivityRoutes(app: FastifyInstance, deps: {
       remove_tags: z.array(z.string().max(40)).max(10).optional(),
       /** "current", "next" or a sprint reference; null puts them back on the main list. */
       sprint: z.string().trim().max(20).nullable().optional(),
-    }).strict().refine((b) => b.status !== undefined || b.assigned_to !== undefined || b.priority !== undefined || b.is_test !== undefined || b.kind_id !== undefined || !!b.add_tags?.length || !!b.remove_tags?.length || b.sprint !== undefined, {
-      message: 'send at least one of status, assigned_to, priority, is_test, kind_id, add_tags, remove_tags, sprint',
+      /** ios, android, backend or firmware; null clears it. */
+      platform: z.enum(PLATFORMS).nullable().optional(),
+    }).strict().refine((b) => b.status !== undefined || b.assigned_to !== undefined || b.priority !== undefined || b.is_test !== undefined || b.kind_id !== undefined || !!b.add_tags?.length || !!b.remove_tags?.length || b.sprint !== undefined || b.platform !== undefined, {
+      message: 'send at least one of status, assigned_to, priority, is_test, kind_id, add_tags, remove_tags, sprint, platform',
     }), req.body);
     // Developers may mark bugs fixed in bulk, and nothing else; everything else here is QC's.
     const onlyFixed = body.status === 'fixed' && body.assigned_to === undefined && body.priority === undefined && body.is_test === undefined
-      && !body.kind_id && !body.add_tags?.length && !body.remove_tags?.length && body.sprint === undefined;
+      && !body.kind_id && !body.add_tags?.length && !body.remove_tags?.length && body.sprint === undefined && body.platform === undefined;
     const qc = can(req.actor, 'manage_triage');
     if (!qc && !onlyFixed) throw AppError.forbidden(`Your role (${req.actor?.role}) can only mark bugs as fixed; QC resolves or closes them`);
     if (body.kind_id && !can(req.actor, 'manage_kinds')) throw AppError.forbidden(`Your role (${req.actor?.role}) cannot link problems`);
@@ -83,6 +86,7 @@ export function registerActivityRoutes(app: FastifyInstance, deps: {
         if (body.is_test !== undefined) await feedback.setTestFlag(id, body.is_test, by);
         if (body.assigned_to !== undefined) await feedback.assign(id, body.assigned_to, by);
         if (body.priority !== undefined) await feedback.setPriority(id, body.priority, by);
+        if (body.platform !== undefined) await feedback.setPlatform(id, body.platform, by);
         if (!qc) await assertNotFinished(feedback, id);
         if (body.status !== undefined) await feedback.setStatus(id, body.status, null, by, team);
         if (body.kind_id) await kinds.link((await feedback.row(id)).id, body.kind_id, 'manual', null, by);

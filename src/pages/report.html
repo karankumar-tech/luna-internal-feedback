@@ -334,8 +334,8 @@
     const client = $('client'); client.replaceChildren();
     const grid = el('div', 'two'); client.appendChild(grid);
     const envLabel = { stage: 'Stage', uat: 'UAT', production: 'Production' };
-    const platLabel = { ios: 'iPhone', android: 'Android' };
-    const help = { environment: 'Which build you were on. Reports from the stage app arrive on their own; this page is mostly for production and UAT.', app_version: 'e.g. 2.4.0', build_number: 'e.g. 512', firmware_version: 'e.g. 1.9.2', os_version: 'e.g. iOS 19.1' };
+    const platLabel = { ios: 'iPhone', android: 'Android', backend: 'Backend (not the app)', firmware: 'Ring firmware (not the app)' };
+    const help = { environment: 'Which build you were on. Reports from the stage app arrive on their own; this page is mostly for production and UAT.', platform: 'The phone you saw it on, or Backend / Ring firmware when the problem is not in the app.', app_version: 'e.g. 2.4.0', build_number: 'e.g. 512', firmware_version: 'e.g. 1.9.2', os_version: 'e.g. iOS 19.1' };
     for (const f of S.schema.client_context_fields) {
       if (HIDDEN_CLIENT.has(f.key)) continue;
       const c = control('client.' + f.key, f, {

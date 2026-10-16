@@ -1,3 +1,4 @@
+import { PLATFORM_LABELS, type Platform } from '../../schema/registry.js';
 /**
  * "Is this the same problem?" as a transparent score between two reports.
  *
@@ -151,7 +152,7 @@ export function compare(
 
   if (a.firmware_version && a.firmware_version === b.firmware_version) { score += WEIGHTS.firmware; reasons.push({ kind: 'firmware', label: `fw ${a.firmware_version}` }); }
   if (a.app_version && a.app_version === b.app_version) { score += WEIGHTS.app; reasons.push({ kind: 'app', label: `app ${a.app_version}` }); }
-  if (a.platform && a.platform === b.platform) { score += WEIGHTS.platform; reasons.push({ kind: 'platform', label: a.platform === 'ios' ? 'iOS' : a.platform === 'android' ? 'Android' : a.platform }); }
+  if (a.platform && a.platform === b.platform) { score += WEIGHTS.platform; reasons.push({ kind: 'platform', label: PLATFORM_LABELS[a.platform as Platform] ?? a.platform }); }
 
   score -= Math.min(dayGap(a.occurred_on, b.occurred_on), DATE_SPAN_DAYS) / DATE_SPAN_DAYS;
 

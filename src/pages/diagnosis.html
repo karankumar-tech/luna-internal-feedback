@@ -155,6 +155,7 @@
   const shift = (iso, d) => { const x = new Date(iso + 'T00:00:00Z'); x.setUTCDate(x.getUTCDate() + d); return x.toISOString().slice(0, 10); };
   const shortDate = (iso) => { const [y, m, d] = iso.split('-'); return `${d} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m - 1]}`; };
   const SIDES = [{ key: 'firmware', label: 'Firmware', color: '#0A0A0A' }, { key: 'sdk', label: 'Ring SDK', color: '#3F3F46' }, { key: 'app', label: 'App', color: '#71717A' }, { key: 'backend', label: 'Backend', color: '#A1A1AA' }, { key: 'other', label: 'Other / unclear', color: '#D4D4D8' }];
+  const PLATFORM = { ios: 'iOS', android: 'Android', backend: 'Backend', firmware: 'Firmware' };
   const SIDE_LABEL = { firmware: 'Firmware', sdk: 'Ring SDK', app: 'App', backend: 'Backend', user_expectation: 'User expectation', not_a_bug: 'Not a bug', insufficient_logs: 'Insufficient logs' };
   const sideOf = (s) => (SIDES.find((x) => x.key === s) ? s : 'other');
 
@@ -238,7 +239,7 @@
     const fwMax = Math.max(1, ...o.firmware_versions.map((r) => r.issues));
     table($('tFw'), [{ h: 'firmware', render: (r) => el('span', 'mono', r.version) }, { h: 'issues', k: 'issues', num: true }, { h: 'share', render: (r) => bar(r.issues, fwMax, '#0A0A0A') }, { h: 'firmware-side', num: true, render: (r) => `${r.firmware_side} (${pct(r.firmware_side, r.issues)})` }, { h: 'high+', k: 'high', num: true }], o.firmware_versions, 'No firmware versions seen yet.');
     const appMax = Math.max(1, ...o.app_versions.map((r) => r.issues));
-    table($('tApp'), [{ h: 'app', render: (r) => el('span', 'mono', r.version) }, { h: 'platform', render: (r) => r.platform === 'ios' ? 'iOS' : r.platform === 'android' ? 'Android' : '—' }, { h: 'issues', k: 'issues', num: true }, { h: 'share', render: (r) => bar(r.issues, appMax, '#3F3F46') }, { h: 'app/sdk-side', num: true, render: (r) => `${r.app_side} (${pct(r.app_side, r.issues)})` }], o.app_versions, 'No app versions seen yet.');
+    table($('tApp'), [{ h: 'app', render: (r) => el('span', 'mono', r.version) }, { h: 'platform', render: (r) => PLATFORM[r.platform] || r.platform || '—' }, { h: 'issues', k: 'issues', num: true }, { h: 'share', render: (r) => bar(r.issues, appMax, '#3F3F46') }, { h: 'app/sdk-side', num: true, render: (r) => `${r.app_side} (${pct(r.app_side, r.issues)})` }], o.app_versions, 'No app versions seen yet.');
     const tagMax = Math.max(1, ...o.tags.map((r) => r.count));
     table($('tTags'), [{ h: 'tag', render: (r) => el('span', 'mono', r.tag) }, { h: 'count', k: 'count', num: true }, { h: '', render: (r) => bar(r.count, tagMax, '#000') }, { h: 'features', render: (r) => (r.features || []).join(', ') }], o.tags, 'No tags yet.');
 
@@ -256,7 +257,7 @@
       { h: 'conf', num: true, render: (r) => r.confidence == null ? '—' : Math.round(r.confidence * 100) + '%' }, { h: 'review', render: (r) => r.review_verdict || '—' }, { h: 'summary', render: (r) => (r.summary || '').slice(0, 140) + ((r.summary || '').length > 140 ? '…' : '') },
     ], o.attention, 'Nothing needs attention right now.', (r) => { location.href = '/dashboard/submissions/' + encodeURIComponent(r.ref); });
 
-    table($('tDevices'), [{ h: 'device', k: 'model' }, { h: 'platform', render: (r) => r.platform === 'ios' ? 'iOS' : r.platform === 'android' ? 'Android' : '—' }, { h: 'issues', k: 'issues', num: true }], o.devices, 'No device data yet.');
+    table($('tDevices'), [{ h: 'device', k: 'model' }, { h: 'platform', render: (r) => PLATFORM[r.platform] || r.platform || '—' }, { h: 'issues', k: 'issues', num: true }], o.devices, 'No device data yet.');
     table($('tCost'), [{ h: 'day', render: (r) => shortDate(r.day) }, { h: 'runs', k: 'runs', num: true }, { h: 'cost', num: true, render: (r) => '$' + r.cost.toFixed(4) }], o.cost_by_day, 'No runs yet.');
   }
 

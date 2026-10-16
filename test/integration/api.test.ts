@@ -89,7 +89,8 @@ describe('GET /v1/feedback/schema', () => {
     expect(body.common_fields.find((f: { key: string }) => f.key === 'feedback_text').maxLength).toBe(500);
     expect(body.common_fields.find((f: { key: string }) => f.key === 'device_serial')).toMatchObject({ type: 'string', required: false, maxLength: 64 });
     expect(body.client_context_keys).toContain('platform');
-    expect(body.client_context_fields.find((f: { key: string }) => f.key === 'platform').options).toEqual(['ios', 'android']);
+    expect(body.client_context_fields.find((f: { key: string }) => f.key === 'platform').options).toEqual(['ios', 'android', 'backend', 'firmware']);
+    expect(body.client_context_fields.find((f: { key: string }) => f.key === 'platform').optionLabels).toEqual({ ios: 'iOS', android: 'Android', backend: 'Backend', firmware: 'Firmware' });
   });
 
   it('supports ETag / 304', async () => {

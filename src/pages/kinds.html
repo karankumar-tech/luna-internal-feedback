@@ -388,7 +388,7 @@
   }
 
   // ---------- fix versions and regressions ----------
-  const platformName = (p) => p === 'ios' ? 'iOS' : p === 'android' ? 'Android' : p || '';
+  const platformName = (p) => ({ ios: 'iOS', android: 'Android', backend: 'Backend', firmware: 'Firmware' })[p] || p || '';
   function renderFix(k) {
     const hasFix = !!(k.fixed_in_app_version || k.fixed_in_firmware_version);
     $('dFix').hidden = !(k.status === 'fixed' || hasFix || (k.regressions || []).length) || !!k.merged_into_ref;

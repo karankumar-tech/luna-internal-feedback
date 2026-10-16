@@ -362,6 +362,11 @@ export class FeedbackRepo {
     return r.rows[0];
   }
 
+  async setPlatform(id: string, platform: string | null): Promise<SubmissionRow | undefined> {
+    const r = await this.db.query<SubmissionRow>(`update luna_feedback.submissions set platform = $2 where id = $1 returning ${COLUMNS}`, [id, platform]);
+    return r.rows[0];
+  }
+
   async setGoLive(id: string, date: string | null): Promise<SubmissionRow | undefined> {
     const r = await this.db.query<SubmissionRow>(`update luna_feedback.submissions set go_live_on = $2::date where id = $1 returning ${COLUMNS}`, [id, date]);
     return r.rows[0];

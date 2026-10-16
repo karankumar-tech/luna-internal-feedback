@@ -311,7 +311,9 @@ Everything needed to build the form for every active feature.
   ],
   "client_context_keys": ["platform", "app_version", "build_number", "build_channel", "firmware_version", "os_version", "device_id", "session_id"],
   "client_context_fields": [
-    { "key": "platform",         "type": "string", "label": "Platform",              "required": false, "options": ["ios", "android"] },
+    { "key": "platform",         "type": "string", "label": "Platform",              "required": false, "options": ["ios", "android", "backend", "firmware"],
+      "optionLabels": { "ios": "iOS", "android": "Android", "backend": "Backend", "firmware": "Firmware" },
+      "help": "The phone the app runs on (ios, android), or backend / firmware for an issue that lives there rather than in the app." },
     { "key": "app_version",      "type": "string", "label": "App version",           "required": false, "maxLength": 200 },
     { "key": "build_number",     "type": "string", "label": "Build number",          "required": false, "maxLength": 200 },
     { "key": "build_channel",    "type": "string", "label": "Build channel",         "required": false, "maxLength": 200 },
@@ -579,7 +581,7 @@ List submissions, newest first. Intended for dashboards; the app does not need i
 | `environment` | string | `stage` / `uat` / `production` |
 | `origin` | string | `internal` (testers, through the app) / `cx` (customers, through CX) |
 | `ref` | string | one report by reference: `LN-00042`, `ln-42` or `42` |
-| `platform` | string | `ios` / `android` |
+| `platform` | string | `ios` / `android` / `backend` / `firmware` |
 | `app_version` | string | the app version the report came from, exactly as sent (`2.4.0`) |
 | `is_test` | `true` / `false` | omit for both |
 | `user_id` | integer | |
@@ -673,6 +675,7 @@ Every new issue is matched against open problems when it arrives; a clear match 
 | method | path | body / notes |
 |---|---|---|
 | `PATCH` | `/v1/admin/submissions/{id}` | also `{ "assigned_to": email \| null, "priority": "p0".."p3" \| null }`, and status `needs_info` (`manage_triage`). The owner must have a dashboard account |
+| `PATCH` | `/v1/admin/submissions/{id}` | also `{ "platform": "ios" \| "android" \| "backend" \| "firmware" \| null }` (`manage_triage`): where the issue lives. The app sends its phone's platform; QC can change it, for instance to `backend` or `firmware`. The history records the change (`action: "platform"`, from and to) |
 | `PATCH` | `/v1/admin/submissions/{id}` | status `fixed`: the developer says the bug is fixed and QC checks it. Developers (`mark_fixed`) may send only `{ "status": "fixed", "status_note"? }`, and only while the report is not resolved, closed or won't fix (`409` then); resolving, closing and every other change stay with QC and admins (`403`). `fixed` is not a finished status: the report stays open until QC resolves or closes it. The bulk route allows developers `{ "ids", "status": "fixed" }` the same way |
 | `GET` | `/v1/feedback/{id}/activity` | the report's history, oldest first: arrival, status, owner, priority, grouping, Jira, diagnosis runs and notes |
 | `POST` | `/v1/admin/submissions/{id}/notes` | `{ "body", "visibility": "internal" \| "customer" }` (`add_notes`: admin, QC, developer, CX). `customer` notes are ones CX may pass on |
@@ -681,7 +684,7 @@ Every new issue is matched against open problems when it arrives; a clear match 
 | `GET` | `/v1/admin/tags` | `{ items: [{ tag, count }] }`: tags in use, most used first, plus `app` and `firmware` |
 | `POST` | `/v1/admin/submissions/{id}/screenshots` | `{ "screenshots": [...] }`: images uploaded first with `GET /v1/uploads/screenshot-auth`, each shaped as on a new report (§3c). `add_screenshots`: admin, QC, developer, CX. Each is stored with `added_by` and `added_at`; files the report already holds are skipped. `409` when the report would go past five → `201` with the report |
 | `DELETE` | `/v1/admin/submissions/{id}/screenshots/{file_id}` | removes a screenshot added on the dashboard and deletes the image: whoever added it, or QC and admins. The reporter's own cannot be removed (`409`) → the report |
-| `POST` | `/v1/admin/submissions/bulk` | `{ "ids": [...], "status"?, "assigned_to"?, "priority"?, "is_test"?, "kind_id"?, "add_tags"?, "remove_tags"?, "sprint"? }` → `{ updated, failed: [{ id, error }] }` |
+| `POST` | `/v1/admin/submissions/bulk` | `{ "ids": [...], "status"?, "assigned_to"?, "priority"?, "platform"?, "is_test"?, "kind_id"?, "add_tags"?, "remove_tags"?, "sprint"? }` → `{ updated, failed: [{ id, error }] }` |
 | `GET` | `/v1/admin/assignees` | everyone a report can be assigned to |
 
 List, stats and the attention page accept `assigned_to` (an email, `me` or `none`), `priority` (`p0`..`p3` or `none`) and `tag` (one tag, several comma-separated for any of them, or `none` for untagged). Reports carry `tags`. Reports carry `first_touched_at` (the team's first action), `last_activity_at` and `resolved_at`; the analytics overview adds `response_times` and `time_in_status`.
@@ -932,7 +935,7 @@ Optional `client` object on POST, identical for every feature. Send it on every 
 | key | example | source |
 |---|---|---|
 | `environment` | `"stage"` · `"uat"` · `"production"` | which backend the build points at; case-insensitive, **defaults to `stage`** when omitted |
-| `platform` | `"ios"` · `"android"` | fixed; case-insensitive on input, stored lower-case |
+| `platform` | `"ios"` · `"android"` · `"backend"` · `"firmware"` | the phone's platform, which the app fills in on its own; `backend` or `firmware` when QA files an issue that lives there rather than in the app. Case-insensitive on input, stored lower-case |
 | `app_version` | `"2.4.0"` | `CFBundleShortVersionString` |
 | `build_number` | `"512"` | `CFBundleVersion` |
 | `build_channel` | `"stage"` | build channel / scheme |

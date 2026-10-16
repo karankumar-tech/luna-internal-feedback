@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AppError } from '../../lib/errors.js';
 import { todayInZone } from '../../lib/time.js';
 import { compareVersions, parseVersion } from '../../lib/version.js';
+import { PLATFORMS, type Platform } from '../../schema/registry.js';
 import { parseSubmissionRef, type Screenshot } from '../feedback/feedback.repo.js';
 import { CARRIED_NOTE, type SprintCounts, type SprintRow, type SprintsRepo } from './sprints.repo.js';
 import { daysBetween, defaultName, halfLabel, halfOf, parseSprintRef, rangeLabel, refFor, sprintAfter, timing } from './cycle.js';
@@ -16,7 +17,7 @@ export type CloseDestination = 'next' | 'main' | string;
 const MAX_DAYS = 62;
 
 /**
- * A sprint's issues by platform (iOS first, then Android, then reports that did not say) and the
+ * A sprint's issues by platform (iOS, Android, Backend, Firmware, then reports that did not say) and the
  * app versions they came from, newest first, each with the platforms that sent it.
  */
 export function splitBuilds(rows: { platform: string | null; app_version: string | null; open: number; done: number }[]) {
@@ -31,7 +32,7 @@ export function splitBuilds(rows: { platform: string | null; app_version: string
     if (r.platform && !v.platforms.includes(r.platform)) v.platforms.push(r.platform);
     versions.set(r.app_version, v);
   }
-  const rank = (p: string | null) => (p === 'ios' ? 0 : p === 'android' ? 1 : p ? 2 : 3);
+  const rank = (p: string | null) => { const i = PLATFORMS.indexOf(p as Platform); return i >= 0 ? i : p ? PLATFORMS.length : PLATFORMS.length + 1; };
   return {
     by_platform: [...platforms.values()].sort((a, b) => rank(a.platform) - rank(b.platform) || String(a.platform).localeCompare(String(b.platform))),
     app_versions: [...versions.values()]

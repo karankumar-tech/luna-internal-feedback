@@ -178,11 +178,14 @@ describe('client context', () => {
     expect(issuesOf('home', { ...base, client: { app_version: '2.4.0', firmware_version: '1.9.2' } })).toEqual([]);
     expect(issuesOf('home', { ...base, client: { imei: 'x' } })[0]?.path).toBe('client');
   });
-  it('accepts platform ios/android case-insensitively and rejects others', () => {
+  it('accepts platform ios/android/backend/firmware case-insensitively and rejects others', () => {
     const r = buildSubmissionValidator('home', ctx(['cat_a'])).safeParse({ ...base, client: { platform: 'iOS' } });
     expect(r.success).toBe(true);
     if (r.success) expect(r.data.client?.platform).toBe('ios');
+    const b = buildSubmissionValidator('home', ctx(['cat_a'])).safeParse({ ...base, client: { platform: 'Backend' } });
+    expect(b.success && b.data.client?.platform).toBe('backend');
     expect(issuesOf('home', { ...base, client: { platform: 'android' } })).toEqual([]);
-    expect(issuesOf('home', { ...base, client: { platform: 'web' } })[0]).toEqual({ path: 'client.platform', message: 'must be one of: ios, android' });
+    expect(issuesOf('home', { ...base, client: { platform: 'firmware' } })).toEqual([]);
+    expect(issuesOf('home', { ...base, client: { platform: 'web' } })[0]).toEqual({ path: 'client.platform', message: 'must be one of: ios, android, backend, firmware' });
   });
 });
