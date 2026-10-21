@@ -36,6 +36,7 @@
   .page-head.head { flex-direction: column; align-items: stretch; gap: 16px; }
   .report-actions { justify-content: flex-start; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-sm); }
   .report-actions label.overline { margin-left: 4px; }
+  .report-actions .ctl { display: inline-flex; align-items: center; gap: 8px; }
   .head .meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--gray-dark); margin-top: 6px; }
   .head .meta b { color: var(--black); font-weight: 500; }
   .res { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; letter-spacing: .04em; padding: 2px 8px; border-radius: var(--r-s); border: 1px solid; white-space: nowrap; vertical-align: 2px; }
@@ -191,6 +192,7 @@
   .verdict-ai.related { background: var(--yellow-50); color: #545500; }
   .verdict-ai.different { background: var(--brief); color: var(--gray-dark); }
   .hdr-sel { max-width: 200px; }
+  .hdr-ver { width: 112px; font-family: var(--mono); font-size: 12px; }
   .timeline { list-style: none; margin: 10px 0 0; padding: 0; }
   .timeline li { position: relative; padding: 8px 0 8px 18px; border-bottom: 1px solid var(--border-ghost); font-size: 13px; line-height: 18px; }
   .timeline li::before { content: ''; position: absolute; left: 4px; top: 14px; width: 6px; height: 6px; border-radius: 50%; background: var(--gray-light); }
@@ -271,14 +273,18 @@
       </div>
     </div>
     <div class="page-actions report-actions">
-      <label class="overline" for="statusSel">Status</label>
-      <select id="statusSel" title="Move this ticket through triage"></select>
-      <label class="overline" for="ownerSel">Owner</label>
-      <select id="ownerSel" class="hdr-sel" title="Who owns this report"><option value="">Unassigned</option></select>
-      <label class="overline" for="prioSel">Priority</label>
-      <select id="prioSel" title="A person's call; overrides the AI's severity"><option value="">None</option><option value="p0">P0 · now</option><option value="p1">P1 · today</option><option value="p2">P2 · normal</option><option value="p3">P3 · later</option></select>
-      <label class="overline" for="platSel">Platform</label>
-      <select id="platSel" title="Where the issue lives. The app sends its phone's platform; QC can change it, for instance to Backend or Firmware"><option value="">Not set</option><option value="ios">iOS</option><option value="android">Android</option><option value="backend">Backend</option><option value="firmware">Firmware</option></select>
+      <span class="ctl"><label class="overline" for="statusSel">Status</label>
+        <select id="statusSel" title="Move this ticket through triage"></select></span>
+      <span class="ctl"><label class="overline" for="ownerSel">Owner</label>
+        <select id="ownerSel" class="hdr-sel" title="Who owns this report"><option value="">Unassigned</option></select></span>
+      <span class="ctl"><label class="overline" for="prioSel">Priority</label>
+        <select id="prioSel" title="A person's call; overrides the AI's severity"><option value="">None</option><option value="p0">P0 · now</option><option value="p1">P1 · today</option><option value="p2">P2 · normal</option><option value="p3">P3 · later</option></select></span>
+      <span class="ctl"><label class="overline" for="platSel">Platform</label>
+        <select id="platSel" title="Where the issue lives. The app sends its phone's platform; QC can change it, for instance to Backend or Firmware"><option value="">Not set</option><option value="ios">iOS</option><option value="android">Android</option><option value="backend">Backend</option><option value="firmware">Firmware</option></select></span>
+      <span class="ctl"><label class="overline" for="appVerIn">App version</label>
+        <input id="appVerIn" class="hdr-ver" type="text" placeholder="Not set" maxlength="200" autocomplete="off" spellcheck="false" title="The app version the report came from. The app fills it in; QC can set or correct it here. Enter saves, Esc puts the saved one back"></span>
+      <span class="ctl"><label class="overline" for="fwVerIn">Firmware</label>
+        <input id="fwVerIn" class="hdr-ver" type="text" placeholder="Not set" maxlength="200" autocomplete="off" spellcheck="false" title="The ring firmware version the report came from. The app fills it in; QC can set or correct it here. Enter saves, Esc puts the saved one back"></span>
       <a class="jira-link" id="jiraLink" href="#" target="_blank" rel="noopener" hidden></a>
       <button class="btn small" id="btnJira" type="button" hidden>Create Jira ticket</button>
       <button class="btn small" id="btnFlag" type="button" hidden>Mark as test</button>
@@ -459,6 +465,7 @@
     $('ownerSel').disabled = !can('manage_triage');
     $('prioSel').disabled = !can('manage_triage');
     $('platSel').disabled = !can('manage_triage');
+    $('appVerIn').disabled = $('fwVerIn').disabled = !can('manage_triage');
     $('composer').hidden = !can('add_notes');
     $('statusSel').title = can('manage_triage') ? 'Move this ticket through triage' : can('mark_fixed') ? 'Mark the bug as fixed; QC checks it and resolves or closes it' : 'Your role can see the status but not change it';
     $('btnFlag').hidden = !can('manage_triage');
@@ -733,11 +740,14 @@
     sel.value = r.assigned_to || '';
     $('prioSel').value = r.priority || '';
     $('platSel').value = r.platform || '';
+    $('appVerIn').value = r.app_version || ''; $('fwVerIn').value = r.firmware_version || '';
   }
   async function patchSub(body, done) {
     const was = state.sub && state.sub.sprint ? state.sub.sprint.ref : null;
     try {
       state.sub = await api(`/v1/admin/submissions/${id}`, { method: 'PATCH', body: JSON.stringify(body) }); renderSubmission(); loadActivity();
+      // The diagnosis card compares the reported versions with the logs; a corrected version changes that note.
+      if (state.diag && (body.app_version !== undefined || body.firmware_version !== undefined)) renderDiagnosis();
       const now = state.sub.sprint ? state.sub.sprint.ref : null;
       // Reopening an issue in a closed sprint moves it to the current one; say so.
       toast(body.sprint === undefined && now !== was && now ? `${done} · moved to ${now}, the current sprint` : done);
@@ -747,6 +757,14 @@
   $('ownerSel').addEventListener('change', (ev) => { const v = ev.target.value || null; patchSub({ assigned_to: v }, v ? `Assigned to ${v}` : 'Unassigned'); });
   $('prioSel').addEventListener('change', (ev) => { const v = ev.target.value || null; patchSub({ priority: v }, v ? `Priority ${v.toUpperCase()}` : 'Priority cleared'); });
   $('platSel').addEventListener('change', (ev) => { const v = ev.target.value || null; patchSub({ platform: v }, v ? `Platform ${PLATFORM[v]}` : 'Platform cleared'); });
+  // App and firmware version: typed, saved on Enter or when the field loses focus; Esc puts the saved one back.
+  const versionField = (inp, key, what) => {
+    const saved = () => (state.sub && state.sub[key]) || '';
+    inp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); inp.blur(); } else if (ev.key === 'Escape') { inp.value = saved(); inp.blur(); } });
+    inp.addEventListener('blur', () => { const v = inp.value.trim(); if (v === saved()) { inp.value = v; return; } patchSub({ [key]: v || null }, v ? `${what} ${v}` : `${what} cleared`); });
+  };
+  versionField($('appVerIn'), 'app_version', 'App version');
+  versionField($('fwVerIn'), 'firmware_version', 'Firmware');
 
   // ---------- tags ----------
   /** Offered on every report as one-click picks; the server keeps the same list. */
@@ -855,6 +873,8 @@
   }
 
   // ---------- activity & notes ----------
+  /** "set the X to B (was A)" or "cleared the X (was A)"; `name` turns a stored value into its label. */
+  const changed = (what, name = (v) => v) => (e) => e.to_value ? `set ${what} to ${name(e.to_value)}${e.from_value ? ` (was ${name(e.from_value)})` : ''}` : `cleared ${what} (was ${name(e.from_value)})`;
   const ACTION_TEXT = {
     created: (e) => e.to_value === 'cx' ? 'filed it from the CX tool' : 'reported it',
     status: (e) => `moved it ${label(e.from_value)} → ${label(e.to_value)}`,
@@ -871,7 +891,9 @@
     diagnosis: (e) => `ran a diagnosis (${e.to_value})`,
     regression: (e) => `flagged it as ${e.to_value} coming back after its fix`,
     go_live: (e) => e.to_value ? (e.from_value ? `moved go-live from ${e.from_value} to ${e.to_value}` : `planned go-live for ${e.to_value}`) : `removed the go-live date (was ${e.from_value})`,
-    platform: (e) => e.to_value ? `set the platform to ${PLATFORM[e.to_value] || e.to_value}${e.from_value ? ` (was ${PLATFORM[e.from_value] || e.from_value})` : ''}` : `cleared the platform (was ${PLATFORM[e.from_value] || e.from_value})`,
+    platform: changed('the platform', (v) => PLATFORM[v] || v),
+    app_version: changed('the app version'),
+    firmware_version: changed('the firmware version'),
     screenshot: (e) => {
       const d = (Number(e.to_value) || 0) - (Number(e.from_value) || 0); const n = Math.abs(d);
       return `${d >= 0 ? 'added' : 'removed'} ${n === 1 ? 'a screenshot' : n + ' screenshots'}`;

@@ -5,7 +5,7 @@ import { buildCxSubmissionValidator, buildSubmissionValidator, zodIssues, type V
 import { DEFAULT_CX_ENVIRONMENT, SCHEMA_VERSION, isFeatureKey, type FeatureKey, type Platform } from '../../schema/registry.js';
 import { redact } from '../diagnosis/logs/redact.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
-import { MAX_TAGS, TERMINAL_STATUSES, normalizeTag, parseSubmissionRef, type FeedbackRepo, type NewSubmission, type Priority, type SubmissionRow, type ListFilters, type StatsFilters, type Screenshot, type SubmissionStatus } from './feedback.repo.js';
+import { MAX_TAGS, TERMINAL_STATUSES, VERSION_FIELDS, normalizeTag, parseSubmissionRef, type FeedbackRepo, type ReportVersions, type NewSubmission, type Priority, type SubmissionRow, type ListFilters, type StatsFilters, type Screenshot, type SubmissionStatus } from './feedback.repo.js';
 import type { ActivityRepo, NoteVisibility } from '../activity/activity.repo.js';
 import { ASSIGN_BACK_DEFAULTS, ASSIGN_BACK_STATUSES, assignBackTo, type ActiveAccount } from './assign-back.js';
 import type { FastifyBaseLogger } from 'fastify';
@@ -329,6 +329,27 @@ export class FeedbackService {
     const row = await this.feedback.setPlatform(before.id, platform);
     if (!row) throw AppError.notFound('Submission not found');
     await this.activity?.record({ submissionId: row.id, actor: by, action: 'platform', from: before.platform, to: platform, touch: true });
+    return this.toDto(row);
+  }
+
+  /**
+   * QC's correction of the build a report came from. The app fills in app_version and firmware_version
+   * on its own, and a report filed from the dashboard or by CX may carry neither; QC can set or fix
+   * either from the report's page. "" clears, like null. The history keeps one entry per field changed.
+   */
+  async setVersions(id: string, versions: ReportVersions, by: string | null): Promise<SubmissionDto> {
+    const before = await this.row(id);
+    const change: ReportVersions = {};
+    for (const key of VERSION_FIELDS) {
+      const next = versions[key] === undefined ? undefined : versions[key] || null;
+      if (next !== undefined && next !== before[key]) change[key] = next;
+    }
+    if (!Object.keys(change).length) return this.toDto(before);
+    const row = await this.feedback.setVersions(before.id, change);
+    if (!row) throw AppError.notFound('Submission not found');
+    for (const key of VERSION_FIELDS) {
+      if (change[key] !== undefined) await this.activity?.record({ submissionId: row.id, actor: by, action: key, from: before[key], to: change[key], touch: true });
+    }
     return this.toDto(row);
   }
 

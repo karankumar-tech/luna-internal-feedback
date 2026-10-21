@@ -274,6 +274,10 @@ export function normalizeTag(raw: string): string | null {
   return TAG_PATTERN.test(t) ? t : null;
 }
 
+/** The build a report came from, as QC sets or corrects it; a field left out stays as it is. */
+export const VERSION_FIELDS = ['app_version', 'firmware_version'] as const;
+export type ReportVersions = Partial<Pick<SubmissionRow, (typeof VERSION_FIELDS)[number]>>;
+
 export class FeedbackRepo {
   constructor(private readonly db: Db) {}
 
@@ -364,6 +368,17 @@ export class FeedbackRepo {
 
   async setPlatform(id: string, platform: string | null): Promise<SubmissionRow | undefined> {
     const r = await this.db.query<SubmissionRow>(`update luna_feedback.submissions set platform = $2 where id = $1 returning ${COLUMNS}`, [id, platform]);
+    return r.rows[0];
+  }
+
+  async setVersions(id: string, v: ReportVersions): Promise<SubmissionRow | undefined> {
+    const r = await this.db.query<SubmissionRow>(
+      `update luna_feedback.submissions
+          set app_version      = case when $2::boolean then $3::text else app_version end,
+              firmware_version = case when $4::boolean then $5::text else firmware_version end
+        where id = $1 returning ${COLUMNS}`,
+      [id, v.app_version !== undefined, v.app_version ?? null, v.firmware_version !== undefined, v.firmware_version ?? null],
+    );
     return r.rows[0];
   }
 

@@ -226,6 +226,11 @@ waiting on the tester or customer (Ask reporter posts the AI's questions and set
 through the CX tool puts it back where it was. The dashboard list does bulk status, owner, priority
 and tag changes.
 
+**Platform and versions.** The app fills in the platform, app version and firmware version of the build
+a report came from; a report filed from the dashboard or by CX may carry none. QC and admins set or
+correct all three on the report page (`PATCH /v1/admin/submissions/{id}` with `platform`, `app_version`,
+`firmware_version`; `""` or `null` clears a version), and every change is in the history.
+
 **Tags** are short labels on a report, such as `app` or `firmware`: free-form, stored lowercase
 (spaces become dashes), up to 10 per report. QC and developers add them on the report page, where
 `app` and `firmware` are one click and tags already in use are suggested; QC can also tag many

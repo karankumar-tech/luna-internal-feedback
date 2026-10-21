@@ -304,3 +304,33 @@ describe('developers mark bugs fixed; QC resolves and closes', () => {
     expect(open.items.map((x: { ref: string }) => x.ref)).toContain(r.ref);
   });
 });
+
+describe('the build a report came from', () => {
+  it('lets QC set or correct the app and firmware version, each change in the history', async () => {
+    const r = await report({ client: { platform: 'ios', app_version: '2.4.0' } });
+    const patch = (payload: unknown, who = 'qc') => app.inject({ method: 'PATCH', url: `/v1/admin/submissions/${r.id}`, headers: as(who), payload: payload as object });
+    // QC and admins only; a version is a short string.
+    expect((await patch({ app_version: '2.5.0' }, 'dev')).statusCode).toBe(403);
+    expect((await patch({ app_version: 'x'.repeat(201) })).statusCode).toBe(422);
+
+    const set = await patch({ app_version: ' 2.5.0 ', firmware_version: '1.0.20' });
+    expect(set.statusCode).toBe(200);
+    expect(set.json()).toMatchObject({ app_version: '2.5.0', firmware_version: '1.0.20' });
+    expect((await history(r.id)).slice(-2)).toMatchObject([
+      { action: 'app_version', actor: email('qc'), from_value: '2.4.0', to_value: '2.5.0' },
+      { action: 'firmware_version', actor: email('qc'), from_value: null, to_value: '1.0.20' },
+    ]);
+    expect((await get(r.id)).first_touched_at).toMatch(/^\d{4}-/);
+    const byVersion = (await app.inject({ method: 'GET', url: `/v1/feedback?user_id=${(await get(r.id)).user_id}&app_version=2.5.0`, headers: adminHeaders })).json().items;
+    expect(byVersion.map((x: { ref: string }) => x.ref)).toEqual([r.ref]);
+
+    // Saving the same values again changes nothing; "" clears, like null.
+    const before = (await history(r.id)).length;
+    expect((await patch({ app_version: '2.5.0', firmware_version: '1.0.20' })).statusCode).toBe(200);
+    expect((await history(r.id)).length).toBe(before);
+    expect((await patch({ firmware_version: '' })).json().firmware_version).toBeNull();
+    expect((await history(r.id)).at(-1)).toMatchObject({ action: 'firmware_version', from_value: '1.0.20', to_value: null });
+    expect((await patch({ app_version: null })).json().app_version).toBeNull();
+    expect((await history(r.id)).at(-1)).toMatchObject({ action: 'app_version', from_value: '2.5.0', to_value: null });
+  });
+});
