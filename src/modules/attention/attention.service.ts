@@ -1,4 +1,5 @@
 import type { CommonFilters } from '../feedback/feedback.repo.js';
+import type { Origin } from '../../schema/registry.js';
 import { todayInZone } from '../../lib/time.js';
 import { CATCH_ALL_CATEGORIES } from '../similar/similarity.js';
 import { REGRESSION_RECENT_DAYS, REPEAT, SPIKE, isSpike, spikeRatio } from '../kinds/pinpoint.js';
@@ -7,13 +8,14 @@ import type { AttentionRepo, OpenIssueRow } from './attention.repo.js';
 /**
  * How long a report may sit before the attention page flags it.
  * Untouched: nobody has done anything with it. Stale: someone did, but nothing has moved since.
- * A customer is waiting behind every CX report, so those are flagged sooner. Without a priority,
- * critical AI severity halves both.
+ * A customer is waiting behind every CX report, so those are flagged sooner. Beta users chose to
+ * try the app early and wait like testers do. Without a priority, critical AI severity halves both.
  */
 export const ATTENTION_THRESHOLDS = {
   cx: { untouched_days: 1, stale_days: 3 },
   internal: { untouched_days: 3, stale_days: 7 },
-} as const;
+  beta: { untouched_days: 3, stale_days: 7 },
+} as const satisfies Record<Origin, { untouched_days: number; stale_days: number }>;
 
 /**
  * A person's priority replaces the limits above: P0 is flagged within hours, P1 within a day,
@@ -46,7 +48,7 @@ export interface AttentionItem {
   id: string;
   ref: string;
   feature_key: string;
-  origin: 'internal' | 'cx';
+  origin: Origin;
   environment: string;
   status: string;
   created_at: string;
@@ -233,7 +235,7 @@ export class AttentionService {
       kinds_without_jira: kinds,
       growing,
       repeat_devices: repeatDevices,
-      age_buckets: (['cx', 'internal'] as const).flatMap((origin) =>
+      age_buckets: (['cx', 'beta', 'internal'] as const).flatMap((origin) =>
         AGE_BUCKETS.map((b) => ({ origin, bucket: b.key, count: buckets.get(`${origin}|${b.key}`) ?? 0 }))),
     };
   }

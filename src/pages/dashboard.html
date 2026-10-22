@@ -68,6 +68,8 @@
   .stat-sub { font-size: 13px; line-height: 20px; color: var(--gray-dark); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .stat-sub .cx { display: inline-flex; align-items: center; gap: 6px; }
   .stat-sub .cx::before { content: ''; width: 8px; height: 8px; border-radius: var(--r-xs); background: var(--magenta); }
+  .stat-sub .beta { display: inline-flex; align-items: center; gap: 6px; }
+  .stat-sub .beta::before { content: ''; width: 8px; height: 8px; border-radius: var(--r-xs); background: var(--accent); box-shadow: inset 0 0 0 1px var(--primary); }
   .delta { display: inline-flex; align-items: center; gap: 4px; font-weight: 500; }
   .delta.up { color: var(--crit-ink); } .delta.down { color: var(--ok-ink); } .delta.flat { color: var(--gray-dark); }
   .asof { margin-top: auto; padding-top: 20px; font-size: 12px; line-height: 16px; color: var(--gray-dark); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -95,6 +97,7 @@
   .bar .track i { display: block; height: 100%; }
   .bar .track i.int { background: var(--gray-mid); }
   .bar .track i.cx { background: var(--magenta); }
+  .bar .track i.beta { background: var(--accent); }
   .bar .num { font-family: var(--mono); font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
   .where .none { color: var(--gray-dark); font-size: 13px; padding: 24px 0; }
   .more { margin-top: 6px; border: 0; background: none; padding: 4px 0; font-size: 12px; color: var(--gray-dark); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
@@ -153,6 +156,7 @@
   .item .meta .ref { font-family: var(--mono); color: var(--black); }
   .item .meta .tag { font-family: var(--mono); font-size: 10px; line-height: 16px; letter-spacing: .06em; padding: 0 5px; border-radius: var(--r-xs); }
   .item .meta .tag.cx { background: var(--magenta); color: var(--white); }
+  .item .meta .tag.beta { background: var(--white); color: var(--black); box-shadow: inset 0 0 0 1.5px var(--black); font-weight: 700; }
   .item .meta .tag.test { background: var(--yellow); color: var(--black); }
   .item .meta .ai::after { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: var(--r-xs); background: var(--gray-light); margin-left: 5px; vertical-align: 0; }
   .item .meta .ai.firmware::after { background: var(--orange); } .item .meta .ai.sdk::after { background: var(--blue); } .item .meta .ai.app::after { background: var(--black); } .item .meta .ai.backend::after { background: var(--magenta); }
@@ -318,7 +322,7 @@
       <div class="where">
         <div class="where-head">
           <div><h2>Where the issues are</h2><div class="sub">Last 7 days, by category. Pick one to list its reports.</div></div>
-          <div class="key" aria-hidden="true"><span><i style="background:var(--gray-mid)"></i>Testers</span><span><i style="background:var(--magenta)"></i>Customers (CX)</span></div>
+          <div class="key" aria-hidden="true"><span><i style="background:var(--gray-mid)"></i>Testers</span><span><i style="background:var(--accent);box-shadow:inset 0 0 0 1px var(--primary)"></i>Beta users</span><span><i style="background:var(--magenta)"></i>Customers (CX)</span></div>
         </div>
         <ul class="bars" id="bars" aria-label="Issues by category, last 7 days">
           <li><span class="sk" style="height:14px;margin:9px 0"></span></li><li><span class="sk" style="height:14px;margin:9px 0;width:80%"></span></li><li><span class="sk" style="height:14px;margin:9px 0;width:60%"></span></li>
@@ -452,8 +456,9 @@
     $('nToday').textContent = fmtN(s.today.issues);
     $('wToday').textContent = s.today.issues === 1 ? 'issue today' : 'issues today';
     const sub = $('subToday'); sub.replaceChildren();
-    if (s.today.cx) { const c = el('span', 'cx', `${fmtN(s.today.cx)} from customers through CX`); sub.appendChild(c); }
-    else sub.appendChild(el('span', null, s.today.issues ? 'all from testers' : 'nothing received yet today'));
+    if (s.today.cx) sub.appendChild(el('span', 'cx', `${fmtN(s.today.cx)} from customers through CX`));
+    if (s.today.beta) sub.appendChild(el('span', 'beta', `${fmtN(s.today.beta)} from beta users`));
+    if (!s.today.cx && !s.today.beta) sub.appendChild(el('span', null, s.today.issues ? 'all from testers' : 'nothing received yet today'));
 
     $('nWeek').textContent = fmtN(s.last_7_days.issues);
     const wk = $('subWeek'); wk.replaceChildren();
@@ -468,6 +473,7 @@
     }
     const bits = [`${fmtN(s.last_7_days.people)} ${s.last_7_days.people === 1 ? 'person' : 'people'}`];
     if (s.last_7_days.cx) bits.push(`${fmtN(s.last_7_days.cx)} via CX`);
+    if (s.last_7_days.beta) bits.push(`${fmtN(s.last_7_days.beta)} from beta users`);
     const who = $('subWeek2'); who.textContent = bits.join(' · ');
     renderBars(home);
   }
@@ -498,12 +504,13 @@
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
       const lbl = el('span', 'lbl'); lbl.appendChild(el('b', null, catLabel(r.feature_key, r.key))); lbl.appendChild(el('small', null, featLabel(r.feature_key))); b.appendChild(lbl);
       const track = el('span', 'track'); track.setAttribute('aria-hidden', 'true');
-      const internal = r.count - r.cx;
+      const internal = r.count - r.cx - (r.beta || 0);
       const a = el('i', 'int'); a.style.width = (internal / max) * 100 + '%'; track.appendChild(a);
+      if (r.beta) { const c = el('i', 'beta'); c.style.width = (r.beta / max) * 100 + '%'; track.appendChild(c); }
       if (r.cx) { const c = el('i', 'cx'); c.style.width = (r.cx / max) * 100 + '%'; track.appendChild(c); }
       b.appendChild(track);
       b.appendChild(el('span', 'num', fmtN(r.count)));
-      b.setAttribute('aria-label', `${catLabel(r.feature_key, r.key)}, ${featLabel(r.feature_key)}: ${r.count} issue${r.count === 1 ? '' : 's'}${r.cx ? `, ${r.cx} from CX` : ''}. ${on ? 'Showing below; press to clear.' : 'Press to list them.'}`);
+      b.setAttribute('aria-label', `${catLabel(r.feature_key, r.key)}, ${featLabel(r.feature_key)}: ${r.count} issue${r.count === 1 ? '' : 's'}${r.cx ? `, ${r.cx} from CX` : ''}${r.beta ? `, ${r.beta} from beta users` : ''}. ${on ? 'Showing below; press to clear.' : 'Press to list them.'}`);
       b.addEventListener('click', () => {
         if (on) { delete S.filters.category; delete S.filters.feature; delete S.filters.received; }
         else { S.filters.category = r.key; S.filters.feature = r.feature_key; S.filters.received = '7d'; if (S.view === 'fine') S.view = 'issues'; }
@@ -600,6 +607,7 @@
         add(b);
       }
       if (r.origin === 'cx') { const s = el('span'); s.appendChild(el('span', 'tag cx', 'CX')); s.appendChild(document.createTextNode(' ' + (r.user_id ? 'user ' + r.user_id : 'ring ' + (r.device_serial || '')))); add(s); }
+      else if (r.origin === 'beta') { const s = el('span'); s.appendChild(el('span', 'tag beta', 'BETA')); s.appendChild(document.createTextNode(' ' + (r.beta_name ? r.beta_name + ' · ' + r.user_id : 'user ' + r.user_id))); s.title = 'Luna user ' + r.user_id + ', a production customer on the beta list'; add(s); }
       else { const who = testerOf(r); if (who) add(who.label).title = who.title; }
       if (r.environment && r.environment !== 'stage') add(ENV[r.environment] || r.environment);
       if (!r.is_positive && r.ai_side) { const s = el('span', 'ai ' + r.ai_side, 'AI: ' + (SIDE[r.ai_side] || r.ai_side) + (r.ai_severity ? ', ' + r.ai_severity : '')); add(s); }
@@ -704,7 +712,7 @@
     { key: 'to', label: 'Happened to', type: 'date' },
     { key: 'feature', label: 'Feature', options: () => Object.entries(S.labels ? S.labels.features : {}) },
     { key: 'category', label: 'Category', options: () => categoryOptions() },
-    { key: 'origin', label: 'Source', options: () => [['cx', 'Customers (CX)'], ['internal', 'Internal testers']] },
+    { key: 'origin', label: 'Source', options: () => [['cx', 'Customers (CX)'], ['beta', 'Beta users'], ['internal', 'Internal testers']] },
     { key: 'environment', label: 'Environment', options: () => Object.entries(ENV) },
     { key: 'platform', label: 'Platform', options: () => [['ios', 'iOS'], ['android', 'Android'], ['backend', 'Backend'], ['firmware', 'Firmware']] },
     { key: 'status', label: 'Status', options: () => Object.entries(STATUS) },

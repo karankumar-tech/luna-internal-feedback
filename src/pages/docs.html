@@ -131,6 +131,10 @@
   <a href="#ep-cx-submit" class="sub"><span class="m">POST</span>/v1/cx/feedback/{feature}</a>
   <a href="#ep-cx-status" class="sub"><span class="m">GET</span>/v1/cx/feedback/{ref}</a>
   <a href="#ep-cx-notes" class="sub"><span class="m">POST</span>…/{ref}/notes</a>
+  <a href="#beta">Beta users (released app)</a>
+  <a href="#ep-beta-check" class="sub"><span class="m">GET</span>/v1/beta/users/{user_id}</a>
+  <a href="#ep-beta-submit" class="sub"><span class="m">POST</span>/v1/beta/feedback/{feature}</a>
+  <a href="#ep-beta-shots" class="sub"><span class="m">GET</span>…/beta/uploads/screenshot-auth</a>
   <div class="grp"></div>
   <a href="#features">Feature reference</a>
   <a href="#client">Client context</a>
@@ -164,6 +168,7 @@
   <div class="callout"><div class="overline">While integrating</div><p>Send <code>"is_test": true</code> on every submission from development and integration runs so it can be separated from real feedback. Details in <a href="#testing">Test submissions</a>.</p></div>
   <p><code>GET /healthz</code>, <code>/docs</code>, and <code>/dashboard</code> are the only unauthenticated routes. Admin routes under <code>/v1/admin</code> need a separate key (<code>x-admin-key</code>) and are not for the app.</p>
   <p>The CX team's tool has its own key (<code>CX_API_KEY</code>, also sent as <code>x-api-key</code>). It files customer problems through <a href="#cx"><code>/v1/cx/*</code></a> and can read the form schema, nothing else. The app key cannot file CX reports.</p>
+  <p>The released app has its own key too (<code>BETA_API_KEY</code>), for <a href="#beta">beta users</a>: production customers QC has put on the beta list. It reaches <code>/v1/beta/*</code> and the form schema, nothing else, so it is safe to ship in a Release build where the app key is not.</p>
 </section>
 
 <section class="block" id="quickstart">
@@ -637,7 +642,8 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
     <tr><th>param</th><th>type</th><th>notes</th></tr>
     <tr><td><code>feature</code></td><td>string</td><td><code>home</code> / <code>sleep</code> / <code>activity</code> / <code>workout</code> / <code>apps</code> / <code>other</code></td></tr>
     <tr><td><code>environment</code></td><td>string</td><td><code>stage</code> / <code>uat</code> / <code>production</code></td></tr>
-    <tr><td><code>origin</code></td><td>string</td><td><code>internal</code> (testers, through the app) / <code>cx</code> (customers, through CX)</td></tr>
+    <tr><td><code>origin</code></td><td>string</td><td><code>internal</code> (testers, through the app) / <code>cx</code> (customers, through CX) / <code>beta</code> (beta users, through the released app)</td></tr>
+    <tr><td><code>email_masked</code></td><td>string · null</td><td>CX and beta reports only: the customer's email masked (<code>ra***@g***.com</code>) when one was sent. <code>email</code> is always <code>null</code> on those reports</td></tr>
     <tr><td><code>ref</code></td><td>string</td><td>one report by reference: <code>LN-00042</code>, <code>ln-42</code> or <code>42</code></td></tr>
     <tr><td><code>platform</code></td><td>string</td><td><code>ios</code> / <code>android</code> / <code>backend</code> / <code>firmware</code></td></tr>
     <tr><td><code>app_version</code></td><td>string</td><td>the app version the report came from, exactly as sent (<code>2.4.0</code>)</td></tr>
@@ -757,7 +763,7 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
     <tr><th>field</th><th>required</th><th>notes</th></tr>
     <tr><td><code>device_serial</code></td><td><span class="req yes">yes</span></td><td>the customer's ring or band serial, 3–64 characters. It identifies the customer and finds their logs</td></tr>
     <tr><td><code>cx</code></td><td><span class="req yes">yes</span></td><td><code>{ "ref", "url"?, "channel"?, "agent"?, "transcript"? }</code>. <code>ref</code> is the ticket id in the CX tool (≤ 100). <code>channel</code>: <code>email</code> · <code>chat</code> · <code>call</code> · <code>whatsapp</code> · <code>social</code> · <code>app_store</code> · <code>play_store</code> · <code>other</code>. <code>agent</code>: who pressed the button (≤ 120). <code>transcript</code>: the customer's own words (≤ 5000)</td></tr>
-    <tr><td><code>email</code></td><td><span class="req yes" style="background:var(--crit)">never</span></td><td>rejected with <code>422</code> on <code>email</code>: customer email addresses are not stored. Any email address or phone number inside <code>feedback_text</code> or <code>cx.transcript</code> is redacted before storing</td></tr>
+    <tr><td><code>email</code></td><td><span class="req no">no</span></td><td>the customer's email, if the tool has it. Only a masked form is stored (<code>ra***@g***.com</code>), never the address itself, and it is never sent back. Any email address or phone number inside <code>feedback_text</code> or <code>cx.transcript</code> is redacted before storing</td></tr>
     <tr><td><code>user_id</code></td><td><span class="req no">no</span></td><td>the customer's Luna user id if the tool has it; otherwise it is looked up from the serial</td></tr>
     <tr><td><code>client.environment</code></td><td><span class="req no">no</span></td><td>defaults to <code>production</code></td></tr>
     <tr><td><code>feedback_text</code></td><td><span class="req no">no</span></td><td>the agent's summary, ≤ 500</td></tr>
@@ -795,6 +801,54 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
   <div id="ep-cx-notes" class="endpoint"><span class="method post">POST</span><code class="path">/v1/cx/feedback/{ref}/notes</code><span class="auth">CX key</span></div>
   <p><code>{ "body": "…", "agent"?: "Asha" }</code> adds a note from the CX tool, such as what the customer replied. It is redacted like everything else CX sends. If the report was waiting on the customer (<code>needs_info</code>), it goes back to the status it had before. Returns the report in the shape above, with <code>201</code>.</p>
   <div class="callout"><div class="overline">What the CX key can reach</div><p><code>/v1/cx/*</code>, <code>GET /v1/feedback/schema</code> and <code>/v1/feedback/schema/{feature}</code> (to build the button's form), and <code>GET /v1/uploads/screenshot-auth</code> (to attach screenshots the same way the app does). Anything else answers <code>403</code>.</p></div>
+</section>
+
+<section class="block" id="beta">
+  <div class="overline">For the released app</div>
+  <h2>Beta users</h2>
+  <p>Some production users are on the beta list, kept by QC in the dashboard's Settings. For them, and only them, the released app shows the same feedback option internal testers have. Every call here uses <code>BETA_API_KEY</code> as <code>x-api-key</code>. The key decides that a report is a beta report; there is no <code>origin</code> field to send. On the dashboard these reports carry a BETA tag and are filtered with Source → Beta users.</p>
+
+  <div id="ep-beta-check" class="endpoint"><span class="method get">GET</span><code class="path">/v1/beta/users/{user_id}</code><span class="auth">beta key</span></div>
+  <p>Whether to show this user the feedback option. <code>user_id</code> is the signed-in user's Luna user id.</p>
+<pre><code>{ "user_id": 104233, "is_beta": true, "cache_seconds": 86400 }</code></pre>
+  <div class="callout"><div class="overline">Cache it for a day</div><p>Keep the answer, <code>true</code> or <code>false</code>, for <code>cache_seconds</code> (24 hours) per user id, and ask again after that, when a different user signs in, or when a submit answers <code>403 NOT_A_BETA_USER</code>. The response also says <code>Cache-Control: private, max-age=86400</code>. If the call fails, keep the last answer; with none, hide the option. The server answers from memory, so the check is cheap, but every launch of every copy of the app must not call it.</p></div>
+
+  <hr class="ep">
+  <div id="ep-beta-submit" class="endpoint"><span class="method post">POST</span><code class="path">/v1/beta/feedback/{feature}</code><span class="auth">beta key</span></div>
+  <p>The same body, fields, categories, rules and <code>Idempotency-Key</code> header as <a href="#ep-submit"><code>POST /v1/feedback/{feature}</code></a>, with these differences:</p>
+  <div class="tbl"><table>
+    <tr><th>field</th><th>required</th><th>notes</th></tr>
+    <tr><td><code>user_id</code></td><td><span class="req yes">yes</span></td><td>must be on the beta list, or the answer is <code>403</code> with <code>error.code</code> <code>NOT_A_BETA_USER</code>: hide the option and forget the cached answer</td></tr>
+    <tr><td><code>email</code></td><td><span class="req no">no</span></td><td>beta users are customers, so only a masked form is stored (<code>ra***@g***.com</code>), never the address itself; <code>user_id</code> identifies them. Any email address or phone number inside <code>feedback_text</code> is redacted before storing</td></tr>
+    <tr><td><code>device_serial</code></td><td><span class="req no">no</span></td><td>send it whenever a ring or band is connected: without an email it is the only way the team can fetch the device's logs</td></tr>
+    <tr><td><code>client.environment</code></td><td><span class="req no">no</span></td><td>defaults to <code>production</code></td></tr>
+    <tr><td><code>sprint</code></td><td><span class="req yes" style="background:var(--crit)">never</span></td><td>rejected with <code>422</code>: QA sprints are internal</td></tr>
+    <tr><td><code>screenshots</code></td><td><span class="req no">no</span></td><td>uploaded first with credentials from <a href="#ep-beta-shots"><code>GET /v1/beta/uploads/screenshot-auth</code></a>, then referenced exactly as in <a href="#screenshots">Screenshots</a></td></tr>
+  </table></div>
+<pre><code>curl -X POST https://luna-feedback.buildsage.tech/v1/beta/feedback/sleep \
+  -H "x-api-key: $BETA_API_KEY" -H "content-type: application/json" \
+  -H "Idempotency-Key: 6f1c2a9e-0b7d-4e55-9a51-1f0e8c3b2d47" \
+  -d '{
+    "is_positive": false,
+    "occurred_on": "2026-10-21",
+    "user_id": 104233,
+    "device_serial": "R2N08250600302",
+    "issue_categories": ["incorrect_sleep"],
+    "feedback_text": "Slept about 7h, app shows 3h.",
+    "client": { "platform": "ios", "app_version": "2.6.0", "firmware_version": "1.9.3" }
+  }'</code></pre>
+  <h4>Response 201 (new) or 200 (same Idempotency-Key again)</h4>
+<pre><code>{
+  "id": "5d0c…", "ref": "LN-00042", "feature_key": "sleep", "is_positive": false,
+  "occurred_on": "2026-10-21", "status": "open",
+  "created_at": "2026-10-22T10:02:11.000Z", "created_at_ist": "2026-10-22 15:32:11 +05:30"
+}</code></pre>
+  <p>Show <code>ref</code> to the user ("Thanks, your reference is LN-00042"). An <code>Idempotency-Key</code> already used for a different report answers <code>409</code>.</p>
+
+  <hr class="ep">
+  <div id="ep-beta-shots" class="endpoint"><span class="method get">GET</span><code class="path">/v1/beta/uploads/screenshot-auth?user_id={user_id}</code><span class="auth">beta key</span></div>
+  <p>Short-lived ImageKit upload credentials, the same as <a href="#screenshots"><code>GET /v1/uploads/screenshot-auth</code></a>, for users on the beta list only (<code>403 NOT_A_BETA_USER</code> otherwise). Ask for a fresh set before each upload.</p>
+  <div class="callout"><div class="overline">What the beta key can reach</div><p><code>/v1/beta/*</code>, <code>GET /v1/feedback/schema</code> and <code>/v1/feedback/schema/{feature}</code> (to build the form; leave out the email and sprint fields). Anything else answers <code>403</code>, and the beta routes refuse the app key with <code>401</code>.</p></div>
 </section>
 
 <section class="block" id="features">
@@ -937,7 +991,8 @@ Idempotency-Key: 9B2E6D3A-0C41-4E0F-8F1B-7D2A5C9E4B11
     <tr><td><code>UNAUTHORIZED</code></td><td class="status">401</td><td>key missing or wrong</td><td>check build config; do not retry</td></tr>
     <tr><td><code>NOT_FOUND</code></td><td class="status">404</td><td>route, feature, or id unknown</td><td>refetch schema if it was a feature</td></tr>
     <tr><td><code>VALIDATION_FAILED</code></td><td class="status">400 / 422</td><td>malformed JSON, or field errors in <code>issues</code></td><td>map <code>issues[].path</code> to fields; do not retry unchanged</td></tr>
-    <tr><td><code>CONFLICT</code></td><td class="status">409</td><td>admin duplicate</td><td>n/a for app</td></tr>
+    <tr><td><code>NOT_A_BETA_USER</code></td><td class="status">403</td><td>beta routes only: the user id is not on the beta list (any more)</td><td>hide the feedback option; drop the cached answer</td></tr>
+    <tr><td><code>CONFLICT</code></td><td class="status">409</td><td>admin duplicate, or an <code>Idempotency-Key</code> reused for a different beta report</td><td>n/a for app</td></tr>
     <tr><td><code>INTERNAL</code></td><td class="status">500</td><td>server fault</td><td>retry with the same <code>Idempotency-Key</code></td></tr>
   </table></div>
 </section>

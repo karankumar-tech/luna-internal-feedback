@@ -193,7 +193,7 @@ export class SimilarService {
     const candidates = found.items.map((i) => byId.get(i.id)).filter((c): c is ReportForMatch => !!c);
 
     const describe = (r: ReportForMatch) => [
-      `Feature: ${r.feature_key}${r.origin === 'cx' ? ' (filed by customer support for a customer)' : ''}`,
+      `Feature: ${r.feature_key}${r.origin === 'cx' ? ' (filed by customer support for a customer)' : r.origin === 'beta' ? ' (sent by a beta user on the released app)' : ''}`,
       `Categories: ${r.issue_categories.map((c) => labelOf(r.feature_key, c)).join(', ') || '(none)'}`,
       `Words: ${r.text ? JSON.stringify(r.text.slice(0, 500)) : '(none)'}`,
       `Occurred: ${r.occurred_on} · platform ${r.platform ?? '?'} · app ${r.app_version ?? '?'} · fw ${r.firmware_version ?? '?'}`,

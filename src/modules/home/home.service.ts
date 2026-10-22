@@ -42,8 +42,8 @@ export class HomeService {
       generated_at: new Date().toISOString(),
       today,
       summary: {
-        today: { issues: summary.today, cx: summary.today_cx },
-        last_7_days: { issues: summary.week, cx: summary.week_cx, people: summary.week_people },
+        today: { issues: summary.today, cx: summary.today_cx, beta: summary.today_beta },
+        last_7_days: { issues: summary.week, cx: summary.week_cx, beta: summary.week_beta, people: summary.week_people },
         previous_7_days: { issues: summary.prev_week },
       },
       /** Real issues received in the last 7 days, by category. A report can name several. */

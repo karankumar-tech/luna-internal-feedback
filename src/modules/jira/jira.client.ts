@@ -1,4 +1,5 @@
 import { AppError } from '../../lib/errors.js';
+import type { Origin } from '../../schema/registry.js';
 
 export interface JiraConfig {
   baseUrl: string;
@@ -44,8 +45,8 @@ export interface DescriptionInput {
   summaryLine: string;
   reporter: {
     user_id: number | null; email: string | null; environment: string; platform: string | null;
-    /** CX reports name the CX ticket and the ring, never the customer. */
-    origin?: 'internal' | 'cx'; cx_ref?: string | null; cx_url?: string | null; device_serial?: string | null;
+    /** CX reports name the CX ticket and the ring, never the customer; beta reports name the Luna user and the ring. */
+    origin?: Origin; cx_ref?: string | null; cx_url?: string | null; device_serial?: string | null;
   };
   occurredOn: string;
   feature: string;
@@ -86,14 +87,16 @@ export function buildDescription(input: DescriptionInput): object {
           `Customer support, CX ticket ${r.cx_ref ?? 'unknown'}${r.cx_url ? ` (${r.cx_url})` : ''}`,
           `Ring ${r.device_serial ?? 'unknown'}${r.user_id ? ` · Luna user ${r.user_id}` : ''}`,
         ]
-      : [`User ${r.user_id ?? 'unknown'}${r.email ? ` (${r.email})` : ''}`]),
+      : r.origin === 'beta'
+        ? [`Beta user ${r.user_id ?? 'unknown'}, on the released app${r.device_serial ? ` · ring ${r.device_serial}` : ''}`]
+        : [`User ${r.user_id ?? 'unknown'}${r.email ? ` (${r.email})` : ''}`]),
     `Environment: ${r.environment}${r.platform ? ` · ${r.platform}` : ''}`,
     `Occurred on: ${input.occurredOn} (IST)`,
     `Feature: ${input.feature}${input.categories.length ? ` — ${input.categories.join(', ')}` : ''}`,
   ]));
 
   if (input.testerWords) {
-    content.push(heading(cx ? 'CX summary of the customer’s problem' : 'In the tester’s words'));
+    content.push(heading(cx ? 'CX summary of the customer’s problem' : r.origin === 'beta' ? 'In the beta user’s words' : 'In the tester’s words'));
     content.push({ type: 'blockquote', content: [paragraph(input.testerWords)] });
   }
 

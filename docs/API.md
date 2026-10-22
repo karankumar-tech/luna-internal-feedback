@@ -38,6 +38,8 @@ The key is distributed out of band by the backend owner. `GET /healthz`, `/docs`
 
 The CX team's tool has its own key (`CX_API_KEY`, also sent as `x-api-key`). It files customer problems through `/v1/cx/*` (§5b) and can read the form schema, nothing else. The app key cannot file CX reports.
 
+The released app has its own key too (`BETA_API_KEY`), for beta users: production customers QC has put on the beta list. It reaches `/v1/beta/*` (§5c) and the form schema, nothing else, so it is safe to ship in a Release build where the app key is not.
+
 **While integrating:** send `"is_test": true` on submissions from development and integration runs. They show up in the dashboard tagged TEST, can be hidden with one filter, and are deleted in bulk later without touching real tester feedback. Drop the flag in the build testers use.
 
 ---
@@ -579,7 +581,7 @@ List submissions, newest first. Intended for dashboards; the app does not need i
 |---|---|---|
 | `feature` | string | `home` / `sleep` / `activity` / `workout` / `apps` / `other` |
 | `environment` | string | `stage` / `uat` / `production` |
-| `origin` | string | `internal` (testers, through the app) / `cx` (customers, through CX) |
+| `origin` | string | `internal` (testers, through the app) / `cx` (customers, through CX) / `beta` (beta users, through the released app) |
 | `ref` | string | one report by reference: `LN-00042`, `ln-42` or `42` |
 | `platform` | string | `ios` / `android` / `backend` / `firmware` |
 | `app_version` | string | the app version the report came from, exactly as sent (`2.4.0`) |
@@ -744,7 +746,7 @@ The same feature fields, categories and rules as `POST /v1/feedback/{feature}` (
 |---|---|---|
 | `device_serial` | **yes** | the customer's ring or band serial, 3–64 characters. It identifies the customer and finds their logs |
 | `cx` | **yes** | `{ "ref", "url"?, "channel"?, "agent"?, "transcript"? }`. `ref` is the ticket id in the CX tool (≤ 100). `channel`: `email` · `chat` · `call` · `whatsapp` · `social` · `app_store` · `play_store` · `other`. `agent`: who pressed the button (≤ 120). `transcript`: the customer's own words (≤ 5000) |
-| `email` | **never** | rejected with `422` on `email`: customer email addresses are not stored. Any email address or phone number inside `feedback_text` or `cx.transcript` is redacted before storing |
+| `email` | no | the customer's email, if the tool has it. Only a masked form is stored (`ra***@g***.com`, as `email_masked`), never the address itself, and it is never sent back. Any email address or phone number inside `feedback_text` or `cx.transcript` is redacted before storing |
 | `user_id` | no | the customer's Luna user id if the tool has it; otherwise it is looked up from the serial |
 | `client.environment` | no | defaults to `production` |
 | `feedback_text` | no | the agent's summary, ≤ 500 |
@@ -795,6 +797,61 @@ Where a CX report stands, by reference or id, in the same shape as above. Intern
 ### What the CX key can reach
 
 `/v1/cx/*`, `GET /v1/feedback/schema` and `GET /v1/feedback/schema/{feature}` (to build the button's form), and `GET /v1/uploads/screenshot-auth` (to attach screenshots the same way the app does). Anything else answers `403`.
+
+---
+
+## 5c. Beta users (`BETA_API_KEY`)
+
+Some production users are on the beta list, kept by QC in the dashboard's Settings. For them, and only them, the released app shows the same feedback option internal testers have. Every call here sends `BETA_API_KEY` as `x-api-key`. The key decides that a report is a beta report; there is no `origin` field to send. On the dashboard these reports carry a BETA tag, the name QC gave the user, and are filtered with Source → Beta users.
+
+### `GET /v1/beta/users/{user_id}`
+
+Whether to show this user the feedback option. `user_id` is the signed-in user's Luna user id.
+
+```json
+{ "user_id": 104233, "is_beta": true, "cache_seconds": 86400 }
+```
+
+Keep the answer, `true` or `false`, for `cache_seconds` (24 hours) per user id, and ask again after that, when a different user signs in, or when a submit answers `403 NOT_A_BETA_USER`. The response also says `Cache-Control: private, max-age=86400`. If the call fails, keep the last answer; with none, hide the option. The server answers from memory, but every launch of every copy of the app must not call it.
+
+### `POST /v1/beta/feedback/{feature}`
+
+The same body, fields, categories, rules and `Idempotency-Key` header as `POST /v1/feedback/{feature}`, with these differences:
+
+| field | required | notes |
+|---|---|---|
+| `user_id` | **yes** | must be on the beta list, or the answer is `403` with `error.code` `NOT_A_BETA_USER`: hide the option and forget the cached answer |
+| `email` | no | beta users are customers, so only a masked form is stored (`ra***@g***.com`), never the address itself; `user_id` identifies them. Any email address or phone number inside `feedback_text` is redacted before storing |
+| `device_serial` | no | send it whenever a ring or band is connected: without a usable email it is the only way the team can fetch the device's logs |
+| `client.environment` | no | defaults to `production` |
+| `sprint` | **never** | rejected with `422`: QA sprints are internal |
+| `screenshots` | no | uploaded first with credentials from `GET /v1/beta/uploads/screenshot-auth`, then referenced exactly as in §3c |
+
+Response `201` (new) or `200` (same `Idempotency-Key` again), deliberately small:
+
+```json
+{
+  "id": "5d0c…", "ref": "LN-00042", "feature_key": "sleep", "is_positive": false,
+  "occurred_on": "2026-10-21", "status": "open",
+  "created_at": "2026-10-22T10:02:11.000Z", "created_at_ist": "2026-10-22 15:32:11 +05:30"
+}
+```
+
+Show `ref` to the user. An `Idempotency-Key` already used for a different report answers `409`.
+
+### `GET /v1/beta/uploads/screenshot-auth?user_id={user_id}`
+
+Short-lived ImageKit upload credentials, the same as `GET /v1/uploads/screenshot-auth`, for users on the beta list only (`403 NOT_A_BETA_USER` otherwise). Ask for a fresh set before each upload.
+
+### What the beta key can reach
+
+`/v1/beta/*`, `GET /v1/feedback/schema` and `GET /v1/feedback/schema/{feature}` (to build the form; leave out the sprint field). Anything else answers `403`, and the beta routes refuse the app key with `401`.
+
+### The beta list (dashboard)
+
+`GET /v1/admin/beta-users` lists it (any dashboard role); admins and QC (`manage_beta_users`) change it:
+`POST /v1/admin/beta-users` `{ "users": [{ "user_id": 104233, "name": "Rahul, Strava group" }], "user_ids": [118790] }` adds (an id already listed takes the name sent with it),
+`PATCH /v1/admin/beta-users/{user_id}` `{ "name": "…" | null }` renames, and `POST /v1/admin/beta-users/remove` `{ "user_ids": [...] }` removes; their reports stay. Names (≤ 120 characters) are for the team and never reach the app.
 
 ---
 
@@ -969,7 +1026,8 @@ into what UAT or production users report. Send the environment the build actuall
 | `UNAUTHORIZED` | 401 | key missing or wrong | check build config; do not retry |
 | `NOT_FOUND` | 404 | route, feature, or id unknown | refetch schema if it was a feature |
 | `VALIDATION_FAILED` | 400 / 422 | malformed JSON, or field errors in `issues` | map `issues[].path` to fields; do not retry unchanged |
-| `CONFLICT` | 409 | admin duplicate | n/a for app |
+| `NOT_A_BETA_USER` | 403 | beta routes only: the user id is not on the beta list (any more) | hide the feedback option; drop the cached answer |
+| `CONFLICT` | 409 | admin duplicate, or an `Idempotency-Key` reused for a different beta report | n/a for app |
 | `UPSTREAM_ERROR` | 502 | a service the dashboard depends on (Jira, the model, the logging API) failed | dashboard-only; never returned to the app |
 | `INTERNAL` | 500 | server fault | retry with the same `Idempotency-Key` |
 

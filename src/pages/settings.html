@@ -53,7 +53,24 @@
   .addrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-warm); }
   .addrow input:first-child { font-family: var(--mono); font-size: 12px; }
   .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--black); color: var(--white); padding: 8px 14px; border-radius: var(--r-l); font-size: 13px; z-index: 40; display: none; }
-  @media (max-width: 480px) { .mgrid { grid-template-columns: 1fr; } }
+  .beta-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: start; margin-top: 14px; }
+  .beta-add textarea { width: 100%; min-height: 38px; height: 56px; resize: vertical; font-family: var(--mono); font-size: 12px; line-height: 18px; padding: 8px 10px; }
+  .beta-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+  .beta-tools input[type=search] { width: 220px; max-width: 100%; font-family: var(--mono); font-size: 12px; }
+  .beta-list { margin-top: 8px; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); column-gap: 24px; }
+  .brow { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--border-ghost); }
+  .brow .top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .brow .id { flex: none; font-family: var(--mono); font-size: 13px; font-weight: 500; text-decoration: none; }
+  .brow .nm { flex: 1; min-width: 0; padding: 2px 6px; border-color: transparent; background: transparent; font-weight: 500; }
+  .brow .nm:hover { border-color: var(--gray-light); }
+  .brow .nm:focus { background: var(--white); }
+  .brow .nm::placeholder { color: var(--gray-mid); font-weight: 400; }
+  .brow .nmtext { min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .brow .id:hover { text-decoration: underline; }
+  .brow .by { grid-column: 1; font-size: 12px; line-height: 16px; color: var(--gray-dark); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .brow .btn { grid-column: 2; grid-row: 1 / span 2; }
+  .brow.fresh .id::after { content: 'new'; margin-left: 8px; font-family: var(--sans); font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 0 5px; border-radius: var(--r-xs); background: var(--accent); color: var(--black); }
+  @media (max-width: 480px) { .mgrid { grid-template-columns: 1fr; } .beta-add { grid-template-columns: 1fr; } }
 </style>
 <link rel="stylesheet" href="/dashboard/assets/app.css">
 </head>
@@ -64,7 +81,7 @@
     <div>
       <nav class="crumbs" aria-label="Breadcrumb"><a href="/dashboard">Reports</a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg><span aria-current="page">Settings</span></nav>
       <h1>Settings</h1>
-      <p class="page-sub">Report categories, the AI diagnosis queue and test data.</p>
+      <p class="page-sub">Report categories, beta users, the AI diagnosis queue and test data.</p>
     </div>
   </div>
 
@@ -72,6 +89,23 @@
     <div class="card-head"><div><h2>Report categories</h2><div class="sub">Rename a category (edit, then press Enter), deactivate it, or add a new one. A deactivated category leaves the app's form but keeps its history.</div></div></div>
     <p class="note" id="catNote"></p>
     <div class="mgrid" id="mgrid"></div>
+  </section>
+
+  <section class="card" id="beta">
+    <div class="card-head">
+      <div><h2>Beta users <span class="chip beta" style="margin-left:6px;vertical-align:2px;font-size:10px;letter-spacing:.08em">BETA</span></h2><div class="sub">Production users who get the feedback option in the Luna app. Their reports arrive tagged BETA, and Source → Beta users on Reports lists them. A name shows beside the ID on their reports, so the team knows who is who; it never leaves the dashboard. The app checks once a day, so an added or removed user sees the change within a day.</div></div>
+      <span class="stats" id="betaCount"></span>
+    </div>
+    <div class="beta-add" id="betaAdd" hidden>
+      <textarea id="betaIds" rows="2" placeholder="One a line, an ID and a name:  104233 Rahul Sharma&#10;or just IDs:  104233, 118790, 120455" aria-label="Luna user IDs to add, each with an optional name"></textarea>
+      <button class="btn primary" id="btnBetaAdd" type="button">Add</button>
+    </div>
+    <p class="note" id="betaNote"></p>
+    <div class="beta-tools" id="betaTools" hidden>
+      <input type="search" id="betaFind" placeholder="Find an ID or a name" aria-label="Find a beta user by ID or name">
+      <span class="note" id="betaShown" style="margin:0"></span>
+    </div>
+    <div class="beta-list" id="betaList"></div>
   </section>
 
   <section class="card" id="diag">
@@ -152,6 +186,95 @@
     }
   }
 
+  // ---------- beta users ----------
+  const BETA_SHOWN = 120;
+  const beta = { items: [], fresh: new Set() };
+  const shortDay = (iso) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
+  /**
+   * Users out of whatever was pasted: a line each, "104233 Rahul" or "Rahul, 104233" (two spreadsheet
+   * columns either way round), or bare IDs separated by commas, spaces or new lines.
+   */
+  const parseUsers = (text) => {
+    const users = new Map(); const bad = [];
+    const put = (id, name) => {
+      if (id.length > 15 || !(Number(id) > 0)) { bad.push(id); return; }
+      users.set(Number(id), (name || '').trim().slice(0, 120) || users.get(Number(id)) || null);
+    };
+    for (const raw of text.split(/\r?\n/)) {
+      const line = raw.trim(); if (!line) continue;
+      if (/^\d+(?:[\s,;]+\d+)*[\s,;]*$/.test(line)) { line.split(/[\s,;]+/).filter(Boolean).forEach((t) => put(t, null)); continue; }
+      const first = /^(\d+)[\s,;:|–-]+(.+)$/.exec(line), last = /^(.+?)[\s,;:|–-]+(\d+)$/.exec(line);
+      if (first) put(first[1], first[2]);
+      else if (last) put(last[2], last[1]);
+      else bad.push(line.length > 30 ? line.slice(0, 30) + '…' : line);
+    }
+    return { users: [...users].map(([user_id, name]) => ({ user_id, name })), bad };
+  };
+  async function saveName(b, input) {
+    const name = input.value.trim();
+    if (name === (b.name || '')) return;
+    try { await api(`/v1/admin/beta-users/${b.user_id}`, { method: 'PATCH', body: JSON.stringify({ name: name || null }) }); b.name = name || null; toast(name ? `Saved: ${b.user_id} is ${name}` : `Name cleared from ${b.user_id}`); }
+    catch (err) { input.value = b.name || ''; toast(err.message); }
+  }
+  function renderBeta() {
+    const q = $('betaFind').value.trim();
+    const ql = q.toLowerCase();
+    const matches = q ? beta.items.filter((b) => String(b.user_id).includes(q) || (b.name || '').toLowerCase().includes(ql)) : beta.items;
+    const list = $('betaList'); list.replaceChildren();
+    $('betaCount').textContent = `${fmtN(beta.items.length)} beta user${beta.items.length === 1 ? '' : 's'}`;
+    $('betaTools').hidden = beta.items.length === 0;
+    $('betaShown').textContent = matches.length > BETA_SHOWN ? `Showing ${BETA_SHOWN} of ${fmtN(matches.length)}; type to narrow` : q ? `${fmtN(matches.length)} match${matches.length === 1 ? '' : 'es'}` : '';
+    if (!beta.items.length) { list.appendChild(el('p', 'note', can('manage_beta_users') ? 'Nobody yet. Paste Luna user IDs above to let them send reports.' : 'Nobody yet.')); return; }
+    for (const b of matches.slice(0, BETA_SHOWN)) {
+      const row = el('div', 'brow' + (beta.fresh.has(b.user_id) ? ' fresh' : ''));
+      const top = el('div', 'top');
+      const id = el('a', 'id', String(b.user_id)); id.href = `/dashboard?origin=beta&user_id=${b.user_id}`; id.title = 'Their reports';
+      top.appendChild(id);
+      if (can('manage_beta_users')) {
+        const nm = el('input', 'nm'); nm.type = 'text'; nm.value = b.name || ''; nm.placeholder = 'Add a name'; nm.maxLength = 120;
+        nm.title = 'Who this is, for the team. Press Enter to save.'; nm.setAttribute('aria-label', `Name for beta user ${b.user_id}`);
+        nm.addEventListener('keydown', (e) => { if (e.key === 'Enter') nm.blur(); if (e.key === 'Escape') { nm.value = b.name || ''; nm.blur(); } });
+        nm.addEventListener('blur', () => saveName(b, nm));
+        top.appendChild(nm);
+      } else if (b.name) top.appendChild(el('span', 'nmtext', b.name));
+      row.appendChild(top);
+      if (can('manage_beta_users')) {
+        const rm = el('button', 'btn small', 'Remove'); rm.type = 'button'; rm.setAttribute('aria-label', `Remove beta user ${b.user_id}`);
+        rm.addEventListener('click', async () => {
+          if (!confirm(`Remove ${b.name ? `${b.name} (${b.user_id})` : b.user_id} from beta? The app hides the feedback option for them within a day. Their ${b.reports ? b.reports + ' report' + (b.reports === 1 ? '' : 's') : 'reports'} stay.`)) return;
+          rm.disabled = true;
+          try { await api('/v1/admin/beta-users/remove', { method: 'POST', body: JSON.stringify({ user_ids: [b.user_id] }) }); toast(`Removed ${b.user_id}`); await loadBeta(); }
+          catch (err) { rm.disabled = false; toast(err.message); }
+        });
+        row.appendChild(rm);
+      }
+      const by = (b.added_by ? b.added_by.split('@')[0] + ' · ' : '') + shortDay(b.added_at) + ' · ' + (b.reports ? `${b.reports} report${b.reports === 1 ? '' : 's'}` : 'no reports yet');
+      row.appendChild(el('span', 'by', by)).title = (b.added_by ? 'Added by ' + b.added_by + ' on ' : 'Added on ') + shortDay(b.added_at);
+      list.appendChild(row);
+    }
+  }
+  async function loadBeta() {
+    try { beta.items = (await api('/v1/admin/beta-users')).items; renderBeta(); }
+    catch (err) { $('betaNote').className = 'note err'; $('betaNote').textContent = 'Could not load beta users: ' + err.message; }
+  }
+  $('betaFind').addEventListener('input', renderBeta);
+  $('betaIds').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('btnBetaAdd').click(); });
+  $('btnBetaAdd').addEventListener('click', async () => {
+    const note = $('betaNote'); note.className = 'note'; note.textContent = '';
+    const { users, bad } = parseUsers($('betaIds').value);
+    if (bad.length) { note.className = 'note err'; note.textContent = `No user ID in: ${bad.slice(0, 5).join(', ')}${bad.length > 5 ? ` and ${bad.length - 5} more` : ''}. Each line needs a whole-number ID, with a name before or after it if you like.`; return; }
+    if (!users.length) { toast('Paste one or more user IDs first'); return; }
+    const btn = $('btnBetaAdd'); btn.disabled = true;
+    try {
+      const r = await api('/v1/admin/beta-users', { method: 'POST', body: JSON.stringify({ users }) });
+      beta.fresh = new Set(r.added);
+      $('betaIds').value = '';
+      note.textContent = (r.added.length ? `Added ${fmtN(r.added.length)}.` : 'Nobody new.') + (r.renamed.length ? ` Renamed ${fmtN(r.renamed.length)} already on the list.` : '') + (r.already.length ? ` Already on the list: ${r.already.slice(0, 8).join(', ')}${r.already.length > 8 ? ` and ${r.already.length - 8} more` : ''}.` : '');
+      await loadBeta();
+    } catch (err) { note.className = 'note err'; note.textContent = err.body && err.body.error && err.body.error.issues ? err.body.error.issues.map((i) => `${i.path}: ${i.message}`).slice(0, 3).join('; ') : err.message; }
+    finally { btn.disabled = false; }
+  });
+
   // ---------- AI diagnosis ----------
   async function loadDiag() {
     try {
@@ -190,7 +313,9 @@
     me = await LunaShell.me().catch(() => null);
     if (!me) { location.replace('/dashboard?next=' + encodeURIComponent(HERE)); return; }
     $('btnDeleteTest').hidden = !can('delete_test_data');
-    loadCategories(); loadDiag(); loadTestCount();
+    $('betaAdd').hidden = !can('manage_beta_users');
+    if (!can('manage_beta_users')) $('betaNote').textContent = `Your role (${me.role}) can see the beta list but not change it.`;
+    loadCategories(); loadBeta(); loadDiag(); loadTestCount();
     // Diagnoses due while nobody was looking: run a few now, as the dashboard used to on every visit.
     api('/v1/admin/diagnoses/run-pending?limit=3', { method: 'POST' }).then((r) => { if (r.ran) { toast(`Diagnosed ${r.ran} pending`); loadDiag(); } }).catch(() => {});
   })().catch((err) => toast('Could not start: ' + err.message));

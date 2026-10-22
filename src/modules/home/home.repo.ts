@@ -1,3 +1,4 @@
+import type { Origin } from '../../schema/registry.js';
 import type { Db } from '../../db/pool.js';
 import { buildWhere, personSql, type CommonFilters } from '../feedback/feedback.repo.js';
 
@@ -11,7 +12,7 @@ export interface HomeReport {
   is_positive: boolean;
   issue_categories: string[];
   feedback_text: string | null;
-  origin: 'internal' | 'cx';
+  origin: Origin;
   environment: string;
   status: string;
   priority: string | null;
@@ -27,6 +28,8 @@ export interface HomeReport {
   email: string | null;
   /** The dashboard account with that email, when there is one: a name to show instead of the id. */
   tester_name: string | null;
+  /** On a beta report, the name QC gave that user in Settings, while they are on the list. */
+  beta_name: string | null;
   device_serial: string | null;
   cx_ref: string | null;
   ai_status: string | null;
@@ -54,12 +57,12 @@ export interface HomeListFilters extends Partial<CommonFilters> {
 }
 
 export interface HomeSummaryRow {
-  today: number; today_cx: number;
-  week: number; week_cx: number; week_people: number;
+  today: number; today_cx: number; today_beta: number;
+  week: number; week_cx: number; week_beta: number; week_people: number;
   prev_week: number;
 }
 
-export interface HomeCategoryRow { feature_key: string; key: string; count: number; cx: number }
+export interface HomeCategoryRow { feature_key: string; key: string; count: number; cx: number; beta: number }
 
 export class HomeRepo {
   constructor(private readonly db: Db, private readonly timeZone: string) {}
@@ -81,7 +84,7 @@ export class HomeRepo {
     const r = await this.db.query<Omit<HomeReport, 'created_at' | 'user_id'> & { created_at: Date; user_id: string | null; total: string }>(
       `select s.id, s.ref, s.created_at, s.occurred_on::text as occurred_on, s.feature_key, s.is_positive, s.issue_categories,
               s.feedback_text, s.origin, s.environment, s.status, s.priority, s.tags, s.go_live_on::text as go_live_on, s.details->>'app' as app, s.assigned_to, u.name as owner_name,
-              s.user_id::text as user_id, s.email, t.name as tester_name, s.device_serial, s.cx_ref, s.ai_status, s.ai_side, s.ai_severity, s.jira_key, s.is_test,
+              s.user_id::text as user_id, s.email, t.name as tester_name, bu.name as beta_name, s.device_serial, s.cx_ref, s.ai_status, s.ai_side, s.ai_severity, s.jira_key, s.is_test,
               coalesce(k.kinds, '[]'::json) as kinds,
               case when sp.id is null then null else json_build_object('ref', sp.ref, 'name', sp.name, 'status', sp.status) end as sprint,
               (select e.from_value from luna_feedback.submission_events e
@@ -92,6 +95,7 @@ export class HomeRepo {
          left join luna_feedback.sprints sp on sp.id = s.sprint_id
          left join luna_feedback.dashboard_users u on u.email = s.assigned_to
          left join luna_feedback.dashboard_users t on t.email = lower(s.email)
+         left join luna_feedback.beta_users bu on s.origin = 'beta' and bu.user_id = s.user_id
          left join lateral (
            select json_agg(json_build_object(
                     'id', kk.id, 'ref', kk.ref, 'title', kk.title,
@@ -137,8 +141,10 @@ export class HomeRepo {
             and s.created_at >= (($2::date - 13)::timestamp at time zone $1))
        select count(*) filter (where day = $2::date)::int as today,
               count(*) filter (where day = $2::date and origin = 'cx')::int as today_cx,
+              count(*) filter (where day = $2::date and origin = 'beta')::int as today_beta,
               count(*) filter (where day > $2::date - 7)::int as week,
               count(*) filter (where day > $2::date - 7 and origin = 'cx')::int as week_cx,
+              count(*) filter (where day > $2::date - 7 and origin = 'beta')::int as week_beta,
               count(distinct person) filter (where day > $2::date - 7)::int as week_people,
               count(*) filter (where day <= $2::date - 7)::int as prev_week
          from d`,
@@ -150,7 +156,8 @@ export class HomeRepo {
   /** Real issues on the main list received in the last 7 days, per feature category, most reported first. */
   async categories(today: string, limit: number): Promise<HomeCategoryRow[]> {
     const r = await this.db.query<HomeCategoryRow>(
-      `select s.feature_key, c.key, count(*)::int as count, count(*) filter (where s.origin = 'cx')::int as cx
+      `select s.feature_key, c.key, count(*)::int as count, count(*) filter (where s.origin = 'cx')::int as cx,
+              count(*) filter (where s.origin = 'beta')::int as beta
          from luna_feedback.submissions s
          cross join lateral unnest(s.issue_categories) as c(key)
         where not s.is_test and not s.is_positive and s.sprint_id is null

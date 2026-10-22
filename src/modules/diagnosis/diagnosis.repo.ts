@@ -1,4 +1,5 @@
 import type { Db } from '../../db/pool.js';
+import type { Origin } from '../../schema/registry.js';
 
 export type DiagnosisStatus = 'pending' | 'running' | 'waiting_logs' | 'done' | 'no_logs' | 'failed';
 
@@ -217,8 +218,8 @@ export class DiagnosisRepo {
   }
 
   /** Aggregates for the diagnosis overview page, over submissions with occurred_on in [from, to]. Excludes test data unless asked. */
-  async overview(from: string, to: string, includeTest: boolean, origin?: 'internal' | 'cx'): Promise<Record<string, unknown>> {
-    // origin is one of two literals, validated by the route, so it is safe to inline.
+  async overview(from: string, to: string, includeTest: boolean, origin?: Origin): Promise<Record<string, unknown>> {
+    // origin is one of the ORIGINS literals, validated by the route, so it is safe to inline.
     const where = `where s.occurred_on >= $1 and s.occurred_on <= $2 and not s.is_positive ${includeTest ? '' : 'and not s.is_test'} ${origin ? `and s.origin = '${origin}'` : ''}`;
     const vals = [from, to];
     const q = <T extends Record<string, any>>(sql: string) => this.db.query<T>(sql, vals);

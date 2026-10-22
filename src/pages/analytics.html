@@ -140,8 +140,9 @@
     </label>
     <label class="field"><span>Source</span>
       <select id="fOrigin">
-        <option value="">CX + internal</option>
+        <option value="">Every source</option>
         <option value="cx">CX (customers)</option>
+        <option value="beta">Beta users</option>
         <option value="internal">Internal testers</option>
       </select>
     </label>
@@ -262,6 +263,7 @@
   const $ = (id) => document.getElementById(id);
   // Two colours: issues and anything open in black, the rest in greys.
   const OK = '#D4D4D8', CRIT = '#0A0A0A', BLUE = '#71717A';
+  const ORIGIN_LABEL = { cx: 'CX', beta: 'Beta users', internal: 'Internal' };
   const SIDES = [
     { key: 'firmware', label: 'Firmware', color: '#0A0A0A' },
     { key: 'sdk', label: 'Ring SDK', color: '#3F3F46' },
@@ -535,7 +537,7 @@
     barRows($('cSide'), sideRows, { label: 'Root cause side', padL: 130, empty: 'Nothing diagnosed in this window.' });
 
     barRows($('cEnv'), d.by_environment.map((e) => ({ label: e.environment, value: e.issues, color: e.environment === 'production' ? '#0A0A0A' : e.environment === 'uat' ? BLUE : '#D4D4D8', title: `${e.issues} issue(s), ${e.positive} working fine, ${e.users} people` })), { label: 'Issues by environment', padL: 110, rowH: 28 });
-    barRows($('cOrigin'), (d.by_origin || []).map((o) => ({ label: o.origin === 'cx' ? 'CX' : 'Internal', value: o.issues, color: o.origin === 'cx' ? '#0A0A0A' : '#A1A1AA', title: `${o.issues} issue(s), ${o.positive} working fine, ${o.users} people` })), { label: 'Issues by source', padL: 110, rowH: 28 });
+    barRows($('cOrigin'), (d.by_origin || []).map((o) => ({ label: ORIGIN_LABEL[o.origin] || o.origin, value: o.issues, color: o.origin === 'cx' ? '#0A0A0A' : o.origin === 'beta' ? '#F5F85D' : '#A1A1AA', title: `${o.issues} issue(s), ${o.positive} working fine, ${o.users} people` })), { label: 'Issues by source', padL: 110, rowH: 28 });
 
     barRows($('cStatus'), d.by_status.map((s) => ({
       label: STATUS_LABEL[s.status] || s.status, value: s.count,
@@ -543,7 +545,7 @@
     })), { label: 'Triage status', padL: 120, rowH: 28, empty: 'No issues in this window.' });
 
     table($('tResponse'), [
-      { label: 'Source', render: (r) => r.origin === 'cx' ? 'CX' : 'Internal' },
+      { label: 'Source', render: (r) => ORIGIN_LABEL[r.origin] || r.origin },
       { label: 'Issues', cls: 'num', render: (r) => fmtN(r.issues) },
       { label: 'Responded', cls: 'num', render: (r) => `${fmtN(r.touched)} (${pct(r.touched, r.issues)})` },
       { label: 'First response', cls: 'num', render: (r) => hrs(r.first_response_p50_h) },
@@ -563,7 +565,7 @@
 
     table($('tReporters'), [
       { label: 'Who', cls: 'code', render: (r) => r.user_id ? String(r.user_id) : r.device_serial || '—' },
-      { label: 'Source', render: (r) => r.origin === 'cx' ? 'CX customer' : 'Internal' },
+      { label: 'Source', render: (r) => r.origin === 'cx' ? 'CX customer' : ORIGIN_LABEL[r.origin] || r.origin },
       { label: 'Email', render: (r) => r.email || '—' },
       { label: 'Issues', cls: 'num', render: (r) => fmtN(r.issues) },
       { label: 'Features', cls: 'num', render: (r) => fmtN(r.features) },

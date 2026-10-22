@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { AppError } from '../../lib/errors.js';
 import { formatInZone, todayInZone } from '../../lib/time.js';
-import { buildCxSubmissionValidator, buildSubmissionValidator, zodIssues, type ValidatorContext } from '../../schema/buildValidator.js';
-import { DEFAULT_CX_ENVIRONMENT, SCHEMA_VERSION, isFeatureKey, type FeatureKey, type Platform } from '../../schema/registry.js';
+import { buildBetaSubmissionValidator, buildCxSubmissionValidator, buildSubmissionValidator, zodIssues, type ValidatorContext } from '../../schema/buildValidator.js';
+import { DEFAULT_BETA_ENVIRONMENT, DEFAULT_CX_ENVIRONMENT, SCHEMA_VERSION, isFeatureKey, type FeatureKey, type Platform } from '../../schema/registry.js';
 import { redact } from '../diagnosis/logs/redact.js';
+import { maskEmail } from '../../lib/mask-email.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
 import { MAX_TAGS, TERMINAL_STATUSES, VERSION_FIELDS, normalizeTag, parseSubmissionRef, type FeedbackRepo, type ReportVersions, type NewSubmission, type Priority, type SubmissionRow, type ListFilters, type StatsFilters, type Screenshot, type SubmissionStatus } from './feedback.repo.js';
 import type { ActivityRepo, NoteVisibility } from '../activity/activity.repo.js';
@@ -56,6 +57,8 @@ export class FeedbackService {
   private activity: ActivityRepo | null = null;
   /** Active dashboard accounts by email or id, for handing a fixed report back (wired in build-app). */
   private accounts: ((emails: string[], ids: readonly string[]) => Promise<ActiveAccount[]>) | null = null;
+  /** Whether a Luna user id is on the beta list (wired in build-app). Without it, beta reports are refused. */
+  private isBetaUser: ((userId: number) => Promise<boolean>) | null = null;
   /** Screenshot URL validator + cleanup, wired when ImageKit is configured. */
   private screenshots: { isOurUrl: (u: string) => boolean; maxCount: number; deleteFile: (id: string) => Promise<boolean> } | null = null;
 
@@ -71,6 +74,7 @@ export class FeedbackService {
   setSprintHook(hook: SprintHook | null) { this.sprints = hook; }
   setActivity(repo: ActivityRepo | null) { this.activity = repo; }
   setAccountLookup(fn: ((emails: string[], ids: readonly string[]) => Promise<ActiveAccount[]>) | null) { this.accounts = fn; }
+  setBetaCheck(fn: ((userId: number) => Promise<boolean>) | null) { this.isBetaUser = fn; }
   setScreenshotSupport(s: { isOurUrl: (u: string) => boolean; maxCount: number; deleteFile: (id: string) => Promise<boolean> } | null) { this.screenshots = s; }
 
   toDto(row: SubmissionRow): SubmissionDto {
@@ -106,6 +110,7 @@ export class FeedbackService {
       ...this.commonFields(feature, v),
       user_id: v.user_id as number,
       email: v.email as string,
+      email_masked: null,
       feedback_text: (v.feedback_text as string | null | undefined) ?? null,
       device_serial: (v.device_serial as string | null | undefined) || null,
       client: this.clientFields(v.client),
@@ -119,7 +124,7 @@ export class FeedbackService {
 
   /**
    * A customer problem filed by CX from its own tool. The ring serial and the CX ticket identify
-   * it; the customer's email is refused by the validator and any address or phone number in the
+   * it; the customer's email, if sent, is kept only masked, and any address or phone number in the
    * free text is redacted before it is stored.
    */
   async submitCx(featureKey: string, body: unknown, via: 'cx_tool' | 'admin', log?: FastifyBaseLogger) {
@@ -137,6 +142,7 @@ export class FeedbackService {
       ...this.commonFields(feature, v),
       user_id: (v.user_id as number | null | undefined) ?? null,
       email: null,
+      email_masked: maskEmail(v.email as string | null | undefined),
       feedback_text: scrub(v.feedback_text as string | null | undefined),
       device_serial: v.device_serial,
       client: { ...client, environment: client.environment ?? DEFAULT_CX_ENVIRONMENT },
@@ -157,6 +163,38 @@ export class FeedbackService {
       try { await this.device.onCxSubmission(result.dto.id, log); } catch (err) { log.error({ err }, 'could not queue the device lookup'); }
     }
     return result;
+  }
+
+  /**
+   * A report from a beta user: a production customer on the beta list, sending from the released
+   * app. The app's usual body is accepted, but the email is kept only masked and the free text
+   * redacted, as for any customer; the user id must be on the list.
+   */
+  async submitBeta(featureKey: string, body: unknown, idempotencyKey: string | null, log?: FastifyBaseLogger) {
+    const { feature, ctx } = await this.prepare(featureKey);
+    const parsed = buildBetaSubmissionValidator(feature, ctx).safeParse(body);
+    if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
+    const v = parsed.data;
+    const userId = v.user_id as number;
+    if (!this.isBetaUser || !(await this.isBetaUser(userId))) {
+      throw new AppError(403, 'NOT_A_BETA_USER', `User ${userId} is not a beta user`);
+    }
+
+    const client = this.clientFields(v.client);
+    return this.store({
+      ...this.commonFields(feature, v),
+      user_id: userId,
+      email: null,
+      email_masked: maskEmail(v.email as string | null | undefined),
+      feedback_text: v.feedback_text ? redact(v.feedback_text as string) : null,
+      device_serial: (v.device_serial as string | null | undefined) || null,
+      client: { ...client, environment: client.environment ?? DEFAULT_BETA_ENVIRONMENT },
+      idempotency_key: idempotencyKey,
+      origin: 'beta',
+      submitted_via: 'app',
+      cx: null,
+      sprint_id: null,
+    }, log, false);
   }
 
   private async prepare(featureKey: string): Promise<{ feature: FeatureKey; ctx: ValidatorContext }> {
@@ -452,7 +490,7 @@ export class FeedbackService {
     const sub = await this.row(id);
     const text = questions.map((q) => `• ${q}`).join('\n');
     await this.activity?.record({
-      submissionId: sub.id, actor: by, action: 'ask_reporter', note: `Questions for the ${sub.origin === 'cx' ? 'customer' : 'tester'}:\n${text}`,
+      submissionId: sub.id, actor: by, action: 'ask_reporter', note: `Questions for the ${sub.origin === 'cx' ? 'customer' : sub.origin === 'beta' ? 'beta user' : 'tester'}:\n${text}`,
       visibility: sub.origin === 'cx' ? 'customer' : 'internal', touch: true,
     });
     return this.setStatus(sub.id, 'needs_info', null, by);

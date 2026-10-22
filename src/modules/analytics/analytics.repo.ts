@@ -161,7 +161,7 @@ export class AnalyticsRepo {
 
       q<{ user_id: string | null; email: string | null; device_serial: string | null; origin: string; issues: number; features: number }>(
         `select min(s.user_id) as user_id, min(s.email) as email, min(s.device_serial) as device_serial,
-                case when bool_or(s.origin = 'cx') then 'cx' else 'internal' end as origin,
+                case when bool_or(s.origin = 'cx') then 'cx' when bool_or(s.origin = 'beta') then 'beta' else 'internal' end as origin,
                 count(*)::int as issues, count(distinct s.feature_key)::int as features
          from luna_feedback.submissions s ${issuesOnly} group by ${personSql()} order by issues desc limit 10`),
 

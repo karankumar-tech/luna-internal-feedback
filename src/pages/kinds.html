@@ -80,6 +80,7 @@
   .linkbtn { border: 1px solid var(--gray-light); background: var(--white); border-radius: 4px; font-size: 11px; line-height: 16px; padding: 0 6px; cursor: pointer; white-space: nowrap; }
   .linkbtn:hover { border-color: var(--black); }
   .chip.cx { background: var(--magenta, #E0237A); color: #fff; letter-spacing: .08em; font-size: 10px; }
+  .chip.beta { letter-spacing: .08em; font-size: 10px; }
   .chips { display: flex; flex-wrap: wrap; gap: 4px; }
   .kstatus { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 7px; border-radius: var(--r-xs); border: 1px solid; }
   .kstatus.open { border-color: var(--crit); background: var(--crit-bg); color: #8A1010; }
@@ -135,7 +136,7 @@
       <select id="fEnv"><option value="">All environments</option><option value="stage">Stage</option><option value="uat">UAT</option><option value="production">Production</option></select>
     </label>
     <label class="field"><span>Source</span>
-      <select id="fOrigin"><option value="">CX + internal</option><option value="cx">CX (customers)</option><option value="internal">Internal testers</option></select>
+      <select id="fOrigin"><option value="">Every source</option><option value="cx">CX (customers)</option><option value="beta">Beta users</option><option value="internal">Internal testers</option></select>
     </label>
     <label class="field" id="fStatusField"><span>Kind status</span>
       <select id="fStatus"><option value="">Any</option><option value="open">Open</option><option value="watching">Watching</option><option value="fixed">Fixed</option><option value="wont_fix">Won't fix</option></select>
@@ -521,9 +522,10 @@
       tr.appendChild(refCell);
       tr.appendChild(el('td', 'code', r.occurred_on));
       tr.appendChild(el('td', null, r.feature_key));
-      const who = r.origin === 'cx' ? el('td', 'code', r.user_id ? String(r.user_id) : r.device_serial) : el('td', null, r.tester_name || (r.email ? r.email.split('@')[0] : String(r.user_id)));
+      const customer = r.origin === 'cx' || r.origin === 'beta';
+      const who = customer ? el('td', 'code', r.user_id ? String(r.user_id) : r.device_serial) : el('td', null, r.tester_name || (r.email ? r.email.split('@')[0] : String(r.user_id)));
       if (r.origin !== 'cx') who.title = 'Luna user ' + r.user_id + (r.email ? ' · ' + r.email : '');
-      if (r.origin === 'cx') { who.appendChild(document.createTextNode(' ')); who.appendChild(el('span', 'chip cx', 'CX')); }
+      if (customer) { who.appendChild(document.createTextNode(' ')); who.appendChild(el('span', 'chip ' + r.origin, r.origin === 'cx' ? 'CX' : 'BETA')); }
       tr.appendChild(who);
       tr.appendChild(el('td', 'code', r.environment || 'stage'));
       const st = el('td'); st.appendChild(el('span', 'chip', (r.status || 'open').replace('_', ' '))); tr.appendChild(st);
@@ -565,7 +567,7 @@
         const pick = el('td'); const cb = el('input'); cb.type = 'checkbox'; cb.value = r.id; cb.className = 'morepick'; cb.disabled = !can('manage_kinds');
         cb.addEventListener('change', renderAddMore); pick.appendChild(cb); tr.appendChild(pick);
         const refTd = el('td', 'code'); const a = el('a', null, r.ref); a.href = '/dashboard/submissions/' + encodeURIComponent(r.ref); refTd.appendChild(a);
-        if (r.origin === 'cx') { refTd.appendChild(document.createTextNode(' ')); refTd.appendChild(el('span', 'chip cx', 'CX')); }
+        if (r.origin === 'cx' || r.origin === 'beta') { refTd.appendChild(document.createTextNode(' ')); refTd.appendChild(el('span', 'chip ' + r.origin, r.origin === 'cx' ? 'CX' : 'BETA')); }
         tr.appendChild(refTd);
         tr.appendChild(el('td', 'num', Math.round(r.strength * 100) + '%'));
         const why = el('td'); const w = el('div', 'why'); for (const x of r.reasons) w.appendChild(el('span', ['categories', 'text', 'events', 'tags'].includes(x.kind) ? 'strong' : null, x.label)); why.appendChild(w); tr.appendChild(why);

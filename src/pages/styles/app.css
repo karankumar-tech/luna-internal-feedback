@@ -289,6 +289,8 @@ label.field > span { font-size: 12px; line-height: 16px; font-weight: 500; color
 /* badges */
 .chip { font-family: var(--sans); font-size: 12px; line-height: 18px; font-weight: 500; padding: 1px 8px; border-radius: var(--r-s); background: var(--muted); color: var(--foreground); }
 .chip.cx, .pill.cx, .tag.cx { background: var(--primary); color: #FFFFFF; }
+/* Beta users: production customers on the beta list. Outlined, so it reads apart from CX (solid black) and TEST (yellow). */
+.chip.beta, .pill.beta, .tag.beta { background: var(--card); color: var(--primary); box-shadow: inset 0 0 0 1.5px var(--primary); font-weight: 700; }
 .chip.test, .pill.test.new, .tag.test { background: var(--accent); color: var(--primary); }
 .pill { font-family: var(--sans); font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: .04em; padding: 2px 8px; border-radius: var(--r-s); }
 .prio { font-family: var(--sans); font-size: 11px; line-height: 18px; font-weight: 600; letter-spacing: .02em; padding: 0 7px; border-radius: var(--r-s); }

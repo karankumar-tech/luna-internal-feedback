@@ -1,12 +1,13 @@
 import type { Db } from '../../db/pool.js';
 import type { Comparable } from './similarity.js';
+import type { Origin } from '../../schema/registry.js';
 
 /** A report with everything the matcher and the "Similar reports" panel need. */
 export interface ReportForMatch extends Comparable {
   ref: string;
   is_positive: boolean;
   is_test: boolean;
-  origin: 'internal' | 'cx';
+  origin: Origin;
   environment: string;
   status: string;
   created_at: Date;

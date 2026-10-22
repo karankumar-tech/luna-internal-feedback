@@ -34,6 +34,14 @@ function cxKeyMayCall(url: string): boolean {
     || url === '/v1/uploads/screenshot-auth';
 }
 
+/**
+ * What the beta key may call: its own routes and the form schema. It ships inside the released app,
+ * so it gets no general screenshot credentials; /v1/beta/uploads/screenshot-auth checks the user first.
+ */
+function betaKeyMayCall(url: string): boolean {
+  return url.startsWith('/v1/beta/') || url === '/v1/feedback/schema' || url.startsWith('/v1/feedback/schema/');
+}
+
 /** Header the dashboard sends on every fetch. Cross-site forms cannot set it, which blocks CSRF on the cookie session. */
 export const DASHBOARD_HEADER = 'x-requested-with';
 
@@ -62,13 +70,15 @@ export interface ActorResolver {
  * user session cookie   → the signed-in account's own role
  * legacy key session    → admin, but only while no account exists
  * CX key (x-api-key)    → /v1/cx/**, the form schema and screenshot uploads; nothing else
+ * beta key (x-api-key)  → /v1/beta/** and the form schema; nothing else
  * /v1/cx/**             → the CX key or x-admin-key only
+ * /v1/beta/**           → the beta key or x-admin-key only
  * /v1/admin/**          → x-admin-key, or a session whose role allows the route
  * everything else /v1   → x-api-key (admin key also accepted)
  */
 export function registerAuth(
   app: FastifyInstance,
-  keys: { app: string; admin: string; cx?: string; sessionSecret: string; cronSecret?: string; keyLogin?: boolean },
+  keys: { app: string; admin: string; cx?: string; beta?: string; sessionSecret: string; cronSecret?: string; keyLogin?: boolean },
   users?: ActorResolver,
 ) {
   app.decorateRequest('actor', undefined);
@@ -100,6 +110,13 @@ export function registerAuth(
       return;
     }
 
+    // The released app's key, for beta users. It is in every copy of the app, so it reaches nothing else.
+    if (!actor && keys.beta && apiKey !== undefined && safeEqual(apiKey, keys.beta)) {
+      if (!betaKeyMayCall(url)) throw AppError.forbidden('The beta key can only check beta users and file their reports');
+      req.actor = { id: null, email: null, name: 'Luna app (beta)', role: 'business', via: 'beta_key' };
+      return;
+    }
+
     if (!actor && header(req, DASHBOARD_HEADER) === 'dashboard') {
       actor = await sessionActor(req, keys.sessionSecret, keys.keyLogin !== false, users);
     }
@@ -109,6 +126,10 @@ export function registerAuth(
     // Only the CX tool files CX reports; the app key or a dashboard session never can.
     if (url.startsWith('/v1/cx/')) {
       if (actor?.via !== 'admin_key') throw AppError.unauthorized('Missing or invalid CX key');
+      return;
+    }
+    if (url.startsWith('/v1/beta/')) {
+      if (actor?.via !== 'admin_key') throw AppError.unauthorized('Missing or invalid beta key');
       return;
     }
 

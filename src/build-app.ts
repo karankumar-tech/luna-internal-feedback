@@ -33,6 +33,8 @@ import { UsersRepo } from './modules/users/users.repo.js';
 import { UsersService } from './modules/users/users.service.js';
 import { registerUserRoutes } from './modules/users/users.routes.js';
 import { registerCxRoutes } from './modules/cx/cx.routes.js';
+import { BetaUsersRepo } from './modules/beta/beta-users.repo.js';
+import { registerBetaRoutes } from './modules/beta/beta.routes.js';
 import { AttentionRepo } from './modules/attention/attention.repo.js';
 import { AttentionService } from './modules/attention/attention.service.js';
 import { registerAttentionRoutes } from './modules/attention/attention.routes.js';
@@ -123,6 +125,9 @@ export function buildApp(opts: BuildOptions = {}): App {
   // Sprints: a report can be filed into, or moved to, the current or next sprint.
   const sprints = new SprintsService(new SprintsRepo(db, config.APP_TIMEZONE), config.APP_TIMEZONE, opts.now);
   service.setSprintHook({ resolve: (target, by) => sprints.resolve(target, by) });
+  // Beta users: the released app asks on every launch, so the list is kept in memory.
+  const betaUsers = new BetaUsersRepo(db, config.BETA_USERS_CACHE_TTL_MS, (err) => app.log.error({ err }, 'beta list reload failed; answering from the copy held'));
+  service.setBetaCheck((id) => betaUsers.has(id));
 
   const diagnosisRepo = new DiagnosisRepo(db);
   // Stage and production logs live on different hosts behind the same key. UAT has none until its
@@ -196,7 +201,7 @@ export function buildApp(opts: BuildOptions = {}): App {
     superAdminEmail: config.SUPERADMIN_EMAIL ?? null,
   });
 
-  registerAuth(app, { app: config.APP_API_KEY, admin: config.ADMIN_API_KEY, cx: config.CX_API_KEY, sessionSecret, cronSecret: config.CRON_SECRET, keyLogin: config.DASHBOARD_KEY_LOGIN }, {
+  registerAuth(app, { app: config.APP_API_KEY, admin: config.ADMIN_API_KEY, cx: config.CX_API_KEY, beta: config.BETA_API_KEY, sessionSecret, cronSecret: config.CRON_SECRET, keyLogin: config.DASHBOARD_KEY_LOGIN }, {
     sessionFor: (id) => users.sessionFor(id),
     anyAdminExists: () => users.anyAdminExists(),
     superAdminEmail: () => users.superAdminEmail,
@@ -208,11 +213,13 @@ export function buildApp(opts: BuildOptions = {}): App {
   if (imagekit) service.setScreenshotSupport({ isOurUrl: (u) => imagekit.isOurUrl(u), maxCount: config.SCREENSHOT_MAX_COUNT, deleteFile: (id) => imagekit.deleteFile(id) });
   if (imagekit) sprints.setScreenshotCleanup((id) => imagekit.deleteFile(id));
   else app.log.warn('Screenshot uploads disabled: set IMAGEKIT_PUB_KEY and IMAGEKIT_PRI_KEY to enable');
+  const screenshotUploads = imagekit ? { publicKey: imagekit.publicKey, urlEndpoint: imagekit.urlEndpoint, folder: imagekit.folder, maxBytes: config.SCREENSHOT_MAX_BYTES, maxCount: config.SCREENSHOT_MAX_COUNT, authParams: () => imagekit.authParams() } : null;
   registerFeedbackRoutes(app, {
     service, categories, timeZone: config.APP_TIMEZONE, kindsFor: (ids) => kindsRepo.forSubmissions(ids),
     isAssignable: async (email) => (await users.assignable()).some((u) => u.email === email),
     testerNames: (emails) => usersRepo.namesFor(emails),
-    uploads: imagekit ? { publicKey: imagekit.publicKey, urlEndpoint: imagekit.urlEndpoint, folder: imagekit.folder, maxBytes: config.SCREENSHOT_MAX_BYTES, maxCount: config.SCREENSHOT_MAX_COUNT, authParams: () => imagekit.authParams() } : null,
+    betaNames: (ids) => betaUsers.namesFor(ids),
+    uploads: screenshotUploads,
   });
   registerPageRoutes(app, { dashboardKey: config.DASHBOARD_KEY, sessionSecret, sessionDays: config.DASHBOARD_SESSION_DAYS, keyLogin: config.DASHBOARD_KEY_LOGIN, users });
   registerUserRoutes(app, { service: users });
@@ -228,6 +235,7 @@ export function buildApp(opts: BuildOptions = {}): App {
     models: { current: config.OPENROUTER_MODEL, chat: config.DIAGNOSIS_CHAT_MODEL ?? config.OPENROUTER_MODEL, enabled: aiClient !== null },
   });
   registerCxRoutes(app, { feedback: service, kinds, activity, publicBaseUrl: config.PUBLIC_BASE_URL });
+  registerBetaRoutes(app, { beta: betaUsers, feedback: service, uploads: screenshotUploads });
   const attention = new AttentionService(new AttentionRepo(db), config.APP_TIMEZONE);
   registerAttentionRoutes(app, { service: attention, feedback: service });
   registerHomeRoutes(app, { service: new HomeService(new HomeRepo(db, config.APP_TIMEZONE), { categories, attention, timeZone: config.APP_TIMEZONE, currentSprint: () => sprints.currentSummary() }) });

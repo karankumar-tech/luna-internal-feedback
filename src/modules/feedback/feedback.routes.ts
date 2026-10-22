@@ -131,9 +131,12 @@ export function registerFeedbackRoutes(
     isAssignable?: (email: string) => Promise<boolean>;
     /** Display names of dashboard accounts by (lowercased) email, so lists can name a tester rather than number them. */
     testerNames?: (emails: string[]) => Promise<Map<string, string>>;
+    /** Names QC gave beta users in Settings, by user id. */
+    betaNames?: (userIds: number[]) => Promise<Map<number, string>>;
   },
 ) {
-  const { service, categories, timeZone, uploads, kindsFor, isAssignable, testerNames } = deps;
+  const { service, categories, timeZone, uploads, kindsFor, isAssignable, testerNames, betaNames } = deps;
+  const betaIds = (items: { origin: string; user_id: number | null }[]) => items.filter((i) => i.origin === 'beta' && i.user_id !== null).map((i) => i.user_id!);
   const uploadsDescriptor = () => ({
     screenshots: uploads
       ? { enabled: true, auth_endpoint: '/v1/uploads/screenshot-auth', upload_url: 'https://upload.imagekit.io/api/v1/files/upload', max_count: uploads.maxCount, max_bytes: uploads.maxBytes, accepted_types: [...SCREENSHOT_TYPES], url_endpoint: uploads.urlEndpoint, client_resize: SCREENSHOT_CLIENT_RESIZE }
@@ -203,10 +206,11 @@ export function registerFeedbackRoutes(
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error), 'Invalid query');
     const { ref, ...filters } = resolveMe(parsed.data, req);
     const page = await service.list({ ...filters, ref_no: ref });
-    if (!kindsFor && !testerNames) return page;
-    const [kinds, names] = await Promise.all([
+    if (!kindsFor && !testerNames && !betaNames) return page;
+    const [kinds, names, beta] = await Promise.all([
       kindsFor ? kindsFor(page.items.map((i) => i.id)) : null,
       testerNames ? testerNames(page.items.map((i) => i.email).filter((e): e is string => !!e)) : null,
+      betaNames ? betaNames(betaIds(page.items)) : null,
     ]);
     return {
       ...page,
@@ -214,12 +218,18 @@ export function registerFeedbackRoutes(
         ...i,
         ...(kinds ? { kinds: kinds.get(i.id) ?? [] } : {}),
         ...(names ? { tester_name: (i.email && names.get(i.email.toLowerCase())) ?? null } : {}),
+        ...(beta && i.origin === 'beta' ? { beta_name: (i.user_id !== null && beta.get(i.user_id)) || null } : {}),
       })),
     };
   });
 
-  /** By uuid or by reference (LN-00042, ln-42, 42). */
-  app.get<{ Params: { id: string } }>('/v1/feedback/:id', async (req) => service.get(req.params.id));
+  /** By uuid or by reference (LN-00042, ln-42, 42). A beta report carries the name QC gave its user. */
+  app.get<{ Params: { id: string } }>('/v1/feedback/:id', async (req) => {
+    const dto = await service.get(req.params.id);
+    if (dto.origin !== 'beta' || !betaNames) return dto;
+    const names = await betaNames(betaIds([dto]));
+    return { ...dto, beta_name: (dto.user_id !== null && names.get(dto.user_id)) || null };
+  });
 
   // ---- triage: status, owner, priority, test flag (QC); developers may only mark a bug fixed ----
   app.patch<{ Params: { id: string } }>('/v1/admin/submissions/:id', { onRequest: requirePermission('mark_fixed') }, async (req) => {

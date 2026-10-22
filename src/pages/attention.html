@@ -60,6 +60,7 @@
   tr.link { cursor: pointer; } tr.link:hover td { background: #FAFAF7; }
   .pill { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 6px; border-radius: var(--r-s); display: inline-block; line-height: 14px; }
   .pill.cx { background: var(--magenta); color: var(--white); }
+  .pill.beta { background: var(--white); color: var(--black); box-shadow: inset 0 0 0 1.5px var(--black); }
   .pill.internal { background: var(--brief); color: var(--gray-dark); }
   .over { color: #A03600; font-family: var(--mono); font-size: 12px; }
   .sev { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
@@ -87,7 +88,7 @@
   </div>
   <section class="filters" aria-label="Filters">
     <label class="field"><span>Source</span>
-      <select id="fOrigin"><option value="">CX + internal</option><option value="cx">CX only</option><option value="internal">Internal only</option></select>
+      <select id="fOrigin"><option value="">Every source</option><option value="cx">CX only</option><option value="beta">Beta users only</option><option value="internal">Internal only</option></select>
     </label>
     <label class="field"><span>Environment</span>
       <select id="fEnv"><option value="">All environments</option><option value="stage">Stage</option><option value="uat">UAT</option><option value="production">Production</option></select>
@@ -189,7 +190,7 @@
     host.appendChild(t);
   }
 
-  const originPill = (o) => el('span', 'pill ' + o, o === 'cx' ? 'CX' : 'Internal');
+  const originPill = (o) => el('span', 'pill ' + o, o === 'cx' ? 'CX' : o === 'beta' ? 'Beta' : 'Internal');
   const kindsCell = (r) => {
     if (!r.kinds.length) return el('span', 'tertiary', 'not grouped');
     const box = el('span', 'kind');
@@ -219,7 +220,8 @@
     const c = o.counts;
     const t = o.thresholds;
     $('kOpen').textContent = fmtN(c.open);
-    $('kOpenD').textContent = `${fmtN(o.age_buckets.filter((b) => b.origin === 'cx').reduce((a, b) => a + b.count, 0))} from CX`;
+    const fromOrigin = (origin) => o.age_buckets.filter((b) => b.origin === origin).reduce((a, b) => a + b.count, 0);
+    $('kOpenD').textContent = `${fmtN(fromOrigin('cx'))} from CX` + (fromOrigin('beta') ? ` · ${fmtN(fromOrigin('beta'))} from beta users` : '');
     LunaShell.setAttention(c.untouched + c.stale);
     $('kUntouched').textContent = fmtN(c.untouched); $('kUntouchedD').textContent = `CX > ${t.cx.untouched_days}d · internal > ${t.internal.untouched_days}d`;
     $('kCx').textContent = fmtN(c.cx_waiting);
@@ -331,6 +333,8 @@
       { h: 'age', render: (r) => r },
       { h: 'CX', num: true, render: (r) => String(count('cx', r)) },
       { h: '', render: (r) => bar(count('cx', r), '#0A0A0A') },
+      { h: 'beta', num: true, render: (r) => String(count('beta', r)) },
+      { h: '', render: (r) => bar(count('beta', r), '#F5F85D') },
       { h: 'internal', num: true, render: (r) => String(count('internal', r)) },
       { h: '', render: (r) => bar(count('internal', r), '#000') },
     ], c.open ? buckets : [], 'No open issues.');

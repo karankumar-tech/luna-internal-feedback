@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildCxSubmissionValidator, CX_EMAIL_REFUSED, zodIssues } from '../../src/schema/buildValidator.js';
+import { buildCxSubmissionValidator, zodIssues } from '../../src/schema/buildValidator.js';
+import { maskEmail } from '../../src/lib/mask-email.js';
 import { parseSubmissionRef } from '../../src/modules/feedback/feedback.repo.js';
 import { parseKindRef } from '../../src/modules/kinds/kinds.repo.js';
 import { redact } from '../../src/modules/diagnosis/logs/redact.js';
@@ -28,9 +29,10 @@ describe('CX contract', () => {
     expect(cxIssues({ ...cxBase, user_id: 10482, cx: { ref: 'FD-1', url: 'https://support.example/t/1', channel: 'whatsapp', agent: 'A', transcript: 'x' } })).toEqual([]);
   });
 
-  it('names the email when one is sent, rather than a generic unknown-key error', () => {
-    expect(cxIssues({ ...cxBase, email: 'customer@example.com' })).toEqual([{ path: 'email', message: CX_EMAIL_REFUSED }]);
-    expect(cxIssues({ ...cxBase, email: null })).toEqual([{ path: 'email', message: CX_EMAIL_REFUSED }]);
+  it('takes an email, to be stored masked', () => {
+    expect(cxIssues({ ...cxBase, email: 'customer@example.com' })).toEqual([]);
+    expect(cxIssues({ ...cxBase, email: null })).toEqual([]);
+    expect(cxIssues({ ...cxBase, email: 'x'.repeat(255) }).map((i) => i.path)).toEqual(['email']);
   });
 
   it('requires the serial and the CX ticket ref', () => {
@@ -79,5 +81,19 @@ describe('logging API responses', () => {
     const e = normalizeEntry({ user_id: '900777', platform: 'iOS', fv: '1.9.3', version_name: '2.5.0', app_logs: 'https://x/app_logs/900777-2026-09-02/1.txt' });
     expect(e).toMatchObject({ user_id: 900777, platform: 'ios', fv: '1.9.3', version_name: '2.5.0' });
     expect(e.files.app[0]!.date).toBe('2026-09-02');
+  });
+});
+
+describe('maskEmail', () => {
+  it('keeps enough to recognise, never the address', () => {
+    expect(maskEmail('Rahul.Sharma@Gmail.com')).toBe('ra***@g***.com');
+    expect(maskEmail('  jo@company.co.in ')).toBe('j***@c***.in');
+    expect(maskEmail('a@b.io')).toBe('a***@b***.io');
+    // The length of each part is not kept.
+    expect(maskEmail('abcd@example.com')).toBe(maskEmail('abcdefghijkl@exampleexample.com'));
+  });
+
+  it('gives nothing for something that is not an email', () => {
+    for (const bad of [null, undefined, '', 'not an email', 'x@y', '@example.com', 'a b@example.com']) expect(maskEmail(bad)).toBeNull();
   });
 });

@@ -8,6 +8,7 @@ import type { DiagnosisRepo } from './diagnosis.repo.js';
 import { requirePermission } from '../../plugins/auth.js';
 import { actorOf } from '../../lib/actor.js';
 import { ENVIRONMENTS } from '../../schema/registry.js';
+import { ORIGINS, type Origin } from '../../schema/registry.js';
 
 const ReviewBody = z.object({
   verdict: z.enum(['agree', 'disagree', 'unsure']),
@@ -64,7 +65,7 @@ export function registerDiagnosisRoutes(app: FastifyInstance, deps: {
 
   app.get('/v1/admin/diagnoses/overview', async (req) => {
     const q = req.query as { from?: string; to?: string; include_test?: string; origin?: string };
-    const origin = q.origin === 'internal' || q.origin === 'cx' ? q.origin : undefined;
+    const origin = (ORIGINS as readonly string[]).includes(q.origin ?? '') ? q.origin as Origin : undefined;
     const isDate = (v: string | undefined) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
     const to = isDate(q.to) ? q.to! : new Date().toISOString().slice(0, 10);
     const from = isDate(q.from) ? q.from! : new Date(Date.parse(to) - 29 * 86_400_000).toISOString().slice(0, 10);

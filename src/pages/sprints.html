@@ -718,6 +718,7 @@
   }
   const testerOf = (r) => {
     if (r.origin === 'cx') return 'CX · ' + (r.user_id ? 'user ' + r.user_id : 'ring ' + (r.device_serial || ''));
+    if (r.origin === 'beta') return 'Beta · ' + (r.beta_name || 'user ' + r.user_id);
     const e = (r.email || '').toLowerCase();
     return r.tester_name || (e ? e.split('@')[0] : null) || (r.user_id ? 'tester ' + r.user_id : '');
   };

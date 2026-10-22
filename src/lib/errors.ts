@@ -1,6 +1,8 @@
 export type ErrorCode =
   | 'UNAUTHORIZED'
   | 'FORBIDDEN'
+  /** The user id is not on the beta list (any more): the app should hide its feedback option. */
+  | 'NOT_A_BETA_USER'
   | 'NOT_FOUND'
   | 'VALIDATION_FAILED'
   | 'CONFLICT'

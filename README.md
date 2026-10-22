@@ -62,6 +62,7 @@ npm run dev               # http://localhost:3000
 |---|---|
 | `x-api-key: <APP_API_KEY>` | app routes under `/v1/feedback` |
 | `x-api-key: <CX_API_KEY>` | the CX tool: `/v1/cx/*`, the form schema and screenshot uploads, nothing else. Every report it files is a CX report |
+| `x-api-key: <BETA_API_KEY>` | the released app, for beta users: `/v1/beta/*` and the form schema, nothing else. Every report it files is a beta report |
 | `x-admin-key: <ADMIN_API_KEY>` | everything, for automation and scripts. Not tied to a person |
 | dashboard session cookie + `x-requested-with: dashboard` | whatever the signed-in account's role allows |
 
@@ -191,11 +192,23 @@ them on new submissions; old rows keep their keys.
 
 CX files customer problems from its own tool: an agent checks the problem is real, then presses a
 button that calls `POST /v1/cx/feedback/{feature}` with `CX_API_KEY`. The ring serial and the CX
-ticket (`cx.ref`) identify the report; **a customer's email is never accepted or stored**, and any
-address or phone number in the free text is redacted first. The Luna user id and device details
+ticket (`cx.ref`) identify the report; **a customer's email is only ever stored masked**
+(`ra***@g***.com`), and any address or phone number in the free text is redacted first. The Luna user id and device details
 are filled in afterwards from the production logging service by serial. Pressing the button twice
 for the same ticket and feature returns the first report. `GET /v1/cx/feedback/{ref}` tells the
 tool where a report stands. Contract: [docs/API.md §5b](docs/API.md).
+
+## Beta users
+
+Production customers on the beta list may send reports from the released app, the way internal
+testers do. QC and admins keep the list in Settings → Beta users: paste Luna user ids, each with an
+optional name ("104233 Rahul Sharma") so the team knows who is who. The app asks
+`GET /v1/beta/users/{user_id}` with `BETA_API_KEY`, keeps the answer for a day, and shows the
+feedback option only to users on the list; their reports (`POST /v1/beta/feedback/{feature}`) are
+origin `beta`, production by default, tagged BETA on the dashboard and filtered with Source → Beta
+users. The server holds the list in memory: an edit applies at once on the instance that made it and
+within `BETA_USERS_CACHE_TTL_MS` (5 minutes) on the others. Like CX, a beta user's email is stored
+only masked and the user id identifies them. Contract: [docs/API.md §5c](docs/API.md).
 
 ## Same issue, counted
 

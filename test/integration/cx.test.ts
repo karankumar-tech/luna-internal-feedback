@@ -182,10 +182,16 @@ describe('CX reports', () => {
     expect(other.json().ref).not.toBe(cx.ref);
   });
 
-  it('refuses a customer email, and requires the serial and the CX ticket', async () => {
-    const withEmail = await app.inject({ method: 'POST', url: '/v1/cx/feedback/sleep', headers: cxHeaders, payload: cxBody(CX_REF('b'), { email: 'jane@example.com' }) });
-    expect(withEmail.statusCode).toBe(422);
-    expect(withEmail.json().error.issues).toContainEqual({ path: 'email', message: expect.stringContaining('never stored') });
+  it('keeps a customer email only masked, and requires the serial and the CX ticket', async () => {
+    const withEmail = await app.inject({ method: 'POST', url: '/v1/cx/feedback/sleep', headers: cxHeaders, payload: cxBody(CX_REF('b'), { email: 'Jane.Doe@Example.com' }) });
+    expect(withEmail.statusCode).toBe(201);
+    expect(JSON.stringify(withEmail.json())).not.toContain('***');
+    const stored = (await app.inject({ method: 'GET', url: `/v1/feedback/${withEmail.json().ref}`, headers: adminHeaders })).json();
+    expect(stored).toMatchObject({ email: null, email_masked: 'ja***@e***.com' });
+    const row = await app.db.query<{ j: string }>('select row_to_json(s)::text as j from luna_feedback.submissions s where id = $1', [stored.id]);
+    expect(row.rows[0]!.j.toLowerCase()).not.toContain('jane.doe@example.com');
+    // The database refuses an unmasked address even if code tried to store one.
+    await expect(app.db.query('update luna_feedback.submissions set email_masked = $2 where id = $1', [stored.id, 'jane.doe@example.com'])).rejects.toThrow(/email_masked/);
 
     const noSerial = cxBody(CX_REF('c')) as Record<string, unknown>; delete noSerial.device_serial;
     const r1 = await app.inject({ method: 'POST', url: '/v1/cx/feedback/sleep', headers: cxHeaders, payload: noSerial });

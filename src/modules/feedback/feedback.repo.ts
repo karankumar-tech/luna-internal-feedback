@@ -28,6 +28,8 @@ export interface SubmissionRow {
   user_id: string | null;
   /** Internal testers only: a real customer's email is never stored. */
   email: string | null;
+  /** CX and beta reports: the customer's email masked ("ra***@g***.com"), when one was sent. Never the full address. */
+  email_masked: string | null;
   issue_categories: string[];
   created_at: Date;
   feedback_text: string | null;
@@ -117,6 +119,8 @@ export interface NewSubmission {
   occurred_on: string;
   user_id: number | null;
   email: string | null;
+  /** Already masked by maskEmail(); CX and beta reports only. */
+  email_masked: string | null;
   issue_categories: string[];
   feedback_text: string | null;
   device_serial: string | null;
@@ -254,7 +258,7 @@ export function buildWhere(f: Partial<StatsFilters>, alias = 's'): { where: stri
   return { where: where.length ? 'where ' + where.join(' and ') : '', vals };
 }
 
-const COLUMNS = `id, ref, feature_key, is_positive, occurred_on::text as occurred_on, user_id, email, issue_categories,
+const COLUMNS = `id, ref, feature_key, is_positive, occurred_on::text as occurred_on, user_id, email, email_masked, issue_categories,
   created_at, feedback_text, device_serial, details, screenshots, environment, platform, app_version, build_number, build_channel, firmware_version, os_version,
   device_id, session_id, idempotency_key, schema_version, is_test,
   origin, submitted_via, cx_ref, cx_url, cx_channel, cx_agent, cx_transcript,
@@ -294,7 +298,7 @@ export class FeedbackRepo {
       s.client.firmware_version ?? null, s.client.os_version ?? null, s.client.device_id ?? null,
       s.client.session_id ?? null, s.idempotency_key, s.schema_version, s.is_test,
       s.origin, s.submitted_via, s.cx?.ref ?? null, s.cx?.url ?? null, s.cx?.channel ?? null, s.cx?.agent ?? null, s.cx?.transcript ?? null,
-      s.sprint_id,
+      s.sprint_id, s.email_masked,
     ];
     // No conflict target: either unique guard (idempotency key, CX ticket + feature) means "already filed".
     const inserted = await this.db.query<SubmissionRow>(
@@ -302,9 +306,9 @@ export class FeedbackRepo {
          (feature_key, is_positive, occurred_on, user_id, email, issue_categories, feedback_text, device_serial, details, screenshots,
           environment, platform, app_version, build_number, build_channel, firmware_version, os_version, device_id, session_id,
           idempotency_key, schema_version, is_test,
-          origin, submitted_via, cx_ref, cx_url, cx_channel, cx_agent, cx_transcript, sprint_id)
+          origin, submitted_via, cx_ref, cx_url, cx_channel, cx_agent, cx_transcript, sprint_id, email_masked)
        values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,coalesce($11, 'stage'),$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
-               $23,$24,$25,$26,$27,$28,$29,$30)
+               $23,$24,$25,$26,$27,$28,$29,$30,$31)
        on conflict do nothing
        returning ${COLUMNS}`,
       params,

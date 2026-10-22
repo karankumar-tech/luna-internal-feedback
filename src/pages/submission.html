@@ -45,6 +45,7 @@
   .chip { font-family: var(--mono); font-size: 11px; line-height: 16px; padding: 1px 6px; border-radius: var(--r-xs); background: var(--brief); color: var(--black); white-space: nowrap; display: inline-block; }
   .chip.test { background: var(--yellow); letter-spacing: .08em; font-size: 10px; }
   .chip.cx { background: var(--magenta); color: var(--white); letter-spacing: .08em; font-size: 10px; }
+  .chip.beta { letter-spacing: .08em; font-size: 10px; }
   .refno { font-family: var(--mono); font-weight: 500; letter-spacing: 0; margin-right: 10px; }
   .kind .kref { font-family: var(--mono); font-size: 11px; color: var(--gray-dark); }
   .ro { display: none !important; }
@@ -494,11 +495,13 @@
     $('title').replaceChildren(
       el('span', 'refno', r.ref), el('span', null, f.label + ' · '), el('span', 'res ' + (r.is_positive ? 'ok' : 'bad'), r.is_positive ? 'Working fine' : 'Issue'),
       ...(r.origin === 'cx' ? [el('span', null, ' '), el('span', 'chip cx', 'CX')] : []),
+      ...(r.origin === 'beta' ? [el('span', null, ' '), Object.assign(el('span', 'chip beta', 'BETA'), { title: 'Sent by a production customer on the beta list' })] : []),
       ...(r.is_test ? [el('span', null, ' '), el('span', 'chip test', 'TEST')] : []));
     const meta = $('meta'); meta.replaceChildren();
     const m = (k, v) => { const s = el('span'); s.appendChild(el('span', null, k + ' ')); s.appendChild(el('b', null, v)); meta.appendChild(s); };
     m('occurred', shortDate(r.occurred_on)); m('submitted', istStamp(r.created_at));
     if (r.origin === 'cx') { m('CX ticket', r.cx_ref || '—'); m('ring', r.device_serial || '—'); }
+    else if (r.origin === 'beta') { m('beta user', r.beta_name ? `${r.beta_name} · ${r.user_id}` : String(r.user_id)); m('ring', r.device_serial || '—'); }
     else {
       // Named when the email belongs to a dashboard account, else the part before @; the id itself is in the Reporter card.
       const acct = (state.people || []).find((x) => x.email === (r.email || '').toLowerCase());
@@ -520,14 +523,22 @@
     const field = (k) => f.fields.find((x) => x.key === k) || { label: k };
     dl($('details'), det.length ? det.map(([k, v]) => { const fd = field(k); const named = fd.optionLabels && fd.optionLabels[v]; return [fd.label, named || v, !named]; }) : [['—', 'none entered']]);
     if (r.origin === 'cx') {
-      // A customer: no email is ever stored. The CX tool holds their contact details.
+      // A customer: their email is only ever kept masked. The CX tool holds their contact details.
       dl($('reporter'), [
         ['Reported by', 'Customer support' + (r.cx_agent ? ' · ' + r.cx_agent : '')],
         ['CX ticket', r.cx_url ? cxLink(r) : r.cx_ref, true], ['Channel', r.cx_channel],
         ['Ring serial', r.device_serial, true], ['Luna user ID', r.user_id || 'not resolved from the ring yet', true],
+        ['Email (masked)', r.email_masked || 'not sent', !!r.email_masked],
         ['Occurred on', r.occurred_on, true], ['Submitted (IST)', r.created_at_ist, true], ['Reference', r.ref, true],
       ]);
       if (r.cx_transcript) { $('reporter').appendChild(el('dt', null, 'Customer\'s words')); $('reporter').appendChild(el('dd', 'quote', r.cx_transcript)); }
+    } else if (r.origin === 'beta') {
+      // A production customer on the beta list: like CX, their email is only ever kept masked.
+      dl($('reporter'), [
+        ['Reported by', 'A beta user, from the Luna app'], ['Name', r.beta_name || 'not named in Settings'], ['Luna user ID', r.user_id, true],
+        ['Email (masked)', r.email_masked || 'not sent', !!r.email_masked], ['Ring serial', r.device_serial || 'not sent', true],
+        ['Occurred on', r.occurred_on, true], ['Submitted (IST)', r.created_at_ist, true], ['Reference', r.ref, true], ['Record', r.id, true],
+      ]);
     } else {
       dl($('reporter'), [['User ID', r.user_id, true], ['Email', r.email], ['Device serial', r.device_serial, true], ['Occurred on', r.occurred_on, true], ['Submitted (IST)', r.created_at_ist, true], ['Filed from', r.submitted_via === 'dashboard' ? 'the dashboard' : 'the Luna app'], ['Reference', r.ref, true], ['Record', r.id, true]]);
     }
@@ -553,7 +564,7 @@
     $('btnShots').title = shots.length >= max ? `A report holds at most ${max} screenshots. Remove one to add another.` : `Up to ${max} per report; resized so the longest side is 1600 px`;
     $('shotsEmpty').hidden = shots.length > 0 || pendingShots.length > 0 || !adding;
     const added = shots.filter((sc) => sc.added_by).length; const sent = shots.length - added;
-    const by = r.origin === 'cx' ? 'the CX tool' : 'the tester';
+    const by = r.origin === 'cx' ? 'the CX tool' : r.origin === 'beta' ? 'the beta user' : 'the tester';
     const sub = [];
     if (adding) sub.push(shots.length ? `${shots.length} of ${max}` : `None yet · up to ${max}`);
     if (shots.length) {
@@ -867,7 +878,7 @@
   });
 
   async function askReporter(questions) {
-    if (!confirm(`Send these ${questions.length} question(s) ${state.sub.origin === 'cx' ? 'to the customer through CX' : 'to the tester'} and mark the report Needs info?\n\n• ${questions.join('\n• ')}`)) return;
+    if (!confirm(`Send these ${questions.length} question(s) ${state.sub.origin === 'cx' ? 'to the customer through CX' : state.sub.origin === 'beta' ? 'to the beta user' : 'to the tester'} and mark the report Needs info?\n\n• ${questions.join('\n• ')}`)) return;
     try { state.sub = await api(`/v1/admin/submissions/${id}/ask-reporter`, { method: 'POST', body: JSON.stringify({ questions }) }); renderSubmission(); renderDiagnosis(); loadActivity(); toast('Asked. The report is waiting on the reporter.'); }
     catch (err) { toast('Could not ask: ' + err.message); }
   }
@@ -876,7 +887,7 @@
   /** "set the X to B (was A)" or "cleared the X (was A)"; `name` turns a stored value into its label. */
   const changed = (what, name = (v) => v) => (e) => e.to_value ? `set ${what} to ${name(e.to_value)}${e.from_value ? ` (was ${name(e.from_value)})` : ''}` : `cleared ${what} (was ${name(e.from_value)})`;
   const ACTION_TEXT = {
-    created: (e) => e.to_value === 'cx' ? 'filed it from the CX tool' : 'reported it',
+    created: (e) => e.to_value === 'cx' ? 'filed it from the CX tool' : e.to_value === 'beta' ? 'reported it as a beta user' : 'reported it',
     status: (e) => `moved it ${label(e.from_value)} → ${label(e.to_value)}`,
     assign: (e) => (e.to_value ? `assigned it to ${nameOf(e.to_value)}` : 'unassigned it') + (e.note ? ` (${e.note})` : ''),
     priority: (e) => e.to_value ? `set priority ${e.to_value.toUpperCase()}` : 'cleared the priority',
@@ -1106,6 +1117,7 @@
       cb.addEventListener('change', renderSimilarActions); pick.appendChild(cb); tr.appendChild(pick);
       const ref = el('td', 'ref'); const a = el('a', null, r.ref); a.href = '/dashboard/submissions/' + encodeURIComponent(r.ref); ref.appendChild(a);
       if (r.origin === 'cx') { ref.appendChild(document.createTextNode(' ')); ref.appendChild(el('span', 'chip cx', 'CX')); }
+      if (r.origin === 'beta') { ref.appendChild(document.createTextNode(' ')); ref.appendChild(el('span', 'chip beta', 'BETA')); }
       ref.appendChild(el('div', 'tertiary', shortDate(r.occurred_on))); tr.appendChild(ref);
       tr.appendChild(el('td', 'pct', Math.round(r.strength * 100) + '%'));
       const why = el('td'); const w = el('div', 'why');
@@ -1298,10 +1310,10 @@
       body.appendChild(ul);
     }
     if (d.questions_for_tester && d.questions_for_tester.length) {
-      body.appendChild(el('h3', null, state.sub.origin === 'cx' ? 'Questions for the customer' : 'Questions for the tester'));
+      body.appendChild(el('h3', null, state.sub.origin === 'cx' ? 'Questions for the customer' : state.sub.origin === 'beta' ? 'Questions for the beta user' : 'Questions for the tester'));
       const ul = el('ul', 'q'); for (const q of d.questions_for_tester) ul.appendChild(el('li', null, q)); body.appendChild(ul);
       if (can('manage_triage') && state.sub.status !== 'needs_info') {
-        const ask = el('button', 'btn small', state.sub.origin === 'cx' ? 'Ask the customer (through CX)' : 'Ask the tester');
+        const ask = el('button', 'btn small', state.sub.origin === 'cx' ? 'Ask the customer (through CX)' : state.sub.origin === 'beta' ? 'Ask the beta user' : 'Ask the tester');
         ask.type = 'button'; ask.title = 'Posts these questions as a note and sets the status to Needs info';
         ask.addEventListener('click', () => askReporter(d.questions_for_tester));
         body.appendChild(ask);
@@ -1394,6 +1406,7 @@
     const status = (TRIAGE.find((t) => t[0] === r.status) || [, r.status])[1];
     const parts = [r.ref, f.label, r.issue_categories.map(catLabel).join(', ') || (r.is_positive ? 'Working fine' : 'Issue'), status];
     if (r.origin === 'cx') parts.push('CX ' + (r.cx_ref || ''));
+    if (r.origin === 'beta') parts.push('Beta user ' + (r.beta_name ? `${r.beta_name} (${r.user_id})` : r.user_id));
     if (r.environment !== 'stage') parts.push(r.environment);
     const linkedKinds = state.kinds.filter((k) => k.state === 'linked');
     if (linkedKinds.length) parts.push(linkedKinds.map((k) => `${k.ref} ${k.title}${k.counts ? ` (reported ${k.counts.count}×)` : ''}`).join('; '));

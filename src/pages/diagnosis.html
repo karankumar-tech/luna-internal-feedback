@@ -83,7 +83,7 @@
     </label>
     <label class="field"><span>From</span><input type="date" id="fFrom"></label>
     <label class="field"><span>To</span><input type="date" id="fTo"></label>
-    <label class="field"><span>Source</span><select id="fOrigin"><option value="">CX + internal</option><option value="cx">CX (customers)</option><option value="internal">Internal testers</option></select></label>
+    <label class="field"><span>Source</span><select id="fOrigin"><option value="">Every source</option><option value="cx">CX (customers)</option><option value="beta">Beta users</option><option value="internal">Internal testers</option></select></label>
     <label class="field"><span>Data</span><select id="fTest"><option value="false">Real only</option><option value="true">Real + test</option></select></label>
   </section>
 
@@ -253,7 +253,7 @@
     table($('tReview'), [{ h: 'side', render: (r) => el('span', 'side ' + (r.side || 'other'), SIDE_LABEL[r.side] || r.side || '—') }, { h: 'agree', k: 'agree', num: true }, { h: 'disagree', k: 'disagree', num: true }, { h: 'unsure', k: 'unsure', num: true }], o.review_by_side, 'No reviews yet. Use Agree / Disagree on a submission page to calibrate the model.');
 
     table($('tAttention'), [
-      { h: 'report', render: (r) => el('span', 'mono', r.ref) }, { h: 'when', render: (r) => shortDate(r.occurred_on) }, { h: 'feature', render: (r) => r.origin === 'cx' ? r.feature_key + ' · CX' : r.feature_key }, { h: 'status', render: (r) => r.status }, { h: 'side', render: (r) => r.side ? el('span', 'side ' + r.side, SIDE_LABEL[r.side] || r.side) : '—' }, { h: 'severity', render: (r) => el('span', 'sev ' + (r.severity || ''), r.severity || '—') },
+      { h: 'report', render: (r) => el('span', 'mono', r.ref) }, { h: 'when', render: (r) => shortDate(r.occurred_on) }, { h: 'feature', render: (r) => r.origin === 'cx' ? r.feature_key + ' · CX' : r.origin === 'beta' ? r.feature_key + ' · Beta' : r.feature_key }, { h: 'status', render: (r) => r.status }, { h: 'side', render: (r) => r.side ? el('span', 'side ' + r.side, SIDE_LABEL[r.side] || r.side) : '—' }, { h: 'severity', render: (r) => el('span', 'sev ' + (r.severity || ''), r.severity || '—') },
       { h: 'conf', num: true, render: (r) => r.confidence == null ? '—' : Math.round(r.confidence * 100) + '%' }, { h: 'review', render: (r) => r.review_verdict || '—' }, { h: 'summary', render: (r) => (r.summary || '').slice(0, 140) + ((r.summary || '').length > 140 ? '…' : '') },
     ], o.attention, 'Nothing needs attention right now.', (r) => { location.href = '/dashboard/submissions/' + encodeURIComponent(r.ref); });
 

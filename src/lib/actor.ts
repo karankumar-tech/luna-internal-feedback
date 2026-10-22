@@ -17,7 +17,7 @@ export interface Actor {
   name: string | null;
   role: Role;
   /** Which credential got them in. */
-  via: 'admin_key' | 'app_key' | 'cx_key' | 'session' | 'cron';
+  via: 'admin_key' | 'app_key' | 'cx_key' | 'beta_key' | 'session' | 'cron';
 }
 
 /** What a role is allowed to do. Read access to feedback and diagnoses is common to all. */
@@ -56,6 +56,8 @@ export const PERMISSIONS = {
   manage_sprints: ['admin', 'qc'],
   /** Delete a finished sprint together with the closed issues in it. */
   delete_sprints: ['admin'],
+  /** Add and remove the production users who may send reports from the app (the beta list). */
+  manage_beta_users: ['admin', 'qc'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

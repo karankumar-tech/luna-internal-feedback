@@ -7,6 +7,16 @@ const EnvSchema = z.object({
   ADMIN_API_KEY: z.string().min(16, 'ADMIN_API_KEY must be at least 16 chars'),
   /** Sent by the CX team's tool as x-api-key. It can only file and read CX reports. Unset = /v1/cx/* refuses everyone but the admin key. */
   CX_API_KEY: z.preprocess((v) => (v === '' ? undefined : v), z.string().min(16, 'CX_API_KEY must be at least 16 chars').optional()),
+  /**
+   * Built into the released Luna app as x-api-key, for beta users. It can only ask whether a user is
+   * on the beta list and file their reports. Unset = /v1/beta/* refuses everyone but the admin key.
+   */
+  BETA_API_KEY: z.preprocess((v) => (v === '' ? undefined : v), z.string().min(16, 'BETA_API_KEY must be at least 16 chars').optional()),
+  /**
+   * How long one server instance trusts its in-memory copy of the beta list. An edit refreshes the
+   * instance that made it at once; others (Vercel runs several) catch up within this.
+   */
+  BETA_USERS_CACHE_TTL_MS: z.coerce.number().int().nonnegative().default(5 * 60_000),
   DASHBOARD_KEY: z.string().min(16, 'DASHBOARD_KEY must be at least 16 chars'),
   DASHBOARD_SESSION_DAYS: z.coerce.number().int().positive().max(365).default(30),
   PORT: z.coerce.number().int().positive().default(3000),
@@ -82,10 +92,14 @@ export function loadConfig(overrides: Partial<Record<keyof Config, string>> = {}
     const lines = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`);
     throw new Error(`Invalid environment configuration:\n${lines.join('\n')}`);
   }
-  // The key decides whether a report is internal or CX, so the two callers must never share one.
+  // The key decides whether a report is internal, CX or beta, so no two callers may share one.
   const cx = parsed.data.CX_API_KEY;
   if (cx && (cx === parsed.data.APP_API_KEY || cx === parsed.data.ADMIN_API_KEY)) {
     throw new Error('Invalid environment configuration:\n  - CX_API_KEY: must differ from APP_API_KEY and ADMIN_API_KEY');
+  }
+  const beta = parsed.data.BETA_API_KEY;
+  if (beta && (beta === parsed.data.APP_API_KEY || beta === parsed.data.ADMIN_API_KEY || beta === cx)) {
+    throw new Error('Invalid environment configuration:\n  - BETA_API_KEY: must differ from APP_API_KEY, ADMIN_API_KEY and CX_API_KEY');
   }
   if (Object.keys(overrides).length === 0) cached = parsed.data;
   return parsed.data;

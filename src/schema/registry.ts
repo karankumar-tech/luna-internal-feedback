@@ -146,9 +146,10 @@ export const DEFAULT_ENVIRONMENT: Environment = 'stage';
 
 /**
  * Who a report came from. Internal testers report through the app; CX files customer problems
- * from its own tool through /v1/cx/*. The API key decides which, never the request body.
+ * from its own tool through /v1/cx/*; beta users (production customers on the beta list) report
+ * from the released app through /v1/beta/*. The API key decides which, never the request body.
  */
-export const ORIGINS = ['internal', 'cx'] as const;
+export const ORIGINS = ['internal', 'cx', 'beta'] as const;
 export type Origin = (typeof ORIGINS)[number];
 
 /** How the customer reached CX. */
@@ -157,6 +158,9 @@ export type CxChannel = (typeof CX_CHANNELS)[number];
 
 /** A CX report is about a customer on the released app unless the CX tool says otherwise. */
 export const DEFAULT_CX_ENVIRONMENT: Environment = 'production';
+
+/** Beta users run the released app, so their reports are production ones unless the app says otherwise. */
+export const DEFAULT_BETA_ENVIRONMENT: Environment = 'production';
 
 /** Optional client context the app attaches; stored as columns for dashboard slicing. */
 export const CLIENT_CONTEXT_KEYS = [

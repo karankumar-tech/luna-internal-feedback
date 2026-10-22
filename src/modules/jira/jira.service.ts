@@ -96,7 +96,7 @@ export class JiraService {
     const summary = buildSummary(sub, featureLabel, categories, kinds.map((k) => k.title));
     const description = buildDescription({
       dashboardUrl: `${this.d.publicBaseUrl.replace(/\/+$/, '')}/dashboard/submissions/${sub.ref}`,
-      summaryLine: `${sub.ref}: reported ${sub.origin === 'cx' ? 'by customer support' : 'through Luna internal feedback'} for ${sub.occurred_on} (IST).`,
+      summaryLine: `${sub.ref}: reported ${sub.origin === 'cx' ? 'by customer support' : sub.origin === 'beta' ? 'by a beta user through the Luna app' : 'through Luna internal feedback'} for ${sub.occurred_on} (IST).`,
       reporter: {
         user_id: sub.user_id === null ? null : Number(sub.user_id), email: sub.email, environment: sub.environment, platform: sub.platform,
         origin: sub.origin, cx_ref: sub.cx_ref, cx_url: sub.cx_url, device_serial: sub.device_serial,
@@ -220,6 +220,6 @@ export class JiraService {
 function buildSummary(sub: SubmissionRow, featureLabel: string, categories: string[], kinds: string[]): string {
   const lead = kinds[0] ?? categories[0] ?? sub.feedback_text?.trim().split(/\s+/).slice(0, 10).join(' ') ?? 'Issue reported';
   const env = sub.environment === 'production' ? '' : ` [${sub.environment}]`;
-  const cx = sub.origin === 'cx' ? ' [CX]' : '';
+  const cx = sub.origin === 'cx' ? ' [CX]' : sub.origin === 'beta' ? ' [Beta]' : '';
   return `[${sub.ref}] [Luna${env}]${cx} ${featureLabel}: ${lead}`.slice(0, 250);
 }

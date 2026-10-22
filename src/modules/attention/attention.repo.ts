@@ -1,12 +1,13 @@
 import type { Db } from '../../db/pool.js';
 import { buildWhere, personSql, type CommonFilters } from '../feedback/feedback.repo.js';
+import type { Origin } from '../../schema/registry.js';
 
 /** One open issue with what the attention page needs to decide whether, and how urgently, to show it. */
 export interface OpenIssueRow {
   id: string;
   ref: string;
   feature_key: string;
-  origin: 'internal' | 'cx';
+  origin: Origin;
   environment: string;
   status: string;
   created_at: Date;

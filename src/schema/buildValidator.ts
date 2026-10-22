@@ -187,12 +187,13 @@ const SPRINT_ON_POSITIVE = z.unknown().refine((v) => v === null || v === undefin
 
 export type SubmissionInput = z.infer<ReturnType<typeof buildSubmissionValidator>['strict']>;
 
-/** Common fields as the CX tool sends them: no email, and the Luna user id is optional (resolved from the serial). */
+/** Common fields as the CX tool sends them: the email optional (stored masked), and the Luna user id optional (resolved from the serial). */
 const CX_COMMON_FIELDS: readonly FieldDef[] = COMMON_FIELDS
   .filter((f) => f.key !== 'email' && f.key !== 'device_serial')
   .map((f) => (f.key === 'user_id' ? { ...f, required: false } : f));
 
-export const CX_EMAIL_REFUSED = 'is not accepted on CX reports: customer email addresses are never stored';
+/** A customer's email, CX or beta: optional, and only ever stored masked (see maskEmail). */
+const CUSTOMER_EMAIL = z.string().trim().max(254, 'must be at most 254 characters').nullable().optional();
 
 /**
  * The CX tool's contract (POST /v1/cx/feedback/:feature). The same feature fields as the app, but
@@ -201,8 +202,7 @@ export const CX_EMAIL_REFUSED = 'is not accepted on CX reports: customer email a
 export function buildCxSubmissionValidator(feature: FeatureKey, ctx: ValidatorContext) {
   const extra = {
     ...sharedExtras(feature, ctx),
-    // Named explicitly rather than left to .strict(), so the integration is told why.
-    email: z.undefined({ errorMap: () => ({ message: CX_EMAIL_REFUSED }) }),
+    email: CUSTOMER_EMAIL,
     sprint: z.undefined({ errorMap: () => ({ message: 'is not accepted on CX reports: QC can move a CX report into a sprint from the dashboard' }) }),
     device_serial: z.string({ required_error: 'is required: the ring or band serial identifies a CX report' })
       .trim().min(3, 'must be at least 3 characters').max(64, 'must be at most 64 characters'),
@@ -221,6 +221,26 @@ export function buildCxSubmissionValidator(feature: FeatureKey, ctx: ValidatorCo
 }
 
 export type CxSubmissionInput = z.infer<ReturnType<typeof buildCxSubmissionValidator>['strict']>;
+
+/** Common fields as the released app sends them for a beta user: everything but the email. */
+const BETA_COMMON_FIELDS: readonly FieldDef[] = COMMON_FIELDS.filter((f) => f.key !== 'email');
+
+/**
+ * A beta user's report from the released app (POST /v1/beta/feedback/:feature): the internal form,
+ * except that the email is optional and only stored masked (real customers' addresses never are).
+ * The Luna user id is required: it is what the beta list holds.
+ */
+export function buildBetaSubmissionValidator(feature: FeatureKey, ctx: ValidatorContext) {
+  const extra = {
+    ...sharedExtras(feature, ctx),
+    email: CUSTOMER_EMAIL,
+    sprint: z.undefined({ errorMap: () => ({ message: 'is not accepted on beta reports: QC can move one into a sprint from the dashboard' }) }),
+  };
+  return withPositiveVariant(
+    fieldsToObject(BETA_COMMON_FIELDS, ctx).extend(extra),
+    fieldsToObject(BETA_COMMON_FIELDS, ctx, true).extend(extra),
+  );
+}
 
 /** Flattens a ZodError into the API's issue list. */
 export function zodIssues(error: z.ZodError): { path: string; message: string }[] {

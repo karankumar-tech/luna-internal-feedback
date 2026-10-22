@@ -1,6 +1,7 @@
 import type { ChatMessage } from './openrouter.js';
 import { TAGS, ROOT_CAUSE_SIDES } from './schema.js';
 import type { LogDeviceEntry } from '../logs/types.js';
+import type { Origin } from '../../../schema/registry.js';
 
 export interface PromptInput {
   feature: { key: string; label: string };
@@ -10,8 +11,8 @@ export interface PromptInput {
     issue_categories: { key: string; label: string }[];
     feedback_text: string | null;
     details: Record<string, unknown>;
-    /** 'cx' when customer support relayed a customer's problem rather than a tester reporting their own. */
-    origin?: 'internal' | 'cx';
+    /** 'cx' when customer support relayed a customer's problem rather than a tester reporting their own; 'beta' for a customer on the beta list reporting their own. */
+    origin?: Origin;
     detailLabels: Record<string, string>;
     platform: string | null;
     app_version: string | null;
@@ -66,13 +67,14 @@ export function buildMessages(input: PromptInput): ChatMessage[] {
   const s = input.submission;
   const d = input.device;
   const cx = s.origin === 'cx';
+  const beta = s.origin === 'beta';
   const user = `# Feedback
-${cx ? 'Source: relayed by customer support from a customer\'s message; the wording is second-hand and the date may be approximate.\n' : ''}Feature: ${input.feature.label} (${input.feature.key})
-Result reported by ${cx ? 'the customer' : 'tester'}: ${s.is_positive ? 'working fine' : 'ISSUE'}
+${cx ? 'Source: relayed by customer support from a customer\'s message; the wording is second-hand and the date may be approximate.\n' : ''}${beta ? 'Source: a beta user, a customer on the released app reporting their own experience rather than a trained tester.\n' : ''}Feature: ${input.feature.label} (${input.feature.key})
+Result reported by ${cx ? 'the customer' : beta ? 'the beta user' : 'tester'}: ${s.is_positive ? 'working fine' : 'ISSUE'}
 Issue categories: ${s.issue_categories.map((c) => `${c.label} [${c.key}]`).join(', ') || '(none)'}
 Date the issue occurred (IST): ${s.occurred_on}
-${cx ? 'Support agent\'s summary' : 'Tester\'s words'}: ${s.feedback_text ? JSON.stringify(s.feedback_text) : '(none)'}
-Feature details ${cx ? 'support entered' : 'the tester entered'}:
+${cx ? 'Support agent\'s summary' : beta ? 'Beta user\'s words' : 'Tester\'s words'}: ${s.feedback_text ? JSON.stringify(s.feedback_text) : '(none)'}
+Feature details ${cx ? 'support entered' : beta ? 'the beta user entered' : 'the tester entered'}:
 ${fmtDetails(s.details, s.detailLabels)}
 
 # App-reported context
