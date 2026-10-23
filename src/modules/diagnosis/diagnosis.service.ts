@@ -18,9 +18,9 @@ import { runInBackground } from './background.js';
 import { withTransformation } from '../uploads/imagekit.js';
 import { isKnownEventCode, matchCatalog, renderCatalogBrief } from './knowledge/catalog.js';
 import type { KindsService } from '../kinds/kinds.service.js';
+import type { DiagnosisModel } from '../settings/ai-models.js';
 
 export interface DiagnosisConfig {
-  model: string;
   auto: boolean;
   dailyBudgetUsd: number;
   timeZone: string;
@@ -41,6 +41,8 @@ export interface DiagnosisDeps {
    */
   logsByEnv?: Partial<Record<Environment, LogsClient | null>>;
   ai: OpenRouterClient | null;
+  /** The model to call, asked on every run (Settings can change it). Without it, the client's own model, sent screenshots. */
+  model?: () => Promise<DiagnosisModel>;
   /** Optional: when present, the model's suggested issue kind is created and linked. */
   kinds?: KindsService | null;
   config: DiagnosisConfig;
@@ -167,6 +169,7 @@ export class DiagnosisService {
     if (!job) return { submission_id: submissionId, status: 'skipped', reason: 'already running' };
 
     const started = Date.now();
+    const model = await this.model();
     await repo.setStatus(submissionId, 'running', { trigger, error: null });
 
     try {
@@ -181,12 +184,12 @@ export class DiagnosisService {
         }
       }
 
-      const outcome = await this.diagnose(sub, trigger, started);
+      const outcome = await this.diagnose(sub, trigger, started, model);
       return outcome;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.d.log.error({ err, submissionId }, 'diagnosis failed');
-      await repo.addRun({ submission_id: submissionId, status: 'failed', trigger, model: this.d.config.model, prompt_tokens: null, completion_tokens: null, cost_usd: null, duration_ms: Date.now() - started, error: message.slice(0, 1000), verdict_snapshot: null });
+      await repo.addRun({ submission_id: submissionId, status: 'failed', trigger, model: model.id, prompt_tokens: null, completion_tokens: null, cost_usd: null, duration_ms: Date.now() - started, error: message.slice(0, 1000), verdict_snapshot: null });
       const retry = job.attempts < this.d.config.maxAttempts;
       await repo.finishJob(submissionId, retry ? 'queued' : 'failed', { error: message.slice(0, 500), runAfter: new Date(this.now().getTime() + 15 * 60_000) });
       await repo.setStatus(submissionId, 'failed', { error: message.slice(0, 1000), duration_ms: Date.now() - started, trigger });
@@ -236,7 +239,11 @@ export class DiagnosisService {
     return { submission_id: submissionId, status: 'no_logs', reason, diagnosis: row ? toDiagnosisDto(row) : undefined };
   }
 
-  private async diagnose(sub: SubmissionRow, trigger: 'auto' | 'manual', started: number): Promise<RunOutcome> {
+  private async model(): Promise<DiagnosisModel> {
+    return this.d.model ? this.d.model() : { id: this.d.ai!.model, images: true };
+  }
+
+  private async diagnose(sub: SubmissionRow, trigger: 'auto' | 'manual', started: number, model: DiagnosisModel): Promise<RunOutcome> {
     const repo = this.d.repo;
     const logs = this.logsFor(sub.environment)!;
     const ai = this.d.ai!;
@@ -297,10 +304,11 @@ export class DiagnosisService {
       },
       device: entry, excerpt: excerpt.excerpt, windowLabel: `${excerpt.window.label} (${new Date(excerpt.window.from + IST_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ')} → ${new Date(excerpt.window.to + IST_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ')} IST)`,
       coverage: excerpt.coverage,
-      screenshots: (sub.screenshots ?? []).map((x) => withTransformation(x.url, 'w-1024,q-80')),
+      // A model that cannot read images would refuse the whole request, so it gets none.
+      screenshots: model.images ? (sub.screenshots ?? []).map((x) => withTransformation(x.url, 'w-1024,q-80')) : [],
       catalogBrief, existingKinds,
     });
-    const completion = await ai.completeJson(messages, VERDICT_JSON_SCHEMA);
+    const completion = await ai.completeJson(messages, VERDICT_JSON_SCHEMA, { model: model.id });
     let verdict: Verdict;
     try {
       const json = JSON.parse(completion.text);

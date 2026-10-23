@@ -70,7 +70,36 @@
   .brow .by { grid-column: 1; font-size: 12px; line-height: 16px; color: var(--gray-dark); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .brow .btn { grid-column: 2; grid-row: 1 / span 2; }
   .brow.fresh .id::after { content: 'new'; margin-left: 8px; font-family: var(--sans); font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 0 5px; border-radius: var(--r-xs); background: var(--accent); color: var(--black); }
-  @media (max-width: 480px) { .mgrid { grid-template-columns: 1fr; } .beta-add { grid-template-columns: 1fr; } }
+  .models { margin-top: 14px; }
+  .mrow { display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; column-gap: 16px; align-items: center; padding: 12px 0; border-top: 1px solid var(--border-ghost); }
+  .mrow .role { font-weight: 600; }
+  .mrow .role small { display: block; font-weight: 400; font-size: 12px; line-height: 16px; color: var(--gray-dark); }
+  .mrow .what { min-width: 0; }
+  .mrow .nm { font-weight: 500; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .mrow .meta, .pfoot .meta { font-family: var(--mono); font-size: 12px; line-height: 18px; color: var(--gray-dark); overflow-wrap: anywhere; }
+  .mrow .acts { display: flex; gap: 6px; }
+  .chip.warn { background: var(--accent-soft); color: var(--accent-ink); }
+  .picker { margin: 0 0 12px; border: 1px solid var(--gray-light); border-radius: var(--r-l); overflow: hidden; background: var(--white); }
+  .picker .ptools { display: flex; gap: 8px; align-items: center; padding: 10px 12px; flex-wrap: wrap; }
+  .picker .ptools input[type=search] { flex: 1; min-width: 180px; }
+  .picker .ptools select { width: auto; }
+  .picker .phint { padding: 0 12px 8px; margin: 0; }
+  .plist { max-height: 360px; overflow-y: auto; border-top: 1px solid var(--gray-light); }
+  .prow { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; width: 100%; padding: 8px 12px; border: 0; border-top: 1px solid var(--border-ghost); background: none; text-align: left; cursor: pointer; }
+  .prow:first-child { border-top: 0; }
+  .prow:hover { background: var(--row-hover); }
+  .prow:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--black); }
+  .prow[aria-selected=true] { background: var(--accent-soft); }
+  .prow .pn { font-weight: 500; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+  .prow .pn .chip { font-size: 11px; line-height: 16px; padding: 0 6px; }
+  .prow .pid { grid-column: 1; font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--gray-dark); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .prow .pp { grid-column: 2; grid-row: 1 / span 2; align-self: center; text-align: right; font-family: var(--mono); font-size: 12px; line-height: 16px; white-space: nowrap; }
+  .prow .pp small { display: block; color: var(--gray-dark); font-size: 11px; }
+  .prow.current .pid::after { content: ' · in use'; color: var(--black); font-weight: 500; }
+  .pfoot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-top: 1px solid var(--gray-light); background: var(--bg); flex-wrap: wrap; }
+  .pfoot .what { min-width: 0; flex: 1; }
+  .pfoot .acts { display: flex; gap: 6px; }
+  @media (max-width: 480px) { .mgrid { grid-template-columns: 1fr; } .beta-add { grid-template-columns: 1fr; } .mrow { grid-template-columns: 1fr; row-gap: 6px; } .prow .pp small { display: none; } }
 </style>
 <link rel="stylesheet" href="/dashboard/assets/app.css">
 </head>
@@ -81,7 +110,7 @@
     <div>
       <nav class="crumbs" aria-label="Breadcrumb"><a href="/dashboard">Reports</a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg><span aria-current="page">Settings</span></nav>
       <h1>Settings</h1>
-      <p class="page-sub">Report categories, beta users, the AI diagnosis queue and test data.</p>
+      <p class="page-sub">Report categories, beta users, the AI diagnosis queue and its models, and test data.</p>
     </div>
   </div>
 
@@ -114,6 +143,21 @@
       <button class="btn small" id="btnRunPending" type="button">Run pending now</button>
     </div>
     <p class="stats" id="diagStats" style="margin-top:10px"></p>
+    <div class="models" id="models">
+      <div class="mrow">
+        <div class="role">Diagnosis<small>and similar issues</small></div>
+        <div class="what" id="mDiagnosis"><span class="note">Loading…</span></div>
+        <div class="acts" data-for="diagnosis" hidden></div>
+      </div>
+      <div id="pickDiagnosis"></div>
+      <div class="mrow">
+        <div class="role">Chat<small>follow-up questions</small></div>
+        <div class="what" id="mChat"></div>
+        <div class="acts" data-for="chat" hidden></div>
+      </div>
+      <div id="pickChat"></div>
+      <p class="note" id="modelNote"></p>
+    </div>
   </section>
 
   <section class="card" id="testdata">
@@ -293,6 +337,140 @@
     catch (err) { toast('Could not run: ' + err.message); } finally { b.disabled = false; b.textContent = old; }
   });
 
+  // ---------- AI models ----------
+  const models = { state: null, catalog: null, catalogErr: null, open: null };
+  const LABEL = { diagnosis: 'Diagnosis', chat: 'Chat' };
+  const perM = (n) => n === 0 ? 'free' : '$' + (n >= 10 ? n.toFixed(0) : n >= 0.1 ? n.toFixed(2) : String(+n.toPrecision(2)));
+  const priced = (m) => m.input_per_m !== null && m.output_per_m !== null;
+  const price = (m) => !priced(m) ? 'price varies' : m.input_per_m === 0 && m.output_per_m === 0 ? 'free' : `${perM(m.input_per_m)} in · ${perM(m.output_per_m)} out per 1M tokens`;
+  const money = (n) => n === 0 ? '$0' : n < 0.01 ? '$' + n.toPrecision(2) : '$' + n.toFixed(n < 1 ? 3 : 2);
+  const ctxLen = (n) => !n ? '' : n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M context` : `${Math.round(n / 1000)}K context`;
+  const info = (id) => (models.catalog || []).find((m) => m.id === id) || null;
+  /** What one diagnosis costs on this model, at the last 30 days' average tokens. Null without either. */
+  const perRun = (m) => { const r = models.state && models.state.recent; return r && m && priced(m) ? (r.input_tokens * m.input_per_m + r.output_tokens * m.output_per_m) / 1e6 : null; };
+  const issuesOf = (err) => err.body && err.body.error && err.body.error.issues ? err.body.error.issues.map((i) => i.message).join('; ') : err.message;
+
+  function renderModelRow(which) {
+    const s = models.state; const cur = s[which];
+    // With nothing chosen and no DIAGNOSIS_CHAT_MODEL, the chat uses whatever diagnoses.
+    const follows = which === 'chat' && !cur.set && !s.defaults.chat;
+    const m = info(cur.id);
+    const box = $(which === 'diagnosis' ? 'mDiagnosis' : 'mChat'); box.replaceChildren();
+    const nm = el('div', 'nm');
+    nm.appendChild(el('span', null, follows ? 'Same as diagnosis' : m ? m.name : cur.id));
+    if (!cur.set && !follows) nm.appendChild(el('span', 'chip', 'default')).title = `From ${which === 'diagnosis' ? 'OPENROUTER_MODEL' : 'DIAGNOSIS_CHAT_MODEL'}`;
+    if (which === 'diagnosis' && !cur.images) nm.appendChild(el('span', 'chip warn', 'no screenshots')).title = 'This model cannot read images, so diagnoses are sent without the report\'s screenshots';
+    if (m && m.expires) nm.appendChild(el('span', 'chip warn', 'retires ' + m.expires));
+    box.appendChild(nm);
+    const bits = [cur.id];
+    if (m) bits.push(price(m));
+    const each = which === 'diagnosis' ? perRun(m) : null;
+    if (each !== null) bits.push(`≈ ${money(each)} a diagnosis`);
+    box.appendChild(el('div', 'meta', bits.join(' · ')));
+
+    const acts = document.querySelector(`.acts[data-for="${which}"]`); acts.replaceChildren();
+    acts.hidden = !can('manage_ai_models');
+    if (acts.hidden) return;
+    const open = models.open === which;
+    const ch = el('button', 'btn small', open ? 'Close' : 'Change'); ch.type = 'button'; ch.setAttribute('aria-expanded', String(open));
+    ch.addEventListener('click', () => { models.open = open ? null : which; renderModels(); });
+    acts.appendChild(ch);
+    if (cur.set) {
+      const back = el('button', 'btn small', which === 'chat' && !s.defaults.chat ? 'Same as diagnosis' : 'Use default'); back.type = 'button';
+      back.title = which === 'chat' && !s.defaults.chat ? 'Chat with whichever model diagnoses' : `Back to ${s.defaults[which]}`;
+      back.addEventListener('click', () => saveModel(which, null, back));
+      acts.appendChild(back);
+    }
+  }
+
+  function renderPicker(which) {
+    const host = $(which === 'diagnosis' ? 'pickDiagnosis' : 'pickChat'); host.replaceChildren();
+    if (models.open !== which) return;
+    const wrap = el('div', 'picker'); host.appendChild(wrap);
+    if (!models.catalog) { wrap.appendChild(el('p', 'note phint', models.catalogErr ? 'Could not get OpenRouter\'s model list: ' + models.catalogErr : 'Getting OpenRouter\'s models…')).style.paddingTop = '10px'; return; }
+    // A diagnosis must come back as JSON against a schema; models that cannot do that are left out.
+    const eligible = which === 'diagnosis' ? models.catalog.filter((m) => m.structured) : models.catalog;
+    const r = models.state.recent || { input_tokens: 5000, output_tokens: 500 };
+    const sortCost = (m) => priced(m) ? r.input_tokens * m.input_per_m + r.output_tokens * m.output_per_m : Infinity;
+    const tools = el('div', 'ptools');
+    const q = el('input'); q.type = 'search'; q.placeholder = 'Search OpenRouter models by name or id'; q.setAttribute('aria-label', `Search models for ${LABEL[which].toLowerCase()}`);
+    const sort = el('select'); sort.setAttribute('aria-label', 'Order');
+    for (const [v, t] of [['new', 'Newest first'], ['cheap', 'Cheapest first'], ['name', 'By name']]) { const o = el('option', null, t); o.value = v; sort.appendChild(o); }
+    tools.append(q, sort); wrap.appendChild(tools);
+    const hint = el('p', 'note phint'); wrap.appendChild(hint);
+    const list = el('div', 'plist'); list.setAttribute('role', 'listbox'); list.setAttribute('aria-label', `Models for ${LABEL[which].toLowerCase()}`); wrap.appendChild(list);
+    const foot = el('div', 'pfoot'); foot.hidden = true; wrap.appendChild(foot);
+    const current = models.state[which].id;
+
+    const pick = (m, row) => {
+      list.querySelectorAll('[aria-selected="true"]').forEach((x) => x.setAttribute('aria-selected', 'false'));
+      row.setAttribute('aria-selected', 'true');
+      foot.replaceChildren(); foot.hidden = false;
+      const what = el('div', 'what');
+      what.appendChild(el('div', null, m.name)).style.fontWeight = '600';
+      const bits = [m.id, price(m)];
+      const each = which === 'diagnosis' ? perRun(m) : null, now = which === 'diagnosis' ? perRun(info(current)) : null;
+      if (each !== null) bits.push(`≈ ${money(each)} a diagnosis` + (now ? ` (now ${money(now)})` : ''));
+      if (which === 'diagnosis' && !m.images) bits.push('cannot read screenshots: diagnoses go without them');
+      what.appendChild(el('div', 'meta', bits.join(' · ')));
+      const acts = el('div', 'acts');
+      const inUse = m.id === current && models.state[which].set;
+      const use = el('button', 'btn primary', inUse ? 'In use' : `Use for ${LABEL[which].toLowerCase()}`); use.type = 'button'; use.disabled = inUse;
+      use.addEventListener('click', () => saveModel(which, m.id, use));
+      acts.appendChild(use); foot.append(what, acts);
+    };
+    const draw = () => {
+      const t = q.value.trim().toLowerCase();
+      const rows = t ? eligible.filter((m) => m.id.toLowerCase().includes(t) || m.name.toLowerCase().includes(t)) : eligible.slice();
+      if (sort.value === 'cheap') rows.sort((a, b) => sortCost(a) - sortCost(b));
+      else if (sort.value === 'name') rows.sort((a, b) => a.name.localeCompare(b.name));
+      hint.textContent = (t ? `${fmtN(rows.length)} of ` : '') + `${fmtN(eligible.length)} models` + (which === 'diagnosis' ? ` that can return a diagnosis (${fmtN(models.catalog.length - eligible.length)} more cannot answer in JSON)` : '') + '. Prices are per million tokens, in and out.';
+      list.replaceChildren(); foot.hidden = true;
+      for (const m of rows) {
+        const row = el('button', 'prow' + (m.id === current ? ' current' : '')); row.type = 'button'; row.setAttribute('role', 'option'); row.setAttribute('aria-selected', 'false');
+        const pn = el('span', 'pn'); pn.appendChild(el('span', null, m.name));
+        if (which === 'diagnosis' && !m.images) pn.appendChild(el('span', 'chip warn', 'no screenshots'));
+        if (m.expires) pn.appendChild(el('span', 'chip warn', 'retires ' + m.expires));
+        const pp = el('span', 'pp', !priced(m) ? 'varies' : m.input_per_m === 0 && m.output_per_m === 0 ? 'free' : `${perM(m.input_per_m)} / ${perM(m.output_per_m)}`);
+        const each = which === 'diagnosis' ? perRun(m) : null;
+        pp.appendChild(el('small', null, each ? `≈ ${money(each)} each` : ctxLen(m.context_length)));
+        row.append(pn, el('span', 'pid', m.id), pp);
+        row.addEventListener('click', () => pick(m, row));
+        list.appendChild(row);
+      }
+      if (!rows.length) list.appendChild(el('p', 'note phint', 'No model matches.')).style.paddingTop = '10px';
+    };
+    q.addEventListener('input', draw); sort.addEventListener('change', draw);
+    draw(); q.focus();
+  }
+
+  function renderModels() {
+    if (!models.state) return;
+    renderModelRow('diagnosis'); renderModelRow('chat'); renderPicker('diagnosis'); renderPicker('chat');
+    const s = models.state; const notes = [];
+    if (!s.enabled) notes.push('Nothing calls a model until OPEN_ROUTER_KEY is set.');
+    if (s.updated_at) notes.push(`Last changed by ${s.updated_by ? s.updated_by.split('@')[0] : 'someone'} on ${shortDay(s.updated_at)}.`);
+    else notes.push('Both are the defaults from OPENROUTER_MODEL' + (s.defaults.chat ? ' and DIAGNOSIS_CHAT_MODEL.' : '.'));
+    if (s.recent) notes.push(`Estimates use the last 30 days' average diagnosis, ${fmtN(s.recent.input_tokens)} tokens in and ${fmtN(s.recent.output_tokens)} out.`);
+    if (models.catalogErr && !models.open) notes.push('Model names and prices are missing: ' + models.catalogErr);
+    if (!can('manage_ai_models')) notes.push(`Only admins can change the models.`);
+    $('modelNote').textContent = notes.join(' ');
+  }
+  async function saveModel(which, id, btn) {
+    btn.disabled = true;
+    try {
+      models.state = await api('/v1/admin/ai-models', { method: 'PATCH', body: JSON.stringify({ [which]: id }) });
+      models.open = null; renderModels();
+      toast(id ? `${LABEL[which]} now uses ${id}` : `${LABEL[which]} is back to ${which === 'chat' && !models.state.defaults.chat ? 'the diagnosis model' : 'the default'}`);
+    } catch (err) { btn.disabled = false; toast(issuesOf(err)); }
+  }
+  async function loadModels() {
+    try { models.state = await api('/v1/admin/ai-models'); }
+    catch (err) { $('mDiagnosis').replaceChildren(el('span', 'note err', 'Could not load: ' + err.message)); return; }
+    renderModels();
+    api('/v1/admin/ai-models/available').then((r) => { models.catalog = r.items; }).catch((err) => { models.catalogErr = err.message; }).finally(renderModels);
+  }
+
   // ---------- test data ----------
   async function loadTestCount() {
     try { const { count } = await api('/v1/admin/test-data'); $('testCount').textContent = `${fmtN(count)} test report${count === 1 ? '' : 's'}`; $('btnDeleteTest').disabled = count === 0 || !can('delete_test_data'); }
@@ -315,7 +493,7 @@
     $('btnDeleteTest').hidden = !can('delete_test_data');
     $('betaAdd').hidden = !can('manage_beta_users');
     if (!can('manage_beta_users')) $('betaNote').textContent = `Your role (${me.role}) can see the beta list but not change it.`;
-    loadCategories(); loadBeta(); loadDiag(); loadTestCount();
+    loadCategories(); loadBeta(); loadDiag(); loadModels(); loadTestCount();
     // Diagnoses due while nobody was looking: run a few now, as the dashboard used to on every visit.
     api('/v1/admin/diagnoses/run-pending?limit=3', { method: 'POST' }).then((r) => { if (r.ran) { toast(`Diagnosed ${r.ran} pending`); loadDiag(); } }).catch(() => {});
   })().catch((err) => toast('Could not start: ' + err.message));

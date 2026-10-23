@@ -13,6 +13,7 @@ import { DiagnosisService } from './modules/diagnosis/diagnosis.service.js';
 import { registerDiagnosisRoutes } from './modules/diagnosis/diagnosis.routes.js';
 import { LogsClient } from './modules/diagnosis/logs/client.js';
 import { OpenRouterClient } from './modules/diagnosis/ai/openrouter.js';
+import { OpenRouterCatalog } from './modules/diagnosis/ai/models.js';
 import { ImageKitClient } from './modules/uploads/imagekit.js';
 import { CategoriesRepo } from './modules/categories/categories.repo.js';
 import { FeedbackRepo } from './modules/feedback/feedback.repo.js';
@@ -52,6 +53,9 @@ import { registerBenchmarkRoutes } from './modules/benchmarks/benchmarks.routes.
 import { SprintsRepo } from './modules/sprints/sprints.repo.js';
 import { SprintsService } from './modules/sprints/sprints.service.js';
 import { registerSprintRoutes } from './modules/sprints/sprints.routes.js';
+import { SettingsRepo } from './modules/settings/settings.repo.js';
+import { AiModels } from './modules/settings/ai-models.js';
+import { registerSettingsRoutes } from './modules/settings/settings.routes.js';
 import { runInBackground } from './modules/diagnosis/background.js';
 import type { Environment } from './schema/registry.js';
 
@@ -63,7 +67,7 @@ export interface BuildOptions {
    * Test seams for the diagnosis pipeline. `logs` alone serves every environment; `logsByEnv`
    * overrides it per environment (null = no logging host for that environment).
    */
-  diagnosis?: { logs?: LogsClient | null; logsByEnv?: Partial<Record<Environment, LogsClient | null>>; ai?: OpenRouterClient | null; fetchImpl?: typeof fetch; now?: () => Date };
+  diagnosis?: { logs?: LogsClient | null; logsByEnv?: Partial<Record<Environment, LogsClient | null>>; ai?: OpenRouterClient | null; models?: OpenRouterCatalog; fetchImpl?: typeof fetch; now?: () => Date };
   /** Test seam: replaces the ImageKit client built from config. */
   imagekit?: ImageKitClient | null;
   /** Test seam: replaces the Jira client built from config. */
@@ -145,9 +149,17 @@ export function buildApp(opts: BuildOptions = {}): App {
   // Every model call, whatever it was for, adds to the day's token count on the analytics page.
   const modelUsage = new ModelUsageRepo(db, config.APP_TIMEZONE);
   aiClient?.setUsageSink((u) => { modelUsage.record(u).catch((err) => app.log.warn({ err, model: u.model }, 'model usage not recorded')); });
+  // Which models get called: OPENROUTER_MODEL and DIAGNOSIS_CHAT_MODEL unless an admin picked others in Settings.
+  const catalog = opts.diagnosis?.models ?? new OpenRouterCatalog();
+  const aiModels = new AiModels({
+    settings: new SettingsRepo(db, undefined, (err) => app.log.error({ err }, 'settings reload failed; answering from the copy held')),
+    catalog, enabled: aiClient !== null,
+    defaults: { diagnosis: aiClient?.model ?? config.OPENROUTER_MODEL, chat: config.DIAGNOSIS_CHAT_MODEL ?? null },
+    recentTokens: () => diagnosisRepo.recentTokens(30), log: app.log,
+  });
   const diagnosis = new DiagnosisService({
-    repo: diagnosisRepo, feedback: feedbackRepo, categories, logs: logsClient, logsByEnv, ai: aiClient, kinds,
-    config: { model: config.OPENROUTER_MODEL, auto: config.DIAGNOSIS_AUTO, dailyBudgetUsd: config.DIAGNOSIS_DAILY_BUDGET_USD, timeZone: config.APP_TIMEZONE, maxAttempts: 6, syncHourIst: config.DIAGNOSIS_SYNC_HOUR_IST },
+    repo: diagnosisRepo, feedback: feedbackRepo, categories, logs: logsClient, logsByEnv, ai: aiClient, kinds, model: () => aiModels.diagnosis(),
+    config: { auto: config.DIAGNOSIS_AUTO, dailyBudgetUsd: config.DIAGNOSIS_DAILY_BUDGET_USD, timeZone: config.APP_TIMEZONE, maxAttempts: 6, syncHourIst: config.DIAGNOSIS_SYNC_HOUR_IST },
     log: app.log, fetchImpl: opts.diagnosis?.fetchImpl, now: opts.diagnosis?.now,
   });
   app.diagnosis = diagnosis;
@@ -157,7 +169,7 @@ export function buildApp(opts: BuildOptions = {}): App {
 
   // Every new issue is matched against open problems and, when it clearly looks like one, gets a
   // "Looks like …" suggestion. The CX tool waits for it (it shows the answer); the app does not.
-  const similar = new SimilarService({ repo: new SimilarRepo(db), feedback: feedbackRepo, kinds, categories, ai: aiClient });
+  const similar = new SimilarService({ repo: new SimilarRepo(db), feedback: feedbackRepo, kinds, categories, ai: aiClient, model: async () => (await aiModels.diagnosis()).id });
   service.setSimilarityHook({
     onNewIssue: async (id, log, wait) => {
       if (wait) await similar.suggestForNew(id);
@@ -167,8 +179,8 @@ export function buildApp(opts: BuildOptions = {}): App {
   if (!diagnosis.enabled) app.log.warn('AI diagnosis disabled: set LUNA_LOGS_APIKEY and OPEN_ROUTER_KEY to enable');
 
   const chat = new ChatService({
-    repo: new ChatRepo(db), feedback: feedbackRepo, diagnoses: diagnosisRepo, categories, ai: aiClient,
-    config: { maxMessages: config.DIAGNOSIS_CHAT_MAX_MESSAGES, model: config.DIAGNOSIS_CHAT_MODEL ?? null, dailyBudgetUsd: config.DIAGNOSIS_DAILY_BUDGET_USD },
+    repo: new ChatRepo(db), feedback: feedbackRepo, diagnoses: diagnosisRepo, categories, ai: aiClient, model: () => aiModels.chat(),
+    config: { maxMessages: config.DIAGNOSIS_CHAT_MAX_MESSAGES, dailyBudgetUsd: config.DIAGNOSIS_DAILY_BUDGET_USD },
     log: app.log,
   });
 
@@ -230,9 +242,10 @@ export function buildApp(opts: BuildOptions = {}): App {
   registerActivityRoutes(app, { feedback: service, activity, kinds, assignable: () => users.assignable() });
   registerJiraRoutes(app, { service: jira });
   registerChatRoutes(app, { service: chat });
+  registerSettingsRoutes(app, { aiModels, catalog });
   registerAnalyticsRoutes(app, {
     repo: new AnalyticsRepo(db), timeZone: config.APP_TIMEZONE, usage: modelUsage,
-    models: { current: config.OPENROUTER_MODEL, chat: config.DIAGNOSIS_CHAT_MODEL ?? config.OPENROUTER_MODEL, enabled: aiClient !== null },
+    models: async () => ({ current: (await aiModels.diagnosis()).id, chat: await aiModels.chat(), enabled: aiClient !== null }),
   });
   registerCxRoutes(app, { feedback: service, kinds, activity, publicBaseUrl: config.PUBLIC_BASE_URL });
   registerBetaRoutes(app, { beta: betaUsers, feedback: service, uploads: screenshotUploads });

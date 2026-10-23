@@ -58,6 +58,8 @@ export const PERMISSIONS = {
   delete_sprints: ['admin'],
   /** Add and remove the production users who may send reports from the app (the beta list). */
   manage_beta_users: ['admin', 'qc'],
+  /** Pick which OpenRouter models diagnose and chat. It sets what every model call costs. */
+  manage_ai_models: ['admin'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

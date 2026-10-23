@@ -198,6 +198,18 @@ export class DiagnosisRepo {
     return Number(r.rows[0]?.usd ?? 0);
   }
 
+  /** Average tokens of the diagnoses finished in the last `days`, for Settings to estimate a model's cost. Null when there were none. */
+  async recentTokens(days: number): Promise<{ runs: number; input_tokens: number; output_tokens: number } | null> {
+    const r = await this.db.query<{ runs: number; input_tokens: number | null; output_tokens: number | null }>(
+      `select count(*)::int as runs, round(avg(prompt_tokens))::int as input_tokens, round(avg(completion_tokens))::int as output_tokens
+         from luna_feedback.diagnosis_runs
+        where status = 'done' and prompt_tokens is not null and created_at >= now() - make_interval(days => $1)`,
+      [days],
+    );
+    const row = r.rows[0];
+    return row && row.runs > 0 ? { runs: row.runs, input_tokens: row.input_tokens ?? 0, output_tokens: row.output_tokens ?? 0 } : null;
+  }
+
   async summary(): Promise<{ queued: number; running: number; waiting: number; failed: number; done: number; no_logs: number; spend_today: number; spend_month: number; runs_today: number }> {
     const [jobs, statuses, spend] = await Promise.all([
       this.db.query<{ state: string; n: number }>(`select state, count(*)::int as n from luna_feedback.diagnosis_jobs group by state`),

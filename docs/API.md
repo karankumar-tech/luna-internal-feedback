@@ -654,6 +654,14 @@ Not for the app. Listed so the front-end team knows how categories change.
 | `GET` | `/v1/admin/test-data` | → `{ "count" }` of rows flagged `is_test` |
 | `DELETE` | `/v1/admin/test-data?confirm=delete` | deletes only `is_test` rows → `{ "deleted" }`; `422` without the confirm parameter |
 
+**AI models** (Settings → AI diagnosis). `OPENROUTER_MODEL` and `DIAGNOSIS_CHAT_MODEL` are the defaults; an admin (`manage_ai_models`) can pick other OpenRouter models, and every model call uses the pick from then on. The issue matcher's AI check uses the diagnosis model.
+
+| method | path | body / notes |
+|---|---|---|
+| `GET` | `/v1/admin/ai-models` | → `{ enabled, diagnosis: { id, images, set }, chat: { id, set }, defaults: { diagnosis, chat }, updated_by, updated_at, recent }`; `set: false` means the default is in use, and a `null` chat default means the chat follows the diagnosis model. `recent` is the last 30 days' average diagnosis tokens (`{ runs, input_tokens, output_tokens }`), for cost estimates. Any dashboard role |
+| `GET` | `/v1/admin/ai-models/available` | → `{ items: [{ id, name, context_length, input_per_m, output_per_m, images, structured, expires }], count, fetched_at }`: every OpenRouter model that answers in text, prices in USD per million tokens (`null` when priced per request). Held for an hour; `502` if OpenRouter cannot be reached and nothing is held |
+| `PATCH` | `/v1/admin/ai-models` | `{ "diagnosis"?: id \| null, "chat"?: id \| null }` admins only. A field left out stays; `null` goes back to the default. `422` for a model OpenRouter does not offer, or a diagnosis model without structured outputs. A diagnosis model that cannot read images is sent no screenshots → the same body as `GET` |
+
 **Same-issue linking** (dashboard; `manage_kinds` unless noted). A report is linked to a problem (`LNK-0007`) as *suggested*, *linked* or *rejected*; only linked ones count.
 
 | method | path | body / notes |

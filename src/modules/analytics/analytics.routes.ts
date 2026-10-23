@@ -23,8 +23,8 @@ export interface AnalyticsRouteDeps {
   repo: AnalyticsRepo;
   timeZone: string;
   usage: ModelUsageRepo;
-  /** The models calls go to right now: diagnosis and same-issue matching use `current`, the ticket chat `chat`. */
-  models: { current: string; chat: string; enabled: boolean };
+  /** The models calls go to right now (Settings can change them): diagnosis and same-issue matching use `current`, the ticket chat `chat`. */
+  models: () => Promise<{ current: string; chat: string; enabled: boolean }>;
 }
 
 export function registerAnalyticsRoutes(app: FastifyInstance, deps: AnalyticsRouteDeps) {
@@ -43,8 +43,8 @@ export function registerAnalyticsRoutes(app: FastifyInstance, deps: AnalyticsRou
    * service's spend, not about any slice of reports.
    */
   app.get('/v1/analytics/model-usage', async () => {
-    const usage = await deps.usage.lastDays();
-    return { ...usage, current_model: deps.models.current, chat_model: deps.models.chat, enabled: deps.models.enabled };
+    const [usage, models] = await Promise.all([deps.usage.lastDays(), deps.models()]);
+    return { ...usage, current_model: models.current, chat_model: models.chat, enabled: models.enabled };
   });
 
   /** The event catalog itself, for filter dropdowns and the reference table. */

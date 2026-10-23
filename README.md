@@ -313,6 +313,11 @@ returns a structured verdict
 - Env: `LUNA_LOGS_APIKEY`, `OPEN_ROUTER_KEY`, `OPENROUTER_MODEL`, `DIAGNOSIS_AUTO`,
   `DIAGNOSIS_DAILY_BUDGET_USD`, `DIAGNOSIS_SYNC_HOUR_IST`, `CRON_SECRET`. Missing keys disable
   diagnosis without affecting submissions.
+- **Models.** `OPENROUTER_MODEL` (diagnosis and the issue matcher) and `DIAGNOSIS_CHAT_MODEL` (the
+  follow-up chat; empty = the diagnosis model) are only defaults. Admins pick other OpenRouter models
+  in Settings → AI diagnosis, from OpenRouter's live list with prices and a per-diagnosis estimate;
+  the pick is stored in `app_settings` and used by every instance within 30 seconds. A diagnosis model
+  must support structured outputs; one that cannot read images is sent no screenshots.
 - `node scripts/diagnose-live.mjs <email> <serial|-> <feature> <YYYY-MM-DD> [platform]` runs one
   real diagnosis locally (creates and removes an `is_test` submission; `KEEP=1` keeps it).
 

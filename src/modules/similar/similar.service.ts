@@ -78,6 +78,8 @@ export class SimilarService {
     kinds: KindsService;
     categories: CategoriesRepo;
     ai: OpenRouterClient | null;
+    /** The model to call (the diagnosis model; Settings can change it). Without it, the client's own model. */
+    model?: () => Promise<string>;
   }) {}
 
   get aiEnabled(): boolean { return this.d.ai !== null; }
@@ -204,7 +206,7 @@ export class SimilarService {
       { role: 'user', content: `# Report ${src.ref}\n${describe(src)}\n\n# Candidates\n${candidates.map((c) => `## ${c.ref}\n${describe(c)}`).join('\n\n')}\n\nReturn one verdict per candidate as JSON.` },
     ];
 
-    const completion = await this.d.ai.completeJson(messages, SAME_ISSUE_SCHEMA, { maxTokens: 1500, temperature: 0 });
+    const completion = await this.d.ai.completeJson(messages, SAME_ISSUE_SCHEMA, { maxTokens: 1500, temperature: 0, model: this.d.model ? await this.d.model() : undefined });
     let parsed: z.infer<typeof VerdictsSchema>;
     try { parsed = VerdictsSchema.parse(JSON.parse(completion.text)); }
     catch (err) { throw AppError.validation([{ path: 'ai', message: `the model's answer could not be read (${err instanceof Error ? err.message : String(err)})` }], 'AI check failed'); }

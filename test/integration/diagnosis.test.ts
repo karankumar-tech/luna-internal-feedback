@@ -3,6 +3,7 @@ import { buildApp, type App } from '../../src/build-app.js';
 import { loadConfig } from '../../src/config.js';
 import { LogsClient } from '../../src/modules/diagnosis/logs/client.js';
 import { OpenRouterClient } from '../../src/modules/diagnosis/ai/openrouter.js';
+import { OpenRouterCatalog } from '../../src/modules/diagnosis/ai/models.js';
 
 /**
  * End-to-end diagnosis with the logging API and OpenRouter replaced by in-memory fakes.
@@ -58,9 +59,11 @@ const fileFetch: typeof fetch = async (input) => {
 let modelCalls = 0;
 let lastPrompt = '';
 let lastImageUrls: string[] = [];
+let lastModel = '';
 const fakeAiFetch: typeof fetch = async (_input, init) => {
   modelCalls += 1;
   const body = JSON.parse(String(init?.body));
+  lastModel = body.model;
   const content = body.messages[1].content;
   lastPrompt = typeof content === 'string' ? content : content.filter((p: { type: string }) => p.type === 'text').map((p: { text: string }) => p.text).join('\n');
   lastImageUrls = typeof content === 'string' ? [] : content.filter((p: { type: string }) => p.type === 'image_url').map((p: { image_url: { url: string } }) => p.image_url.url);
@@ -320,6 +323,32 @@ describe('auto diagnosis on negative submission', () => {
     expect(manual.diagnosis.log_files.app).toHaveLength(1);
     expect(manual.diagnosis.log_files.ring).toHaveLength(1);
     await appOff.close();
+  });
+
+  it('runs on the model picked in Settings, and sends no screenshots to one that cannot read images', async () => {
+    const textOnly = { id: 'test/text-json', name: 'Test: text only', architecture: { input_modalities: ['text'], output_modalities: ['text'] }, pricing: { prompt: '0.000001', completion: '0.000002' }, supported_parameters: ['response_format', 'structured_outputs'] };
+    const models = new OpenRouterCatalog({ fetchImpl: async () => new Response(JSON.stringify({ data: [textOnly] }), { status: 200 }) });
+    const cfgOff = loadConfig({ NODE_ENV: 'test', LOG_LEVEL: 'silent', DIAGNOSIS_AUTO: 'false', IMAGEKIT_PUB_KEY: 'public_test_key', IMAGEKIT_PRI_KEY: 'private_test_key', IMAGEKIT_URL_ENDPOINT: 'https://ik.imagekit.io/testacct' });
+    const appOff = buildApp({ config: cfgOff, logger: false, db: app.db, diagnosis: {
+      logs: new LogsClient({ baseUrl: 'https://stage-app.example.invalid', apiKey: 'k', fetchImpl: fakeLogsFetch }),
+      ai: new OpenRouterClient({ apiKey: 'k', model: 'google/gemini-3.1-flash-lite', fetchImpl: fakeAiFetch }),
+      models, fetchImpl: fileFetch, now: () => NOW } });
+    await appOff.ready();
+    const held = (await app.db.query(`select value, updated_by from luna_feedback.app_settings where key = 'ai_models'`)).rows[0];
+    try {
+      expect((await appOff.inject({ method: 'PATCH', url: '/v1/admin/ai-models', headers: adminHeaders, payload: { diagnosis: 'test/text-json' } })).statusCode).toBe(200);
+      const shot = (n: number) => ({ file_id: 'm' + n, url: `https://ik.imagekit.io/testacct/luna-feedback-screenshots/m${n}.png` });
+      const r = await appOff.inject({ method: 'POST', url: '/v1/feedback/sleep', headers: appHeaders, payload: body(`model+${run}@${DOMAIN}`, { device_serial: 'R2NTEST0001', screenshots: [shot(1)] }) });
+      const out = (await appOff.inject({ method: 'POST', url: `/v1/admin/submissions/${r.json().id}/diagnose`, headers: adminHeaders })).json();
+      expect(out.status).toBe('done');
+      expect(lastModel).toBe('test/text-json');
+      expect(lastImageUrls).toEqual([]);
+      expect(lastPrompt).not.toContain('# Screenshots');
+    } finally {
+      if (held) await app.db.query(`update luna_feedback.app_settings set value = $1 where key = 'ai_models'`, [held.value]);
+      else await app.db.query(`delete from luna_feedback.app_settings where key = 'ai_models'`);
+      await appOff.close();
+    }
   });
 
   it('cron bearer can call the sweep when CRON_SECRET is set', async () => {
