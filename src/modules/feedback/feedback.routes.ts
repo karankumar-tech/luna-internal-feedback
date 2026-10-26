@@ -191,12 +191,30 @@ export function registerFeedbackRoutes(
   });
 
   // ---- submit ----------------------------------------------------------------
+  /**
+   * The Report page may name an owner as it files: someone who may assign, to an account. The field
+   * is taken off before the body is checked, since the app's contract has no such field.
+   */
+  async function ownerOf(req: FastifyRequest): Promise<{ body: unknown; owner: string | null }> {
+    const raw = req.body;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !('assigned_to' in raw)) return { body: raw, owner: null };
+    const { assigned_to, ...body } = raw as Record<string, unknown>;
+    const parsed = z.string().trim().toLowerCase().email().max(254).nullable().safeParse(assigned_to === '' ? null : assigned_to);
+    if (!parsed.success) throw AppError.validation([{ path: 'assigned_to', message: parsed.error.issues[0]?.message ?? 'must be an email' }]);
+    const owner = parsed.data;
+    if (owner && !can(req.actor, 'manage_triage')) throw AppError.forbidden(`Your role (${req.actor?.role ?? 'unknown'}) cannot assign reports; leave the owner for QC`);
+    if (owner && isAssignable && !(await isAssignable(owner))) throw AppError.validation([{ path: 'assigned_to', message: `${owner} has no dashboard account` }]);
+    return { body, owner };
+  }
+
   app.post<{ Params: { feature: string } }>('/v1/feedback/:feature', async (req, reply) => {
     const rawKey = req.headers['idempotency-key'];
     const idempotencyKey = typeof rawKey === 'string' && rawKey.trim().length > 0 ? rawKey.trim().slice(0, 200) : null;
     // The same contract serves the app and the dashboard's Report page; a signed-in person is recorded as the reporter.
-    const source = req.actor?.via === 'session' ? { via: 'dashboard' as const, by: actorOf(req) } : undefined;
-    const { dto, created } = await service.submit(req.params.feature, req.body, idempotencyKey, req.log, source);
+    const dashboard = req.actor?.via === 'session';
+    const { body, owner } = dashboard ? await ownerOf(req) : { body: req.body, owner: null };
+    const source = dashboard ? { via: 'dashboard' as const, by: actorOf(req), owner } : undefined;
+    const { dto, created } = await service.submit(req.params.feature, body, idempotencyKey, req.log, source);
     return reply.code(created ? 201 : 200).send(dto);
   });
 

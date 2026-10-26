@@ -95,9 +95,10 @@ export class FeedbackService {
 
   /**
    * A report from an internal tester: through the Luna app, or filed by a signed-in person from the
-   * dashboard's Report page (`source.via = 'dashboard'`, with `by` naming them in the history).
+   * dashboard's Report page (`source.via = 'dashboard'`, with `by` naming them in the history and
+   * `owner` the account it is assigned to, already checked by the route).
    */
-  async submit(featureKey: string, body: unknown, idempotencyKey: string | null, log?: FastifyBaseLogger, source: { via: 'app' | 'dashboard'; by: string | null } = { via: 'app', by: null }) {
+  async submit(featureKey: string, body: unknown, idempotencyKey: string | null, log?: FastifyBaseLogger, source: { via: 'app' | 'dashboard'; by: string | null; owner?: string | null } = { via: 'app', by: null }) {
     const { feature, ctx } = await this.prepare(featureKey);
     const parsed = buildSubmissionValidator(feature, ctx).safeParse(body);
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
@@ -119,6 +120,7 @@ export class FeedbackService {
       submitted_via: source.via,
       cx: null,
       sprint_id: sprint?.id ?? null,
+      assigned_to: source.owner ?? null,
     }, log, false, source.by);
   }
 
@@ -239,6 +241,8 @@ export class FeedbackService {
     const { row, created } = await this.feedback.insert(input);
     if (created && this.activity) await this.activity.record({ submissionId: row.id, actor: by ?? input.submitted_via, action: 'created', to: row.origin, touch: false });
     if (created && this.activity && row.sprint) await this.activity.record({ submissionId: row.id, actor: by ?? input.submitted_via, action: 'sprint', to: row.sprint.ref, note: 'Filed into the sprint', touch: false });
+    // Part of filing it, not a response to it: the attention clock is left alone.
+    if (created && this.activity && row.assigned_to) await this.activity.record({ submissionId: row.id, actor: by ?? input.submitted_via, action: 'assign', to: row.assigned_to, note: 'when filing it', touch: false });
     if (created && !row.is_positive && this.diagnosis && log) {
       // Queue + start after the response; never let diagnosis problems break the submit.
       try { await this.diagnosis.onNegativeSubmission(row.id, log); } catch (err) { log.error({ err }, 'could not queue diagnosis'); }

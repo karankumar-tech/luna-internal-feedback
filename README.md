@@ -24,7 +24,8 @@ Reports are tagged `stage`, `uat` or `production`, defaulting to `stage`, and ev
 filters by it. They also carry an origin: `internal` (testers, through the app or the dashboard's Report page) or `cx` (customer
 problems filed by CX from its own tool), with its own filter on every screen. A report filed from the dashboard
 posts to the same `POST /v1/feedback/{feature}` as the app, is stored with `submitted_via: dashboard`, and its
-history names the person who filed it.
+history names the person who filed it. QC and admins can give it an owner as they file it (`assigned_to`, any
+dashboard account); the app's contract has no such field and refuses it.
 
 Every report has a readable reference, `LN-00042`, and every issue kind one of its own, `LNK-0007`.
 Existing rows were numbered oldest first; numbers are never reused. `/i/LN-00042` and `/k/LNK-0007`

@@ -156,6 +156,49 @@ describe('posting a report from the dashboard', () => {
     expect(events).toEqual([[email('dev'), null, '2026-10-20'], [email('dev'), '2026-10-20', '2026-10-24'], [email('dev'), '2026-10-24', null]]);
   });
 
+  it('QC can name an owner as it files; other roles and the app cannot', async () => {
+    const signIn = async (who: string, role: string, name: string) => {
+      await app.inject({ method: 'POST', url: '/v1/admin/users', headers: adminHeaders, payload: { email: email(who), role, name, password: PASSWORD } });
+      const login = await app.inject({ method: 'POST', url: '/dashboard/login', headers: dash, payload: { email: email(who), password: PASSWORD } });
+      return { ...dash, cookie: String(login.headers['set-cookie'] ?? '').split(';')[0] ?? '' };
+    };
+    const qc = await signIn('qc', 'qc', 'QC Person');
+    await signIn('owner', 'developer', 'Owner Person');
+
+    // The address is matched as the issue page does: trimmed and lowercased.
+    const r = await app.inject({ method: 'POST', url: '/v1/feedback/home', headers: { ...qc, 'idempotency-key': `owner-${run}` }, payload: body({ user_id: 900781, assigned_to: ` ${email('owner').toUpperCase()} ` }) });
+    expect(r.statusCode).toBe(201);
+    expect(r.json()).toMatchObject({ submitted_via: 'dashboard', assigned_to: email('owner'), first_touched_at: null });
+    const events = (await app.inject({ method: 'GET', url: `/v1/feedback/${r.json().id}/activity`, headers: qc })).json().items;
+    expect(events.find((e: { action: string }) => e.action === 'assign')).toMatchObject({ actor: email('qc'), from_value: null, to_value: email('owner'), note: 'when filing it' });
+    const mine = await app.inject({ method: 'GET', url: `/v1/feedback?user_id=900781&assigned_to=${encodeURIComponent(email('owner'))}`, headers: qc });
+    expect(mine.json().items.map((i: { id: string }) => i.id)).toEqual([r.json().id]);
+
+    // A double-click with another owner returns the first report as it was.
+    const again = await app.inject({ method: 'POST', url: '/v1/feedback/home', headers: { ...qc, 'idempotency-key': `owner-${run}` }, payload: body({ user_id: 900781, assigned_to: email('qc') }) });
+    expect(again.statusCode).toBe(200);
+    expect(again.json().assigned_to).toBe(email('owner'));
+
+    // Not an account, not an address.
+    for (const assigned_to of [email('nobody'), 'kuldeep']) {
+      const bad = await app.inject({ method: 'POST', url: '/v1/feedback/home', headers: qc, payload: body({ assigned_to }) });
+      expect(bad.statusCode).toBe(422);
+      expect(bad.json().error.issues.map((i: { path: string }) => i.path)).toEqual(['assigned_to']);
+    }
+
+    // A read-only role may file but not assign; sending no owner is fine.
+    expect((await app.inject({ method: 'POST', url: '/v1/feedback/home', headers: asUser(), payload: body({ assigned_to: email('owner') }) })).statusCode).toBe(403);
+    for (const assigned_to of [null, '']) {
+      const unowned = await app.inject({ method: 'POST', url: '/v1/feedback/home', headers: asUser(), payload: body({ assigned_to }) });
+      expect(unowned.statusCode).toBe(201);
+      expect(unowned.json().assigned_to).toBeNull();
+    }
+
+    // The app's contract is unchanged: the field is unknown there.
+    const fromApp = await app.inject({ method: 'POST', url: '/v1/feedback/home', headers: appHeaders, payload: body({ assigned_to: email('owner') }) });
+    expect(fromApp.statusCode).toBe(422);
+  });
+
   it('validates per field, the same as for the app', async () => {
     const r = await app.inject({ method: 'POST', url: '/v1/feedback/sleep', headers: asUser(), payload: body({ issue_categories: [], details: { actual_start_time: '11:30 PM', actual_end_time: '11:30 PM' } }) });
     expect(r.statusCode).toBe(422);

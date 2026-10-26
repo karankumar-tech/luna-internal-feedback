@@ -135,6 +135,8 @@ export interface NewSubmission {
   submitted_via: 'app' | 'cx_tool' | 'admin' | 'dashboard';
   /** Filed straight into a sprint (the app's "current" / "next"), or null for the main list. */
   sprint_id: string | null;
+  /** An owner named as it is filed (the dashboard's Report page); otherwise unassigned. */
+  assigned_to?: string | null;
   cx: { ref: string; url: string | null; channel: string | null; agent: string | null; transcript: string | null } | null;
 }
 
@@ -298,7 +300,7 @@ export class FeedbackRepo {
       s.client.firmware_version ?? null, s.client.os_version ?? null, s.client.device_id ?? null,
       s.client.session_id ?? null, s.idempotency_key, s.schema_version, s.is_test,
       s.origin, s.submitted_via, s.cx?.ref ?? null, s.cx?.url ?? null, s.cx?.channel ?? null, s.cx?.agent ?? null, s.cx?.transcript ?? null,
-      s.sprint_id, s.email_masked,
+      s.sprint_id, s.email_masked, s.assigned_to ?? null,
     ];
     // No conflict target: either unique guard (idempotency key, CX ticket + feature) means "already filed".
     const inserted = await this.db.query<SubmissionRow>(
@@ -306,9 +308,9 @@ export class FeedbackRepo {
          (feature_key, is_positive, occurred_on, user_id, email, issue_categories, feedback_text, device_serial, details, screenshots,
           environment, platform, app_version, build_number, build_channel, firmware_version, os_version, device_id, session_id,
           idempotency_key, schema_version, is_test,
-          origin, submitted_via, cx_ref, cx_url, cx_channel, cx_agent, cx_transcript, sprint_id, email_masked)
+          origin, submitted_via, cx_ref, cx_url, cx_channel, cx_agent, cx_transcript, sprint_id, email_masked, assigned_to)
        values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,coalesce($11, 'stage'),$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
-               $23,$24,$25,$26,$27,$28,$29,$30,$31)
+               $23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
        on conflict do nothing
        returning ${COLUMNS}`,
       params,

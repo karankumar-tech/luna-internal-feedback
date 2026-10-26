@@ -117,6 +117,7 @@
         <div class="field" data-path="feature"><span class="lab">Feature <span class="req" aria-hidden="true">*</span></span><div class="seg wrapable" id="features" role="radiogroup" aria-label="Feature"></div><p class="ferr"></p></div>
         <div class="field" data-path="is_positive"><span class="lab" id="kindLab"></span><div class="seg" id="kind" role="radiogroup" aria-labelledby="kindLab"></div><p class="ferr"></p></div>
         <div class="field" data-path="sprint" id="sprintField" hidden><span class="lab" id="sprintLab">Sprint</span><div class="seg wrapable sprintseg" id="sprintSeg" role="radiogroup" aria-labelledby="sprintLab"></div><p class="help">For issues QA files against a sprint. They go on the Sprints page instead of the Reports list, and QC can move them later.</p><p class="ferr"></p></div>
+        <label class="field" data-path="assigned_to" id="ownerField" hidden><span class="lab">Owner <span class="opt">· optional</span></span><select id="owner"><option value="">Unassigned</option></select><p class="help">Who should pick it up. Leave it unassigned for QC to triage.</p><p class="ferr"></p></label>
       </section>
 
       <section class="card">
@@ -194,7 +195,8 @@
   const WHO = ['user_id', 'email', 'device_serial'];
   const KINDS = [['issue', 'Something went wrong'], ['positive', 'It went well']];
 
-  const S = { me: null, schema: null, feature: null, positive: false, shots: [], uploads: null, busy: false, key: null, controls: new Map(), sprint: null, sprintOptions: null };
+  const S = { me: null, schema: null, feature: null, positive: false, shots: [], uploads: null, busy: false, key: null, controls: new Map(), sprint: null, sprintOptions: null, people: [] };
+  const can = (p) => !!(S.me && S.me.permissions && S.me.permissions[p]);
   const newKey = () => { S.key = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)); };
   newKey();
 
@@ -366,6 +368,19 @@
     $('sprintField').hidden = S.positive || !S.sprintOptions || !S.sprintOptions.current;
     for (const b of $('sprintSeg').children) { const on = (b.dataset.sprint || null) === S.sprint; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); }
   }
+  /** The owner, for people who may assign: anyone with a dashboard account, as on the issue page. */
+  async function renderOwner() {
+    if (!can('manage_triage')) return;
+    S.people = ((await api('/v1/admin/assignees').catch(() => null)) || {}).items || [];
+    if (!S.people.length) return;
+    const sel = $('owner');
+    sel.replaceChildren(Object.assign(el('option', null, 'Unassigned'), { value: '' }),
+      ...S.people.map((p) => Object.assign(el('option', null, p.name ? `${p.name} (${p.role})` : p.email), { value: p.email })));
+    sel.addEventListener('change', () => setError('assigned_to', ''));
+    S.controls.set('assigned_to', { get: () => sel.value || undefined, set: (v) => { sel.value = v || ''; }, el: $('ownerField'), field: { label: 'Owner', type: 'string' }, focus: () => sel.focus() });
+    $('ownerField').hidden = false;
+  }
+  const nameOf = (email) => { const p = S.people.find((x) => x.email === email); return (p && p.name) || email; };
   function paintKind() { for (const b of $('kind').children) { const on = (b.dataset.kind === 'positive') === S.positive; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); } }
 
   /** Date, categories and the free text: their requiredness follows is_positive, as in the app. */
@@ -607,7 +622,8 @@
       remember(true); newKey();
       $('form').hidden = true; $('done').hidden = false;
       $('doneRef').textContent = dto.ref;
-      $('doneText').textContent = r.status === 200 ? 'This report had already been posted; here it is again.' : body.is_positive ? 'Thanks. Positive feedback is kept with the reports so the team sees what works.' : `Filed under ${featureOf(S.feature).label} as yours${dto.sprint ? `, in ${dto.sprint.ref}` : ''}. ${dto.is_test ? 'It is marked as test data.' : dto.sprint ? 'It is on the Sprints page now, and the diagnosis will run once the logs for that day are in.' : 'It is on the Reports list now, and the diagnosis will run once the logs for that day are in.'}`;
+      const owner = dto.assigned_to ? nameOf(dto.assigned_to) : null;
+      $('doneText').textContent = r.status === 200 ? 'This report had already been posted; here it is again.' : body.is_positive ? `Thanks. Positive feedback is kept with the reports so the team sees what works.${owner ? ` It is assigned to ${owner}.` : ''}` : `Filed under ${featureOf(S.feature).label} as yours${dto.sprint ? `, in ${dto.sprint.ref}` : ''}${owner ? `, assigned to ${owner}` : ''}. ${dto.is_test ? 'It is marked as test data.' : dto.sprint ? 'It is on the Sprints page now, and the diagnosis will run once the logs for that day are in.' : 'It is on the Reports list now, and the diagnosis will run once the logs for that day are in.'}`;
       $('doneOpen').href = '/dashboard/submissions/' + encodeURIComponent(dto.id);
       try { localStorage.removeItem('luna.home.v1'); } catch {}
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -640,6 +656,7 @@
     const sprintWanted = new URLSearchParams(location.search).get('sprint');
     S.sprint = sprintWanted === 'current' || sprintWanted === 'next' ? sprintWanted : null;
     renderSprint();
+    await renderOwner();
     const wanted = new URLSearchParams(location.search).get('feature');
     selectFeature(featureOf(wanted) ? wanted : (S.schema.features[0] || {}).key);
     recall(); renderShots();
