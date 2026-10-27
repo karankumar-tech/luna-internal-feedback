@@ -218,18 +218,31 @@ describe('one session as a workbook', () => {
 
 describe('a list of sessions as a workbook', () => {
   it('has a line per session, every comparison, the agreement and findings, and the filters used', () => {
-    const a = workoutSession().session, b = nightSession().session;
-    const file = listWorkbook([b, a], { ...OPTS, filters: [['Data', 'Real only']] });
+    const w = workoutSession(), n = nightSession();
+    const a = w.session, b = { ...n.session, id: 'session-2' };
+    const file = listWorkbook([b, a], { ...OPTS, filters: [['Data', 'Real only']] }, new Map([[a.id, w.recordings]]));
     expect(file.filename).toBe('luna-benchmarks-2026-10-08.xlsx');
     const book = readBook(file.body);
-    expect(book.names).toEqual(['Sessions', 'Comparison', 'Agreement', 'Findings', 'About']);
+    expect(book.names).toEqual(['Sessions', 'Comparison', 'Agreement', 'Heart rate', 'Heart rate by minute', 'Findings', 'About']);
     const sessions = book.values('Sessions');
     expect(sessions.slice(1).map((r) => [r[0], r[4], r[5], r[8], r[9], r[10], r[11], r[12], r[13], r[14]])).toEqual([
       ['BM-0043', 'Sleep', 'Sleep', '', '', '', 'Luna, Connect', '', 'Luna', 'Connect'],
       ['BM-0042', 'Workout', 'Running', '1.0.16', '2.0.6', 'iOS', 'Luna, Polar Flow', 'iPhone', 'Luna', 'Polar Flow'],
     ]);
     expect(sessions[0]!.slice(8, 11)).toEqual(['Luna firmware', 'Luna app version', 'Phone']);
-    expect(sessions[2]![24]).toBe('https://luna.example.test/b/BM-0042');
+    expect(sessions[0]!.slice(15, 17)).toEqual(['Under test, average heart rate', 'Reference, average heart rate']);
+    expect(sessions[1]![15] ?? null).toBeNull();
+    expect(sessions[2]!.slice(15, 17).every((v) => typeof v === 'number' && v > 130 && v < 170)).toBe(true);
+    expect(sessions[2]![26]).toBe('https://luna.example.test/b/BM-0042');
+    // Each device's heart rate: a line per device with readings, then its minutes.
+    const heart = book.values('Heart rate');
+    expect(heart.slice(1).map((r) => [r[0], r[4], r[5]])).toEqual([['BM-0042', 'Luna', 'Under test'], ['BM-0042', 'Polar Flow', 'Reference']]);
+    expect(heart[2]![6]).toBe(sessions[2]![16]);
+    expect((heart[2]![7] as number) < (heart[2]![6] as number) && (heart[2]![6] as number) < (heart[2]![8] as number)).toBe(true);
+    const minutes = book.values('Heart rate by minute').slice(1);
+    expect(minutes.filter((r) => r[2] === 'Polar Flow')).toHaveLength(20);
+    expect(minutes.filter((r) => r[2] === 'Luna').length).toBeGreaterThanOrEqual(20);
+    expect(minutes[0]!.slice(0, 3)).toEqual(['BM-0042', 'Running', 'Luna']);
     const comparison = book.values('Comparison');
     expect(new Set(comparison.slice(1).map((r) => r[0]))).toEqual(new Set(['BM-0042', 'BM-0043']));
     expect(comparison.find((r) => r[0] === 'BM-0042' && r[6] === 'Distance')!.slice(7, 12)).toEqual([3, 2.97, -0.03, -0.01, 'Match']);

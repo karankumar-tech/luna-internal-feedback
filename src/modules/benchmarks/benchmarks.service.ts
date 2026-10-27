@@ -5,7 +5,7 @@ import {
   type Candidate, type IncomingRecording, type Kind,
 } from './analyze.js';
 import { activityKey, activityLabel, guessTag, isOnFoot, tagLabel, TEST_TAG } from './metrics.js';
-import { listWorkbook, sessionWorkbook, type ExportFile, type ExportOptions } from './export.js';
+import { HR_BY_MINUTE_MAX, listWorkbook, sessionWorkbook, type ExportFile, type ExportOptions } from './export.js';
 import { GOALS, groupByTester, leaderboard, progressReport, testerKey } from './progress.js';
 import { toRec, type BenchmarkScreenshot, type BenchmarksRepo, type ListFilters, type LunaBuild, type RecordingHead, type RecordingRow, type SessionRow } from './benchmarks.repo.js';
 
@@ -151,7 +151,16 @@ export class BenchmarksService {
     const all = { ...filters, limit: BENCHMARK_EXPORT_MAX, offset: 0 };
     let page = await this.repo.list(all);
     if (await this.refresh(page.items)) page = await this.repo.list(all);
-    return listWorkbook(page.items, opts);
+    return listWorkbook(page.items, opts, await this.heartRates(page.items));
+  }
+
+  /** Each session's recordings, heart rate only, in the order its page shows them; readings for a list short enough to hold them. */
+  private async heartRates(sessions: SessionRow[]): Promise<Map<string, RecordingRow[]>> {
+    const rows = await this.repo.heartRates(sessions.map((s) => s.id), sessions.length <= HR_BY_MINUTE_MAX);
+    const out = new Map<string, RecordingRow[]>();
+    for (const r of rows) out.set(r.session_id, [...(out.get(r.session_id) ?? []), r]);
+    for (const [id, recs] of out) out.set(id, displayOrder(recs.map((r) => ({ tag: r.device_tag, logged: r.logged, row: r }))).map((x) => x.row));
+    return out;
   }
 
   /** The sessions picked on the list, by reference or id, as the same workbook. Unknown references are named in the error. */
@@ -162,7 +171,7 @@ export class BenchmarksService {
     const missing = wanted.filter((w) => !found.has(w) && !found.has(w.toUpperCase()));
     if (missing.length) throw AppError.notFound(`No benchmark session ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ` and ${missing.length - 5} more` : ''}`);
     if (await this.refresh(rows)) rows = await this.repo.byRefs(wanted);
-    return listWorkbook(rows, { ...opts, filters: [['Picked', `${rows.length} session${rows.length === 1 ? '' : 's'} picked on the list: ${rows.map((r) => r.ref).join(', ')}`]] });
+    return listWorkbook(rows, { ...opts, filters: [['Picked', `${rows.length} session${rows.length === 1 ? '' : 's'} picked on the list: ${rows.map((r) => r.ref).join(', ')}`]] }, await this.heartRates(rows));
   }
 
   /**

@@ -217,6 +217,25 @@ export class BenchmarksRepo {
     return r.rows;
   }
 
+  /**
+   * Only the heart rate of every recording in these sessions, for the list export: its average and
+   * quality, and (with `readings`) its readings. Everything else a recording holds is left out.
+   */
+  async heartRates(sessionIds: string[], readings: boolean, q: Queryable = this.db): Promise<RecordingRow[]> {
+    if (!sessionIds.length) return [];
+    const r = await q.query<RecordingRow>(
+      `select id, session_id, source_name, source_version, device_tag, device_label, logged, fingerprint, activity,
+              extract(epoch from started_at)::float8 as started_at, extract(epoch from ended_at)::float8 as ended_at,
+              jsonb_strip_nulls(jsonb_build_object('heart_rate', metrics->'heart_rate')) as metrics,
+              case when $2::boolean then jsonb_strip_nulls(jsonb_build_object('heart_rate', series->'heart_rate')) else '{}'::jsonb end as series,
+              null::jsonb as stages, null::jsonb as route,
+              jsonb_strip_nulls(jsonb_build_object('hr', case when jsonb_typeof(details->'hr') = 'object' then (details->'hr') - 'holds' - 'gaps' end, 'excluded', details->'excluded')) as details
+         from luna_feedback.benchmark_recordings where session_id = any($1::uuid[]) order by created_at, source_name`,
+      [sessionIds, readings],
+    );
+    return r.rows;
+  }
+
   /** Which devices a set of sessions hold, without loading their samples. */
   async heads(sessionIds: string[], q: Queryable = this.db): Promise<RecordingHead[]> {
     if (!sessionIds.length) return [];

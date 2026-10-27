@@ -14,6 +14,10 @@ export interface ExportFile { filename: string; body: Uint8Array }
 export interface ExportOptions { baseUrl: string; timeZone: string; now?: Date }
 
 export const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+/** The most sessions a list export carries heart rate minute by minute for; a longer list has each device's averages only. */
+export const HR_BY_MINUTE_MAX = 200;
+/** Excel holds a little over a million rows a sheet. */
+const SHEET_ROWS_MAX = 1_000_000;
 const DATE_TIME = 'd mmm yyyy hh:mm:ss';
 
 // ---------------------------------------------------------------------------------------------
@@ -162,6 +166,12 @@ function sleepAgreementRows(c: Clock, a: SleepAgreement, test: string, reference
   ];
 }
 
+/** A recording's part in its session's comparison. */
+const roleIn = (pairs: Pair[], r: RecordingRow) => r.details.excluded ? 'Left out'
+  : pairs.some((p) => p.test === r.id) ? 'Under test'
+  : pairs.some((p) => p.reference === r.id) ? 'Reference'
+  : r.logged ? 'Not compared' : 'Background';
+
 // ---------------------------------------------------------------------------------------------
 // One session
 // ---------------------------------------------------------------------------------------------
@@ -173,10 +183,7 @@ export function sessionWorkbook(s: SessionRow, recordings: RecordingRow[], opts:
   const pairs = summary?.pairs ?? [];
   const name = (r: RecordingRow) => r.device_label || r.source_name;
   const byId = new Map(recordings.map((r) => [r.id, r]));
-  const roleOf = (r: RecordingRow) => r.details.excluded ? 'Left out'
-    : pairs.some((p) => p.test === r.id) ? 'Under test'
-    : pairs.some((p) => p.reference === r.id) ? 'Reference'
-    : r.logged ? 'Not compared' : 'Background';
+  const roleOf = (r: RecordingRow) => roleIn(pairs, r);
   const sheets: { sheet: Sheet; about: string }[] = [];
   const add = (sheet: Sheet, about: string) => { if (sheet.rows.length) sheets.push({ sheet, about }); };
 
@@ -422,10 +429,13 @@ export function sessionWorkbook(s: SessionRow, recordings: RecordingRow[], opts:
 
 /**
  * Many sessions at once, from what each session's summary holds: one line per session, every
- * side-by-side number, the agreement numbers and what stands out. No readings: those are per session.
+ * side-by-side number, the agreement numbers, each device's heart rate (minute by minute too, from
+ * `recordings`, when they hold its readings) and what stands out. Every reading is in each session's own export.
  */
-export function listWorkbook(sessions: SessionRow[], opts: ExportOptions & { filters: [string, string][] }): ExportFile {
+export function listWorkbook(sessions: SessionRow[], opts: ExportOptions & { filters: [string, string][] }, recordings = new Map<string, RecordingRow[]>()): ExportFile {
   const sessionRows: CellInput[][] = [], comparison: CellInput[][] = [], agreement: CellInput[][] = [], findings: CellInput[][] = [];
+  const heart: CellInput[][] = [], byMinute: CellInput[][] = [];
+  let cut = false;
   for (const s of sessions) {
     const c = clockOf(s);
     const summary = summaryOf(s);
@@ -435,11 +445,13 @@ export function listWorkbook(sessions: SessionRow[], opts: ExportOptions & { fil
     const [leadTest, leadRef] = lead ? pairNames(summary, lead) : ['', ''];
     const what = whatOf(s);
     const start = c.at(s.started_at);
+    const recRows = recordings.get(s.id) ?? [];
+    const avgOf = (id: string | undefined) => { const m = recRows.find((r) => r.id === id)?.metrics.heart_rate; return m ? bpmCell(m.value) : null; };
     sessionRows.push([
       s.ref, start, c.at(s.ended_at), c.length(s.ended_at - s.started_at), KIND_LABEL[s.kind], what, s.title ?? '', s.tester,
       s.firmware_version ?? '', s.app_version ?? '', s.platform ? PLATFORM[s.platform]! : '',
       recs.filter((r) => r.logged && !r.excluded).map((r) => r.label).join(', '), recs.filter((r) => !r.logged || r.excluded).map((r) => `${r.label}${r.excluded ? ' (left out)' : ''}`).join(', '),
-      leadTest, leadRef,
+      leadTest, leadRef, avgOf(lead?.test), avgOf(lead?.reference),
       lead?.hr ? bpmCell(lead.hr.typical_gap) : null, lead?.hr ? bpmCell(lead.hr.bias, true) : null, lead?.hr ? { v: lead.hr.r, fmt: '0.00' } : null, lead?.hr ? VERDICT[lead.hr.verdict] : '',
       lead?.sleep ? pctCell(lead.sleep.sleep_wake_pct) : null, lead?.sleep ? pctCell(lead.sleep.stage_pct) : null,
       summary?.why ?? '', yes(s.is_test), s.notes ?? '', linkOf(opts.baseUrl, s.ref),
@@ -461,12 +473,33 @@ export function listWorkbook(sessions: SessionRow[], opts: ExportOptions & { fil
     }
     const level = { good: 'Good', warn: 'Look at this', info: 'Note' } as const;
     for (const f of summary?.findings ?? []) findings.push([s.ref, start, what, level[f.level], f.title, f.detail]);
+
+    // Each device's heart rate: its numbers, then its own recording (or the session) a minute at a time.
+    for (const r of recRows) {
+      const m = r.metrics.heart_rate, q = r.details.hr ?? null, sr = r.series.heart_rate;
+      if (!m && !q?.samples && !sr?.t.length) continue;
+      const name = r.device_label || r.source_name;
+      heart.push([
+        s.ref, start, what, s.tester, name, roleIn(pairs, r),
+        bpmCell(m?.value), bpmCell(m?.min), bpmCell(m?.max), c.at(m?.max_at, 'hh:mm:ss'),
+        q?.samples ?? m?.n ?? null, q ? { v: q.interval_s, fmt: numberFormat('s', false, 1) } : null, q ? pctCell(q.coverage_pct) : null, q ? c.length(q.gap_s) : null,
+      ]);
+      if (!sr?.t.length) continue;
+      const a = r.logged ? r.started_at : s.started_at, b = r.logged ? r.ended_at : s.ended_at;
+      const g0 = Math.floor(a / 60) * 60;
+      bucketMeans(sr, g0, b, 60).forEach((v, i) => {
+        if (v === null) return;
+        if (byMinute.length >= SHEET_ROWS_MAX) { cut = true; return; }
+        const at = g0 + i * 60;
+        byMinute.push([s.ref, what, name, c.at(at, 'd mmm yyyy hh:mm'), c.since(at), { v: Math.round(v * 10) / 10, fmt: '0.0' }]);
+      });
+    }
   }
 
   const now = opts.now ?? new Date();
   const sheets: { sheet: Sheet; about: string }[] = [
     { sheet: { name: 'Sessions', header: ['Session', 'Started', 'Ended', 'Length', 'Kind', 'What', 'Title', 'Worn by', 'Luna firmware', 'Luna app version', 'Phone', 'Logged by', 'Readings only', 'Under test', 'Reference',
-      'Heart rate, typical gap', 'Heart rate, lean', 'Heart rate, correlation', 'Heart rate, verdict', 'Asleep or awake: the same', 'Same stage', 'Nothing compared because', 'Test data', 'Notes', 'Link'], rows: sessionRows },
+      'Under test, average heart rate', 'Reference, average heart rate', 'Heart rate, typical gap', 'Heart rate, lean', 'Heart rate, correlation', 'Heart rate, verdict', 'Asleep or awake: the same', 'Same stage', 'Nothing compared because', 'Test data', 'Notes', 'Link'], rows: sessionRows },
       about: 'One line per session with its headline comparison (the one its page leads with). Times are each wearer’s own clock.' },
     { sheet: { name: 'Comparison', header: ['Session', 'Started', 'What', 'Worn by', 'Under test', 'Reference', 'Measure', 'Reference value', 'Under test value', 'Difference', 'Difference %', 'Verdict', 'Note'], rows: comparison },
       about: 'Every number two devices both reported, session by session. Difference is the device under test minus the reference. Filter on Measure to line up, say, every distance.' },
@@ -474,6 +507,13 @@ export function listWorkbook(sessions: SessionRow[], opts: ExportOptions & { fil
       '95% of gaps from', '95% of gaps to', 'Lean, first 3 min', 'Lean after that', 'Trails by', 'Heart rate verdict', 'Asleep or awake: the same', 'Same stage', 'Reference sleep also sleep', 'Reference awake also awake', 'Kappa',
       'Steps, hour-by-hour correlation', 'Steps, typical gap in an hour', 'Stretches one device counted almost nothing'], rows: agreement },
       about: 'Heart rate agreement (half-minute by half-minute), sleep agreement (30 seconds at a time) and daily steps agreement (hour by hour), one line per pair of devices.' },
+    { sheet: { name: 'Heart rate', header: ['Session', 'Started', 'What', 'Worn by', 'Device', 'Role', 'Average', 'Lowest', 'Highest', 'Highest at', 'Readings',
+      'One reading every', 'Heart rate covers', 'No heart rate for'], rows: heart },
+      about: 'Each device’s heart rate in each session: average, lowest and highest, and how complete its readings are. One line per device.' },
+    { sheet: { name: 'Heart rate by minute', header: ['Session', 'What', 'Device', 'Minute', 'Since the start', 'Heart rate (bpm)'], rows: byMinute },
+      about: byMinute.length
+        ? `Each device’s average heart rate in each minute of its recording, session by session. Filter on Session and Device to chart one line.${cut ? ' Cut short at a million rows: export fewer sessions for the rest.' : ''}`
+        : `Each device’s heart rate minute by minute, for lists of up to ${HR_BY_MINUTE_MAX} sessions; export fewer sessions to get it.` },
     { sheet: { name: 'Findings', header: ['Session', 'Started', 'What', 'Level', 'Finding', 'Detail'], rows: findings, widths: [undefined, undefined, undefined, undefined, undefined, 90] },
       about: 'What stands out in each session, worked out by fixed rules.' },
   ];
@@ -482,7 +522,7 @@ export function listWorkbook(sessions: SessionRow[], opts: ExportOptions & { fil
   kv('Number of sessions', sessions.length);
   kv('Filters', { v: opts.filters.length ? opts.filters.map(([k, v]) => `${k}: ${v}`).join('; ') : 'none', wrap: true });
   kv('Exported', formatInZone(now, opts.timeZone));
-  kv('Readings', 'Each session’s heart rate, stages and other readings are in its own export, from its page.');
+  kv('Readings', 'Every heart rate reading, the sleep stages and other readings of a session are in its own export, from its page.');
   about.push([], [{ v: 'In this file', bold: true }]);
   for (const x of sheets) about.push([x.sheet.name, { v: x.about, wrap: true }]);
   return {
