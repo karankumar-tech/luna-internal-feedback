@@ -41,7 +41,11 @@ const EnvSchema = z.object({
   DIAGNOSIS_DAILY_BUDGET_USD: z.coerce.number().nonnegative().default(2),
   DIAGNOSIS_SYNC_HOUR_IST: z.coerce.number().int().min(0).max(23).default(20),
   CRON_SECRET: z.string().min(16).optional(),
-  // --- Screenshots on ImageKit (optional: when keys are missing, screenshots are refused with a clear error) ---
+  // --- Screenshots: new ones in S3 when a bucket is set (credentials from the pod's IAM role); older ones stay on ImageKit ---
+  SCREENSHOT_S3_BUCKET: z.string().min(3).optional(),
+  /** Empty: the SDK's own (AWS_REGION, set on EKS). */
+  SCREENSHOT_S3_REGION: z.string().min(1).optional(),
+  // --- Screenshots on ImageKit (optional: kept for older screenshots and app builds; with neither store, screenshots are refused with a clear error) ---
   IMAGEKIT_PUB_KEY: z.string().min(8).optional(),
   IMAGEKIT_PRI_KEY: z.string().min(8).optional(),
   IMAGEKIT_URL_ENDPOINT: z.string().url().default('https://ik.imagekit.io/noisekaranikid'),

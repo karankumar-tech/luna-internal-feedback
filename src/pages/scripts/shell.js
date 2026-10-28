@@ -289,6 +289,26 @@
   }
   LunaShell.viewer = viewer;
 
+  /**
+   * Uploads one screenshot to S3: asks `endpoint` for a presigned link (type and exact size are signed),
+   * then PUTs the file there. Returns what the report stores: `{ file_id, url }`.
+   */
+  LunaShell.uploadToS3 = async (endpoint, blob, name, extra) => {
+    const ext = (name.match(/\.([a-z0-9]+)$/i) || [])[1];
+    const byExt = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', heic: 'image/heic' };
+    const type = blob.type || byExt[(ext || '').toLowerCase()] || 'image/jpeg';
+    const ask = await fetch(endpoint, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'x-requested-with': 'dashboard', 'content-type': 'application/json' },
+      body: JSON.stringify(Object.assign({ content_type: type, size: blob.size }, extra || {})),
+    });
+    const t = await ask.json().catch(() => null);
+    if (!ask.ok || !t || !t.upload_url) throw new Error((t && t.error && t.error.message) || `upload link refused (HTTP ${ask.status})`);
+    const put = await fetch(t.upload_url, { method: 'PUT', headers: t.headers, body: blob });
+    if (!put.ok) throw new Error(`upload failed (HTTP ${put.status})`);
+    return { file_id: t.file_id, url: t.url };
+  };
+
   window.LunaShell = LunaShell;
   paintViewer(); paintAttention();
 

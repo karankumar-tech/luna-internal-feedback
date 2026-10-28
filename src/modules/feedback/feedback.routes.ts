@@ -5,6 +5,7 @@ import { actorOf } from '../../lib/actor.js';
 import { requirePermission } from '../../plugins/auth.js';
 import { buildFeatureSchema, buildSchemaResponse, etagFor } from '../../schema/buildSchemaResponse.js';
 import { screenshotSchema, zodIssues } from '../../schema/buildValidator.js';
+import type { S3ScreenshotStore } from '../uploads/s3.js';
 import { isValidCalendarDate, todayInZone } from '../../lib/time.js';
 import { ENVIRONMENTS, ORIGINS, PLATFORMS } from '../../schema/registry.js';
 import type { CategoriesRepo } from '../categories/categories.repo.js';
@@ -92,13 +93,20 @@ function shiftDate(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-export interface ScreenshotUploads {
+/** ImageKit upload credentials: older app builds still upload there until the S3 release is out. */
+export interface ImageKitUploads {
   publicKey: string;
   urlEndpoint: string;
   folder: string;
+  authParams: () => { token: string; expire: number; signature: string };
+}
+
+/** Where new screenshots go: S3 when configured, else ImageKit. At least one is set. */
+export interface ScreenshotUploads {
   maxBytes: number;
   maxCount: number;
-  authParams: () => { token: string; expire: number; signature: string };
+  s3: S3ScreenshotStore | null;
+  imagekit: ImageKitUploads | null;
 }
 
 export const SCREENSHOT_TYPES = ['image/jpeg', 'image/png', 'image/heic', 'image/webp'] as const;
@@ -137,26 +145,34 @@ export function registerFeedbackRoutes(
 ) {
   const { service, categories, timeZone, uploads, kindsFor, isAssignable, testerNames, betaNames } = deps;
   const betaIds = (items: { origin: string; user_id: number | null }[]) => items.filter((i) => i.origin === 'beta' && i.user_id !== null).map((i) => i.user_id!);
+  // `storage` says where new uploads go: S3 (`upload_endpoint`) when it is configured. The ImageKit
+  // fields stay while ImageKit is configured, for app builds that only know that flow.
   const uploadsDescriptor = () => ({
     screenshots: uploads
-      ? { enabled: true, auth_endpoint: '/v1/uploads/screenshot-auth', upload_url: 'https://upload.imagekit.io/api/v1/files/upload', max_count: uploads.maxCount, max_bytes: uploads.maxBytes, accepted_types: [...SCREENSHOT_TYPES], url_endpoint: uploads.urlEndpoint, client_resize: SCREENSHOT_CLIENT_RESIZE }
+      ? {
+        enabled: true, storage: uploads.s3 ? 's3' : 'imagekit',
+        ...(uploads.s3 ? { upload_endpoint: '/v1/uploads/screenshot-url' } : {}),
+        ...(uploads.imagekit ? { auth_endpoint: '/v1/uploads/screenshot-auth', upload_url: 'https://upload.imagekit.io/api/v1/files/upload', url_endpoint: uploads.imagekit.urlEndpoint } : {}),
+        max_count: uploads.maxCount, max_bytes: uploads.maxBytes, accepted_types: [...SCREENSHOT_TYPES], client_resize: SCREENSHOT_CLIENT_RESIZE,
+      }
       : { enabled: false },
   });
 
-  // ---- short-lived ImageKit upload credentials (app uploads directly to ImageKit) ----
+  // ---- short-lived ImageKit upload credentials (older app builds upload directly to ImageKit) ----
   app.get('/v1/uploads/screenshot-auth', async () => {
-    if (!uploads) throw AppError.validation([{ path: 'screenshots', message: 'screenshot uploads are not configured on the server' }], 'Uploads unavailable');
-    const a = uploads.authParams();
+    const ik = uploads?.imagekit;
+    if (!uploads || !ik) throw AppError.validation([{ path: 'screenshots', message: 'ImageKit uploads are not configured on the server; use POST /v1/uploads/screenshot-url' }], 'Uploads unavailable');
+    const a = ik.authParams();
     return {
       upload_url: 'https://upload.imagekit.io/api/v1/files/upload',
-      public_key: uploads.publicKey,
+      public_key: ik.publicKey,
       token: a.token, expire: a.expire, signature: a.signature,
-      folder: uploads.folder, use_unique_file_name: true, tags: ['luna-feedback'],
+      folder: ik.folder, use_unique_file_name: true, tags: ['luna-feedback'],
       /** Send verbatim as the `transformation` form field (JSON string). ImageKit resizes before storing. */
       transformation: { pre: SCREENSHOT_PRE_TRANSFORMATION },
       max_bytes: uploads.maxBytes, max_count: uploads.maxCount, accepted_types: [...SCREENSHOT_TYPES],
       client_resize: SCREENSHOT_CLIENT_RESIZE,
-      url_endpoint: uploads.urlEndpoint,
+      url_endpoint: ik.urlEndpoint,
     };
   });
 
@@ -317,7 +333,7 @@ export function registerFeedbackRoutes(
   // ---- screenshots added after filing (QC, developers, CX); uploaded first via /v1/uploads/screenshot-auth ----
   app.post<{ Params: { id: string } }>('/v1/admin/submissions/:id/screenshots', { onRequest: requirePermission('add_screenshots') }, async (req, reply) => {
     const parsed = z.object({
-      // URLs are checked by the service, so a server without uploads says so rather than "not an ImageKit URL".
+      // URLs are checked by the service, so a server without uploads says so rather than "not a screenshot link".
       screenshots: z.array(screenshotSchema(() => true)).min(1).max(uploads?.maxCount ?? 5, `at most ${uploads?.maxCount ?? 5} screenshots`),
     }).strict().safeParse(req.body);
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));

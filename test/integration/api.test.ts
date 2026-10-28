@@ -42,8 +42,8 @@ afterAll(async () => {
 });
 
 describe('health & auth', () => {
-  it('healthz is open and reports db up', async () => {
-    const r = await app.inject({ method: 'GET', url: '/healthz' });
+  it.each(['/health', '/healthz'])('%s is open and reports db up', async (url) => {
+    const r = await app.inject({ method: 'GET', url });
     expect(r.statusCode).toBe(200);
     expect(r.json()).toEqual({ ok: true, db: 'up' });
   });

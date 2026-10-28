@@ -17,26 +17,29 @@ function header(req: { headers: Record<string, unknown> }, name: string): string
 
 /** Routes that serve HTML pages or handle the dashboard sign-in. Data behind them still needs auth. */
 export const PUBLIC_PATHS = new Set([
-  '/', '/healthz', '/docs',
+  '/', '/health', '/healthz', '/docs',
   '/dashboard', '/dashboard/report', '/dashboard/diagnosis', '/dashboard/analytics', '/dashboard/kinds', '/dashboard/users', '/dashboard/attention', '/dashboard/settings', '/dashboard/benchmarks', '/dashboard/sprints',
   '/dashboard/login', '/dashboard/logout', '/dashboard/session', '/dashboard/bootstrap',
   // Brand assets: the logo in every header and the icons browsers fetch on their own.
   '/logo.png', '/mark.png', '/favicon.png', '/favicon.ico', '/apple-touch-icon.png',
 ]);
 
-/** Detail pages (a tester's progress among them), the short share links (/i/LN-00042, /k/LNK-0007, /b/BM-0007, /s/SPR-202610-01) that redirect to them, and the pages' scripts. */
-const PUBLIC_PAGE = /^\/(?:dashboard\/(?:submissions|kinds|benchmarks|benchmarks\/progress|sprints|assets)|i|k|b|s)\/[^/]+$/;
+/**
+ * Detail pages (a tester's progress among them), the short share links (/i/LN-00042, /k/LNK-0007, /b/BM-0007, /s/SPR-202610-01)
+ * that redirect to them, the pages' scripts, and S3 screenshot links (/v1/screenshots/s3-<uuid>, open like an ImageKit link).
+ */
+const PUBLIC_PAGE = /^\/(?:dashboard\/(?:submissions|kinds|benchmarks|benchmarks\/progress|sprints|assets)|i|k|b|s|v1\/screenshots)\/[^/]+$/;
 
-/** What the CX tool's key may call: its own routes, plus the form schema and screenshot upload credentials. */
+/** What the CX tool's key may call: its own routes, plus the form schema and screenshot uploads (S3 links or ImageKit credentials). */
 function cxKeyMayCall(url: string): boolean {
   return url.startsWith('/v1/cx/')
     || url === '/v1/feedback/schema' || url.startsWith('/v1/feedback/schema/')
-    || url === '/v1/uploads/screenshot-auth';
+    || url === '/v1/uploads/screenshot-auth' || url === '/v1/uploads/screenshot-url';
 }
 
 /**
  * What the beta key may call: its own routes and the form schema. It ships inside the released app,
- * so it gets no general screenshot credentials; /v1/beta/uploads/screenshot-auth checks the user first.
+ * so it gets no general screenshot credentials; /v1/beta/uploads/screenshot-auth and …/screenshot-url check the user first.
  */
 function betaKeyMayCall(url: string): boolean {
   return url.startsWith('/v1/beta/') || url === '/v1/feedback/schema' || url.startsWith('/v1/feedback/schema/');

@@ -433,7 +433,7 @@
     for (const sc of S.shots) {
       const box = el('div', 'shot' + (sc.pending ? ' busy' : ''));
       const img = el('img'); img.alt = sc.name || 'screenshot';
-      if (sc.preview) img.src = sc.preview; else { try { const u = new URL(sc.url); u.searchParams.set('tr', 'w-320,q-80'); img.src = u.toString(); } catch { img.src = sc.url; } }
+      if (sc.preview) img.src = sc.preview; else if (sc.file_id && sc.file_id.startsWith('s3-')) img.src = sc.url; else { try { const u = new URL(sc.url); u.searchParams.set('tr', 'w-320,q-80'); img.src = u.toString(); } catch { img.src = sc.url; } }
       box.appendChild(img);
       if (sc.pending) box.appendChild(el('div', 'pct', 'Uploading…'));
       box.appendChild(el('div', 'cap', sc.name || 'screenshot'));
@@ -454,15 +454,28 @@
       const bmp = await createImageBitmap(file);
       const k = Math.min(1, r.max_dimension / Math.max(bmp.width, bmp.height));
       const original = { width: bmp.width, height: bmp.height };
-      if (k === 1 && file.size <= 600 * 1024) return { blob: file, original };
+      if (k === 1 && file.size <= 600 * 1024) return { blob: file, original, stored: original };
       const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
       const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
       const blob = await new Promise((done) => c.toBlob(done, 'image/jpeg', r.jpeg_quality || 0.8));
-      return { blob: blob || file, original };
-    } catch { return { blob: file, original: null }; } // A format this browser cannot draw (HEIC outside Safari) goes up as it is.
+      return blob ? { blob, original, stored: { width: c.width, height: c.height } } : { blob: file, original, stored: original };
+    } catch { return { blob: file, original: null, stored: null }; } // A format this browser cannot draw (HEIC outside Safari) goes up as it is.
   }
 
   async function upload(file, entry) {
+    // New screenshots go to S3 when the server has it; ImageKit otherwise.
+    if (S.uploads.upload_endpoint) {
+      const { blob, original, stored } = await shrink(file);
+      if (blob.size > S.uploads.max_bytes) throw new Error(`${file.name} is larger than ${Math.round(S.uploads.max_bytes / 1048576)} MB even after resizing`);
+      const name = blob === file ? file.name : file.name.replace(/\.[^.]+$/, '') + '.jpg';
+      const up = await LunaShell.uploadToS3(S.uploads.upload_endpoint, blob, name);
+      Object.assign(entry, {
+        pending: false, file_id: up.file_id, url: up.url, thumbnail_url: null, name: name.slice(0, 200),
+        width: stored ? stored.width : null, height: stored ? stored.height : null, size: blob.size,
+        upload_size: blob.size, original_width: original ? original.width : null, original_height: original ? original.height : null,
+      });
+      return;
+    }
     const auth = await api(S.uploads.auth_endpoint || '/v1/uploads/screenshot-auth');
     const { blob, original } = await shrink(file);
     if (blob.size > auth.max_bytes) throw new Error(`${file.name} is larger than ${Math.round(auth.max_bytes / 1048576)} MB even after resizing`);

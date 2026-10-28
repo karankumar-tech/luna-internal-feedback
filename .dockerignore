@@ -1,0 +1,13 @@
+.git
+.claude
+.impeccable
+.vercel
+.env
+.env.*
+node_modules
+dist
+coverage
+docs
+test
+*.log
+.DS_Store

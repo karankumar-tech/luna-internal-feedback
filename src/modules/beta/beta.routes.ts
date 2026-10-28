@@ -5,6 +5,7 @@ import { actorOf } from '../../lib/actor.js';
 import { requirePermission } from '../../plugins/auth.js';
 import { zodIssues } from '../../schema/buildValidator.js';
 import { SCREENSHOT_CLIENT_RESIZE, SCREENSHOT_PRE_TRANSFORMATION, SCREENSHOT_TYPES, type ScreenshotUploads } from '../feedback/feedback.routes.js';
+import { screenshotUploadTarget } from '../uploads/uploads.routes.js';
 import type { FeedbackService, SubmissionDto } from '../feedback/feedback.service.js';
 import type { BetaUserEntry, BetaUsersRepo } from './beta-users.repo.js';
 
@@ -84,18 +85,27 @@ export function registerBetaRoutes(
     const parsed = z.object({ user_id: UserId }).safeParse(req.query);
     if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
     await requireBeta(parsed.data.user_id);
-    if (!uploads) throw AppError.validation([{ path: 'screenshots', message: 'screenshot uploads are not configured on the server' }], 'Uploads unavailable');
-    const a = uploads.authParams();
+    const ik = uploads?.imagekit;
+    if (!uploads || !ik) throw AppError.validation([{ path: 'screenshots', message: 'ImageKit uploads are not configured on the server; use POST /v1/beta/uploads/screenshot-url' }], 'Uploads unavailable');
+    const a = ik.authParams();
     return {
       upload_url: 'https://upload.imagekit.io/api/v1/files/upload',
-      public_key: uploads.publicKey,
+      public_key: ik.publicKey,
       token: a.token, expire: a.expire, signature: a.signature,
-      folder: uploads.folder, use_unique_file_name: true, tags: ['luna-feedback', 'beta'],
+      folder: ik.folder, use_unique_file_name: true, tags: ['luna-feedback', 'beta'],
       transformation: { pre: SCREENSHOT_PRE_TRANSFORMATION },
       max_bytes: uploads.maxBytes, max_count: uploads.maxCount, accepted_types: [...SCREENSHOT_TYPES],
       client_resize: SCREENSHOT_CLIENT_RESIZE,
-      url_endpoint: uploads.urlEndpoint,
+      url_endpoint: ik.urlEndpoint,
     };
+  });
+
+  /** An S3 upload link for a beta user's screenshot: the same as POST /v1/uploads/screenshot-url, for users on the list only. */
+  app.post('/v1/beta/uploads/screenshot-url', async (req) => {
+    const parsed = z.object({ user_id: UserId }).passthrough().safeParse(req.body);
+    if (!parsed.success) throw AppError.validation(zodIssues(parsed.error));
+    await requireBeta(parsed.data.user_id);
+    return screenshotUploadTarget(uploads, req.body);
   });
 
   // ---- Settings -------------------------------------------------------------------------------

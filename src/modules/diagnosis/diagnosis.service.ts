@@ -16,6 +16,7 @@ import { AppError } from '../../lib/errors.js';
 import { todayInZone } from '../../lib/time.js';
 import { runInBackground } from './background.js';
 import { withTransformation } from '../uploads/imagekit.js';
+import { S3ScreenshotStore } from '../uploads/s3.js';
 import { isKnownEventCode, matchCatalog, renderCatalogBrief } from './knowledge/catalog.js';
 import type { KindsService } from '../kinds/kinds.service.js';
 import type { DiagnosisModel } from '../settings/ai-models.js';
@@ -305,7 +306,8 @@ export class DiagnosisService {
       device: entry, excerpt: excerpt.excerpt, windowLabel: `${excerpt.window.label} (${new Date(excerpt.window.from + IST_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ')} → ${new Date(excerpt.window.to + IST_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ')} IST)`,
       coverage: excerpt.coverage,
       // A model that cannot read images would refuse the whole request, so it gets none.
-      screenshots: model.images ? (sub.screenshots ?? []).map((x) => withTransformation(x.url, 'w-1024,q-80')) : [],
+      // ImageKit links are sized for the model; S3 links are already downscaled before upload.
+      screenshots: model.images ? (sub.screenshots ?? []).map((x) => (S3ScreenshotStore.isFileId(x.file_id) ? x.url : withTransformation(x.url, 'w-1024,q-80'))) : [],
       catalogBrief, existingKinds,
     });
     const completion = await ai.completeJson(messages, VERDICT_JSON_SCHEMA, { model: model.id });

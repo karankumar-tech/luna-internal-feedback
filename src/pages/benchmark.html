@@ -1322,7 +1322,8 @@
     $('btnShots').title = full ? `A session holds at most ${MAX_SHOTS} screenshots. Remove one to add another.` : '';
     $('shotsEmpty').hidden = shots.length > 0;
     const host = $('shots'); host.hidden = !shots.length; host.replaceChildren();
-    const sized = (url, tr) => { try { const u = new URL(url); u.searchParams.set('tr', tr); return u.toString(); } catch { return url; } };
+    // ImageKit links take a size (?tr=); an S3 link (/v1/screenshots/s3-…) is the stored file.
+    const sized = (url, tr) => { try { const u = new URL(url); if (u.pathname.startsWith('/v1/screenshots/')) return url; u.searchParams.set('tr', tr); return u.toString(); } catch { return url; } };
     const about = (sc) => [sc.added_by && 'added by ' + sc.added_by.split('@')[0], sc.added_at && day(epoch(sc.added_at))].filter(Boolean).join(' · ');
     const items = shots.map((sc) => ({ url: sc.url, thumb: sized(sc.url, 'w-160,q-70'), name: sc.name || 'screenshot', caption: about(sc) }));
     shots.forEach((sc, i) => {
@@ -1363,6 +1364,11 @@
     const blob = await shrink(file);
     if (blob.size > auth.max_bytes) throw new Error(`${file.name} is larger than ${Math.round(auth.max_bytes / 1048576)} MB`);
     const name = blob === file ? file.name : file.name.replace(/\.[^.]+$/, '') + '.jpg';
+    // New screenshots go to S3 when the server has it; ImageKit otherwise.
+    if (auth.storage === 's3') {
+      const up = await LunaShell.uploadToS3(auth.upload_endpoint, blob, name);
+      return api(`/v1/admin/benchmarks/${state.s.id}/screenshots`, { method: 'POST', body: { file_id: up.file_id, url: up.url, name: file.name.slice(0, 200), size: blob.size } });
+    }
     const fd = new FormData();
     fd.append('file', blob, name); fd.append('fileName', name); fd.append('publicKey', auth.public_key);
     fd.append('signature', auth.signature); fd.append('expire', String(auth.expire)); fd.append('token', auth.token);

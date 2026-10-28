@@ -17,7 +17,7 @@ check() { # name expected actual
 code() { curl -s -o /dev/null -w '%{http_code}' -m 20 "$@"; }
 
 echo "== $BASE"
-check "healthz"                 200 "$(code $BASE/healthz)"
+check "health"                  200 "$(code $BASE/health)"
 check "schema without key"      401 "$(code $BASE/v1/feedback/schema)"
 check "schema with app key"     200 "$(code -H "$APP" $BASE/v1/feedback/schema)"
 check "admin with app key"      401 "$(code -H "$APP" $BASE/v1/admin/features)"

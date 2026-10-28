@@ -34,7 +34,7 @@ Send the shared app key on every request under `/v1`:
 x-api-key: <APP_API_KEY>
 ```
 
-The key is distributed out of band by the backend owner. `GET /healthz`, `/docs` (this document), and `/dashboard` (its own sign-in) are the only unauthenticated routes. Admin routes under `/v1/admin` need a different key (`x-admin-key`) and are not for the app.
+The key is distributed out of band by the backend owner. `GET /health`, `/docs` (this document), screenshot links (`/v1/screenshots/s3-…`), and `/dashboard` (its own sign-in) are the only unauthenticated routes. Admin routes under `/v1/admin` need a different key (`x-admin-key`) and are not for the app.
 
 The CX team's tool has its own key (`CX_API_KEY`, also sent as `x-api-key`). It files customer problems through `/v1/cx/*` (§5b) and can read the form schema, nothing else. The app key cannot file CX reports.
 
@@ -196,7 +196,11 @@ Omit it, or send `false`, in the build that real testers use. It defaults to `fa
 
 ## 3c. Screenshots
 
-A submission can carry up to five screenshots. Images are hosted on ImageKit; the app uploads them **directly to ImageKit** with a short-lived signature from this API, then references them in the feedback POST. Files never pass through this server.
+A submission can carry up to five screenshots. New screenshots are stored in a private **S3** bucket; screenshots sent before the move stay on ImageKit with their own links. `uploads.screenshots.storage` in the schema response says which flow new uploads use (`"s3"` or `"imagekit"`). Files never pass through this server either way.
+
+**S3** (one call per image): `POST /v1/uploads/screenshot-url` with `{ "content_type": "image/jpeg", "size": <exact bytes> }` answers `{ method: "PUT", upload_url, headers, expires_in, file_id, url, max_bytes, max_count, accepted_types, client_resize }`. PUT the bytes to `upload_url` with `headers` (type and size are signed; the link works 10 minutes), then send `{ file_id, url }` in `screenshots` as below. `url` (`<base>/v1/screenshots/s3-…`) is permanent and redirects to a short-lived signed link, so the bucket stays private. Beta users call `POST /v1/beta/uploads/screenshot-url` with `user_id` added.
+
+**ImageKit, for older app builds** (while the server still has ImageKit keys):
 
 **1. Get upload credentials** (one call per image; each token is single use):
 
@@ -284,9 +288,9 @@ If both fields are filled, they must not be identical. There is no ordering chec
 
 ## 5. Endpoints
 
-### `GET /healthz`
+### `GET /health`
 
-No auth. Returns `{ "ok": true, "db": "up" }` or `503` with `{ "ok": false, "db": "down" }`.
+No auth. Returns `{ "ok": true, "db": "up" }` or `503` with `{ "ok": false, "db": "down" }`. `/healthz` answers the same.
 
 ---
 
@@ -849,7 +853,7 @@ Show `ref` to the user. An `Idempotency-Key` already used for a different report
 
 ### `GET /v1/beta/uploads/screenshot-auth?user_id={user_id}`
 
-Short-lived ImageKit upload credentials, the same as `GET /v1/uploads/screenshot-auth`, for users on the beta list only (`403 NOT_A_BETA_USER` otherwise). Ask for a fresh set before each upload.
+Short-lived ImageKit upload credentials, the same as `GET /v1/uploads/screenshot-auth`, for users on the beta list only (`403 NOT_A_BETA_USER` otherwise). Ask for a fresh set before each upload. Where the schema says `storage: "s3"`, use `POST /v1/beta/uploads/screenshot-url` with `{ "user_id", "content_type", "size" }` instead.
 
 ### What the beta key can reach
 

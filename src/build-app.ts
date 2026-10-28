@@ -4,9 +4,10 @@ import { createPool, type Db } from './db/pool.js';
 import { registerAuth } from './plugins/auth.js';
 import { registerErrorHandler } from './plugins/errorHandler.js';
 import { registerHealthRoutes } from './modules/health/health.routes.js';
-import { registerFeedbackRoutes } from './modules/feedback/feedback.routes.js';
+import { registerFeedbackRoutes, type ScreenshotUploads } from './modules/feedback/feedback.routes.js';
 import { registerAdminRoutes } from './modules/categories/categories.routes.js';
 import { registerPageRoutes } from './modules/pages/pages.routes.js';
+import { LoginThrottle } from './modules/pages/login-throttle.js';
 import { sessionSecretFrom } from './plugins/dashboardSession.js';
 import { DiagnosisRepo } from './modules/diagnosis/diagnosis.repo.js';
 import { DiagnosisService } from './modules/diagnosis/diagnosis.service.js';
@@ -15,6 +16,9 @@ import { LogsClient } from './modules/diagnosis/logs/client.js';
 import { OpenRouterClient } from './modules/diagnosis/ai/openrouter.js';
 import { OpenRouterCatalog } from './modules/diagnosis/ai/models.js';
 import { ImageKitClient } from './modules/uploads/imagekit.js';
+import { S3ScreenshotStore } from './modules/uploads/s3.js';
+import { ScreenshotStorage } from './modules/uploads/screenshots.js';
+import { registerUploadRoutes } from './modules/uploads/uploads.routes.js';
 import { CategoriesRepo } from './modules/categories/categories.repo.js';
 import { FeedbackRepo } from './modules/feedback/feedback.repo.js';
 import { FeedbackService } from './modules/feedback/feedback.service.js';
@@ -70,6 +74,8 @@ export interface BuildOptions {
   diagnosis?: { logs?: LogsClient | null; logsByEnv?: Partial<Record<Environment, LogsClient | null>>; ai?: OpenRouterClient | null; models?: OpenRouterCatalog; fetchImpl?: typeof fetch; now?: () => Date };
   /** Test seam: replaces the ImageKit client built from config. */
   imagekit?: ImageKitClient | null;
+  /** Test seam: replaces the S3 screenshot store built from config. */
+  s3?: S3ScreenshotStore | null;
   /** Test seam: replaces the Jira client built from config. */
   jira?: JiraClient | null;
   /** Test seam: the clock sprint timing (days left, overdue) is measured against. */
@@ -222,10 +228,20 @@ export function buildApp(opts: BuildOptions = {}): App {
   const imagekit = opts.imagekit !== undefined ? opts.imagekit : config.IMAGEKIT_PUB_KEY && config.IMAGEKIT_PRI_KEY
     ? new ImageKitClient({ publicKey: config.IMAGEKIT_PUB_KEY, privateKey: config.IMAGEKIT_PRI_KEY, urlEndpoint: config.IMAGEKIT_URL_ENDPOINT, folder: config.IMAGEKIT_FOLDER })
     : null;
-  if (imagekit) service.setScreenshotSupport({ isOurUrl: (u) => imagekit.isOurUrl(u), maxCount: config.SCREENSHOT_MAX_COUNT, deleteFile: (id) => imagekit.deleteFile(id) });
-  if (imagekit) sprints.setScreenshotCleanup((id) => imagekit.deleteFile(id));
-  else app.log.warn('Screenshot uploads disabled: set IMAGEKIT_PUB_KEY and IMAGEKIT_PRI_KEY to enable');
-  const screenshotUploads = imagekit ? { publicKey: imagekit.publicKey, urlEndpoint: imagekit.urlEndpoint, folder: imagekit.folder, maxBytes: config.SCREENSHOT_MAX_BYTES, maxCount: config.SCREENSHOT_MAX_COUNT, authParams: () => imagekit.authParams() } : null;
+  const s3 = opts.s3 !== undefined ? opts.s3 : config.SCREENSHOT_S3_BUCKET
+    ? new S3ScreenshotStore({ bucket: config.SCREENSHOT_S3_BUCKET, region: config.SCREENSHOT_S3_REGION, publicBaseUrl: config.PUBLIC_BASE_URL })
+    : null;
+  // New screenshots go to S3; ones already on ImageKit keep their links and are deleted there.
+  const storage = new ScreenshotStorage(imagekit, s3);
+  const screenshotSupport = storage.enabled ? { isOurUrl: (u: string) => storage.isOurUrl(u), deleteFile: (id: string) => storage.deleteFile(id) } : null;
+  if (screenshotSupport) service.setScreenshotSupport({ ...screenshotSupport, maxCount: config.SCREENSHOT_MAX_COUNT });
+  if (screenshotSupport) sprints.setScreenshotCleanup(screenshotSupport.deleteFile);
+  else app.log.warn('Screenshot uploads disabled: set SCREENSHOT_S3_BUCKET (or IMAGEKIT_PUB_KEY and IMAGEKIT_PRI_KEY) to enable');
+  const screenshotUploads: ScreenshotUploads | null = storage.enabled ? {
+    maxBytes: config.SCREENSHOT_MAX_BYTES, maxCount: config.SCREENSHOT_MAX_COUNT, s3,
+    imagekit: imagekit ? { publicKey: imagekit.publicKey, urlEndpoint: imagekit.urlEndpoint, folder: imagekit.folder, authParams: () => imagekit.authParams() } : null,
+  } : null;
+  registerUploadRoutes(app, { uploads: screenshotUploads });
   registerFeedbackRoutes(app, {
     service, categories, timeZone: config.APP_TIMEZONE, kindsFor: (ids) => kindsRepo.forSubmissions(ids),
     isAssignable: async (email) => (await users.assignable()).some((u) => u.email === email),
@@ -233,7 +249,7 @@ export function buildApp(opts: BuildOptions = {}): App {
     betaNames: (ids) => betaUsers.namesFor(ids),
     uploads: screenshotUploads,
   });
-  registerPageRoutes(app, { dashboardKey: config.DASHBOARD_KEY, sessionSecret, sessionDays: config.DASHBOARD_SESSION_DAYS, keyLogin: config.DASHBOARD_KEY_LOGIN, users });
+  registerPageRoutes(app, { dashboardKey: config.DASHBOARD_KEY, sessionSecret, sessionDays: config.DASHBOARD_SESSION_DAYS, keyLogin: config.DASHBOARD_KEY_LOGIN, users, throttle: new LoginThrottle(db) });
   registerUserRoutes(app, { service: users });
   registerAdminRoutes(app, { categories });
   registerDiagnosisRoutes(app, { service: diagnosis, repo: diagnosisRepo, activity });
@@ -255,10 +271,10 @@ export function buildApp(opts: BuildOptions = {}): App {
   registerSprintRoutes(app, { service: sprints });
 
   const benchmarks = new BenchmarksService(new BenchmarksRepo(db));
-  if (imagekit) benchmarks.setScreenshotSupport({ isOurUrl: (u) => imagekit.isOurUrl(u), deleteFile: (id) => imagekit.deleteFile(id) });
+  if (screenshotSupport) benchmarks.setScreenshotSupport(screenshotSupport);
   registerBenchmarkRoutes(app, {
     service: benchmarks,
-    uploads: imagekit ? { publicKey: imagekit.publicKey, urlEndpoint: imagekit.urlEndpoint, folder: imagekit.folder, maxBytes: config.SCREENSHOT_MAX_BYTES, maxCount: config.SCREENSHOT_MAX_COUNT, authParams: () => imagekit.authParams() } : null,
+    uploads: screenshotUploads,
     exports: { baseUrl: config.PUBLIC_BASE_URL, timeZone: config.APP_TIMEZONE },
   });
 

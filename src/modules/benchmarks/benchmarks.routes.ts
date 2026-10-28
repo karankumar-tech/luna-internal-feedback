@@ -8,6 +8,7 @@ import { DEVICE_TAGS, tagLabel } from './metrics.js';
 import { XLSX_TYPE, type ExportFile } from './export.js';
 import { SCREENSHOT_PRE_TRANSFORMATION, SCREENSHOT_TYPES, type ScreenshotUploads } from '../feedback/feedback.routes.js';
 import { BENCHMARK_MAX_SCREENSHOTS, type BenchmarksService } from './benchmarks.service.js';
+import { screenshotUploadTarget } from '../uploads/uploads.routes.js';
 
 function parse<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, value: unknown): T {
   const r = schema.safeParse(value);
@@ -249,19 +250,27 @@ export function registerBenchmarkRoutes(app: FastifyInstance, deps: { service: B
     return service.merge(req.params.id, body.other);
   });
 
-  /** Short-lived ImageKit upload credentials: the page uploads a screenshot directly, then attaches it below. One call per file. */
+  /**
+   * How the page uploads a screenshot, one call per file, before attaching it below. With S3 configured
+   * it answers `storage: "s3"` and the page asks POST …/screenshot-url for a link; otherwise ImageKit credentials.
+   */
   app.get('/v1/admin/benchmarks/screenshot-auth', manage, async () => {
     if (!uploads) throw AppError.validation([{ path: 'screenshots', message: 'screenshot uploads are not configured on the server' }], 'Uploads unavailable');
-    const a = uploads.authParams();
+    const limits = { max_bytes: uploads.maxBytes, max_count: BENCHMARK_MAX_SCREENSHOTS, accepted_types: [...SCREENSHOT_TYPES] };
+    if (uploads.s3) return { storage: 's3', upload_endpoint: '/v1/admin/benchmarks/screenshot-url', ...limits };
+    const ik = uploads.imagekit!;
+    const a = ik.authParams();
     return {
+      storage: 'imagekit',
       upload_url: 'https://upload.imagekit.io/api/v1/files/upload',
-      public_key: uploads.publicKey,
+      public_key: ik.publicKey,
       token: a.token, expire: a.expire, signature: a.signature,
-      folder: `${uploads.folder.replace(/\/+$/, '')}/benchmarks`, use_unique_file_name: true, tags: ['luna-benchmark'],
+      folder: `${ik.folder.replace(/\/+$/, '')}/benchmarks`, use_unique_file_name: true, tags: ['luna-benchmark'],
       transformation: { pre: SCREENSHOT_PRE_TRANSFORMATION },
-      max_bytes: uploads.maxBytes, max_count: BENCHMARK_MAX_SCREENSHOTS, accepted_types: [...SCREENSHOT_TYPES],
+      ...limits,
     };
   });
+  app.post('/v1/admin/benchmarks/screenshot-url', manage, async (req) => screenshotUploadTarget(uploads ?? null, req.body, { maxCount: BENCHMARK_MAX_SCREENSHOTS }));
 
   app.post<{ Params: { id: string } }>('/v1/admin/benchmarks/:id/screenshots', manage, async (req, reply) =>
     reply.code(201).send(await service.addScreenshot(req.params.id, parse(ScreenshotBody, req.body), actorOf(req))));

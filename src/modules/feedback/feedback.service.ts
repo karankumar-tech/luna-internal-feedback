@@ -59,7 +59,7 @@ export class FeedbackService {
   private accounts: ((emails: string[], ids: readonly string[]) => Promise<ActiveAccount[]>) | null = null;
   /** Whether a Luna user id is on the beta list (wired in build-app). Without it, beta reports are refused. */
   private isBetaUser: ((userId: number) => Promise<boolean>) | null = null;
-  /** Screenshot URL validator + cleanup, wired when ImageKit is configured. */
+  /** Screenshot URL validator + cleanup, wired when S3 or ImageKit is configured. */
   private screenshots: { isOurUrl: (u: string) => boolean; maxCount: number; deleteFile: (id: string) => Promise<boolean> } | null = null;
 
   constructor(
@@ -433,7 +433,7 @@ export class FeedbackService {
   async addScreenshots(id: string, shots: Screenshot[], by: string | null): Promise<SubmissionDto> {
     if (!this.screenshots) throw AppError.validation([{ path: 'screenshots', message: 'screenshot uploads are not configured on the server' }], 'Uploads unavailable');
     const bad = shots.findIndex((s) => !this.screenshots!.isOurUrl(s.url));
-    if (bad >= 0) throw AppError.validation([{ path: `screenshots.${bad}.url`, message: 'must be an ImageKit URL from the screenshot upload flow' }]);
+    if (bad >= 0) throw AppError.validation([{ path: `screenshots.${bad}.url`, message: 'must be a screenshot link from the upload flow' }]);
     const before = await this.row(id);
     const held = new Set(before.screenshots.map((s) => s.file_id));
     const at = new Date().toISOString();

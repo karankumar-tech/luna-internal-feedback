@@ -9,6 +9,7 @@ import {
   readCookie, sessionCookie, verifySessionToken, verifySuperSessionToken, verifyUserSessionToken,
 } from '../../plugins/dashboardSession.js';
 import type { UsersService } from '../users/users.service.js';
+import type { LoginThrottle } from './login-throttle.js';
 
 interface PageDeps {
   dashboardKey: string;
@@ -18,6 +19,8 @@ interface PageDeps {
   keyLogin: boolean;
   /** Absent only in tests that do not exercise accounts. */
   users?: UsersService;
+  /** Brake on password guessing (8 failures per IP per 10 minutes), shared by every server instance. */
+  throttle: LoginThrottle;
 }
 
 /** Either the shared key (only while no account exists) or an email and password. */
@@ -33,19 +36,6 @@ const BootstrapBody = z.object({
   name: z.string().trim().max(120).optional(),
   password: z.string().min(1).max(200),
 }).strict();
-
-/** Small in-memory brake on password guessing: 8 failures per IP per 10 minutes. */
-const failures = new Map<string, { count: number; resetAt: number }>();
-function tooManyFailures(ip: string, now = Date.now()): boolean {
-  const f = failures.get(ip);
-  if (!f || f.resetAt < now) return false;
-  return f.count >= 8;
-}
-function recordFailure(ip: string, now = Date.now()) {
-  const f = failures.get(ip);
-  if (!f || f.resetAt < now) failures.set(ip, { count: 1, resetAt: now + 10 * 60_000 });
-  else f.count += 1;
-}
 
 function safeEqual(a: string, b: string): boolean {
   const ab = Buffer.from(a);
@@ -160,7 +150,7 @@ export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
   /** Exchange an email and password — or, before any account exists, the dashboard key — for a session cookie. */
   app.post('/dashboard/login', async (req, reply) => {
     if (req.headers[DASHBOARD_HEADER] !== 'dashboard') throw AppError.forbidden('Missing dashboard header');
-    if (tooManyFailures(req.ip)) throw new AppError(429, 'FORBIDDEN', 'Too many attempts. Try again in a few minutes.');
+    if (await deps.throttle.blocked(req.ip)) throw new AppError(429, 'FORBIDDEN', 'Too many attempts. Try again in a few minutes.');
     const parsed = LoginBody.safeParse(req.body);
     if (!parsed.success) throw AppError.validation([{ path: 'email', message: 'send email and password' }]);
 
@@ -188,7 +178,7 @@ export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
       try {
         result = await deps.users.signIn(parsed.data.email, parsed.data.password);
       } catch (err) {
-        recordFailure(req.ip);
+        await deps.throttle.recordFailure(req.ip);
         throw err;
       }
       const { token, expiresAt } = makeUserSessionToken(deps.sessionSecret, result.user.id, new Date(result.user.password_set_at), ttlMs);
@@ -206,7 +196,7 @@ export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
       throw AppError.forbidden('The shared key no longer works. Sign in with your email and password, or ask an admin to add you.');
     }
     if (!safeEqual(parsed.data.key.trim(), deps.dashboardKey)) {
-      recordFailure(req.ip);
+      await deps.throttle.recordFailure(req.ip);
       throw AppError.unauthorized('That key was not accepted');
     }
     const { token, expiresAt } = makeSessionToken(deps.sessionSecret, ttlMs);
@@ -225,12 +215,12 @@ export function registerPageRoutes(app: FastifyInstance, deps: PageDeps) {
   app.post('/dashboard/bootstrap', async (req, reply) => {
     if (req.headers[DASHBOARD_HEADER] !== 'dashboard') throw AppError.forbidden('Missing dashboard header');
     if (!deps.users) throw AppError.validation([{ path: 'email', message: 'accounts are not configured on this server' }]);
-    if (tooManyFailures(req.ip)) throw new AppError(429, 'FORBIDDEN', 'Too many attempts. Try again in a few minutes.');
+    if (await deps.throttle.blocked(req.ip)) throw new AppError(429, 'FORBIDDEN', 'Too many attempts. Try again in a few minutes.');
 
     const parsed = BootstrapBody.safeParse(req.body);
     if (!parsed.success) throw AppError.validation([{ path: 'email', message: 'send key, email, password and optionally name' }]);
     if (!safeEqual(parsed.data.key.trim(), deps.dashboardKey)) {
-      recordFailure(req.ip);
+      await deps.throttle.recordFailure(req.ip);
       throw AppError.unauthorized('That key was not accepted');
     }
     if (!(await deps.users.needsBootstrap())) throw AppError.forbidden('Accounts already exist; ask an admin to add you.');

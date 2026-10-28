@@ -6,7 +6,7 @@ import { isValidCalendarDate, isValidTime12h, normalizeTime12h, todayInZone } fr
 export interface ValidatorContext {
   /** Active category keys for the feature being validated. */
   categoryKeys: readonly string[];
-  /** Accept only screenshot URLs for which this returns true (our ImageKit endpoint). Absent = screenshots refused. */
+  /** Accept only screenshot URLs for which this returns true (our S3 links or ImageKit account). Absent = screenshots refused. */
   isScreenshotUrl?: (url: string) => boolean;
   maxScreenshots?: number;
   /** IANA zone used to decide "today" for the occurred_on future check. */
@@ -142,7 +142,7 @@ function sharedExtras(feature: FeatureKey, ctx: ValidatorContext) {
 export function screenshotSchema(isScreenshotUrl?: (url: string) => boolean) {
   return z.object({
     file_id: z.string().trim().min(1).max(120),
-    url: z.string().trim().url().max(1000).refine((u) => (isScreenshotUrl ? isScreenshotUrl(u) : false), 'must be an ImageKit URL from the screenshot upload flow'),
+    url: z.string().trim().url().max(1000).refine((u) => (isScreenshotUrl ? isScreenshotUrl(u) : false), 'must be a screenshot link from the upload flow'),
     thumbnail_url: z.string().trim().url().max(1000).optional().nullable(),
     name: z.string().trim().max(200).optional().nullable(),
     width: z.number().int().positive().optional().nullable(),

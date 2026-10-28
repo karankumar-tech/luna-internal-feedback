@@ -67,7 +67,7 @@ npm run dev               # http://localhost:3000
 | `x-admin-key: <ADMIN_API_KEY>` | everything, for automation and scripts. Not tied to a person |
 | dashboard session cookie + `x-requested-with: dashboard` | whatever the signed-in account's role allows |
 
-`GET /healthz`, `/docs`, and the dashboard pages are open; the data behind them is not.
+`GET /health` (or `/healthz`), `/docs`, and the dashboard pages are open; the data behind them is not.
 The session is a signed, HttpOnly cookie valid for `DASHBOARD_SESSION_DAYS`.
 
 ### People and roles
@@ -586,3 +586,25 @@ picks as the entry.
 Set the variables from `.env.example` in the Vercel project settings, with
 `DB_POOL_MAX=1` and a `SUPABASE_DB_URL` pointing at the transaction pooler (port `6543`).
 Migrations are run from a developer machine with `npm run db:migrate`.
+
+## Deploy (EKS, as luna-feedback-pulse)
+
+One stateless container; run two or more replicas behind the load balancer. Nothing is kept
+on disk or in a pod's memory that another pod needs: sessions are signed cookies, and the job
+queue, lockouts, the sign-in throttle and the AI budget are in Postgres.
+
+- **Image:** `docker buildx build --platform linux/amd64,linux/arm64 -t luna-feedback-pulse .`
+  (Node 24 LTS, 24.22.1 or newer; no native modules, so Graviton works). Rebuild to pick up
+  Node security releases. Listens on `PORT` (3000), runs as the `node` user.
+- **Probes:** `GET /health` (`200 {"ok":true,"db":"up"}`, `503` when Postgres is unreachable).
+- **Migrations:** a Kubernetes Job from the same image, before each rollout that adds one:
+  `node scripts/migrate.mjs` with `SUPABASE_DB_URL` set (any Postgres 15+ URL, RDS included).
+- **Nightly diagnosis sweep:** a CronJob at 16:00 UTC calling
+  `GET /v1/admin/diagnoses/run-pending?limit=10` with `Authorization: Bearer <CRON_SECRET>`.
+- **Screenshots:** set `SCREENSHOT_S3_BUCKET` (private bucket). The pods' IAM role (IRSA) needs
+  `s3:PutObject`, `s3:GetObject` and `s3:DeleteObject` on `<bucket>/screenshots/*`; the bucket's
+  CORS must allow `PUT` with a `content-type` header from `PUBLIC_BASE_URL`. Screenshots sent
+  before S3 stay on ImageKit with their own links; keep the ImageKit keys while older app builds
+  still upload there.
+- **Env:** everything in `.env.example`; `PUBLIC_BASE_URL=https://pulse.lunazone.com` (S3
+  screenshot links are built from it), `DB_POOL_MAX=5`.

@@ -16,6 +16,8 @@ let app: App;
 const cfg = loadConfig({ NODE_ENV: 'test', CATEGORY_CACHE_TTL_MS: '0', LOG_LEVEL: 'silent', PASSWORD_HISTORY_DEPTH: '3' });
 const adminHeaders = { 'x-admin-key': cfg.ADMIN_API_KEY, 'content-type': 'application/json' };
 const dash = { 'x-requested-with': 'dashboard', 'content-type': 'application/json' };
+/** A documentation address, so the throttle test never shares a count with the other tests' 127.0.0.1. */
+const THROTTLED_IP = '203.0.113.77';
 
 /** Signs in and returns the session cookie plus the login response. */
 async function signIn(address: string, password: string) {
@@ -28,6 +30,8 @@ const asUser = (cookie: string) => ({ ...dash, cookie });
 async function cleanup() {
   await app.db.query(`delete from luna_feedback.dashboard_users where email like $1`, [`%@${DOMAIN}`]);
   await app.db.query(`delete from luna_feedback.dashboard_user_events where target like $1 or actor like $1`, [`%@${DOMAIN}`]);
+  // Failed sign-ins are counted per IP in the database; inject() always comes from 127.0.0.1.
+  await app.db.query(`delete from luna_feedback.login_failures where ip = any($1)`, [['127.0.0.1', THROTTLED_IP]]);
 }
 
 beforeAll(async () => {
@@ -299,6 +303,30 @@ describe('admin overrides', () => {
     const created = (await app.inject({ method: 'POST', url: '/v1/admin/users', headers: adminHeaders, payload: { email: address, role: 'business' } })).json();
     expect((await app.inject({ method: 'DELETE', url: `/v1/admin/users/${created.user.id}`, headers: adminHeaders })).statusCode).toBe(200);
     expect((await app.inject({ method: 'POST', url: '/dashboard/login', headers: dash, payload: { email: address, password: created.generated_password } })).statusCode).toBe(401);
+  });
+});
+
+describe('sign-in throttle', () => {
+  it('counts failures per IP across server instances, as several pods would', async () => {
+    const second = buildApp({ config: cfg, logger: false, db: app.db, diagnosis: { logs: null, ai: null }, jira: null });
+    await second.ready();
+    try {
+      const attempt = (on: App, password: string) => on.inject({
+        method: 'POST', url: '/dashboard/login', headers: dash, remoteAddress: THROTTLED_IP,
+        payload: { email: email('nobody'), password },
+      });
+      // 8 failures, alternating between the two instances.
+      for (let i = 0; i < 8; i += 1) expect((await attempt(i % 2 ? second : app, 'not-a-real-password-1')).statusCode).toBe(401);
+      const ninth = await attempt(second, 'not-a-real-password-1');
+      expect(ninth.statusCode).toBe(429);
+      expect(ninth.json().error.message).toContain('Too many attempts');
+      // Another address is unaffected.
+      const elsewhere = await app.inject({ method: 'POST', url: '/dashboard/login', headers: dash, remoteAddress: '203.0.113.78', payload: { email: email('nobody'), password: 'x' } });
+      expect(elsewhere.statusCode).toBe(401);
+    } finally {
+      await app.db.query(`delete from luna_feedback.login_failures where ip = '203.0.113.78'`);
+      await second.close();
+    }
   });
 });
 

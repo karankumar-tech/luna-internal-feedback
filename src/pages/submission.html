@@ -574,7 +574,8 @@
     }
     $('shotsSub').textContent = sub.join(' · ');
     const g = $('gallery'); g.replaceChildren(); g.hidden = !shots.length && !pendingShots.length;
-    const sized = (sc, tr) => { try { const u = new URL(sc.url); u.searchParams.set('tr', tr); return u.toString(); } catch { return sc.thumbnail_url || sc.url; } };
+    // ImageKit links take a size (?tr=); an S3 link is the stored file, already downscaled before upload.
+    const sized = (sc, tr) => { if (sc.file_id && sc.file_id.startsWith('s3-')) return sc.url; try { const u = new URL(sc.url); u.searchParams.set('tr', tr); return u.toString(); } catch { return sc.thumbnail_url || sc.url; } };
     const kb = (n) => n >= 1024 * 1024 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB';
     const who = (x) => { const n = nameOf(x); return n === x && x.includes('@') ? x.split('@')[0] : n; };
     const addedLine = (sc) => ['added by ' + who(sc.added_by), sc.added_at ? new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' }).format(new Date(sc.added_at)) : null].filter(Boolean).join(' · ');
@@ -616,17 +617,29 @@
       const bmp = await createImageBitmap(file);
       const k = Math.min(1, r.max_dimension / Math.max(bmp.width, bmp.height));
       const original = { width: bmp.width, height: bmp.height };
-      if (k === 1 && file.size <= 600 * 1024) return { blob: file, original };
+      if (k === 1 && file.size <= 600 * 1024) return { blob: file, original, stored: original };
       const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
       const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
       const blob = await new Promise((done) => c.toBlob(done, 'image/jpeg', r.jpeg_quality || 0.8));
-      return { blob: blob || file, original };
-    } catch { return { blob: file, original: null }; } // A format this browser cannot draw (HEIC outside Safari) goes up as it is.
+      return blob ? { blob, original, stored: { width: c.width, height: c.height } } : { blob: file, original, stored: original };
+    } catch { return { blob: file, original: null, stored: null }; } // A format this browser cannot draw (HEIC outside Safari) goes up as it is.
   }
 
-  /** Uploads one image to ImageKit and returns what the report stores about it. */
+  /** Uploads one image (to S3 when the server has it, else ImageKit) and returns what the report stores about it. */
   async function uploadShot(file) {
-    const auth = await api(uploadsCfg().auth_endpoint || '/v1/uploads/screenshot-auth');
+    const cfg = uploadsCfg();
+    if (cfg.upload_endpoint) {
+      const { blob, original, stored } = await shrink(file);
+      if (blob.size > cfg.max_bytes) throw new Error(`larger than ${Math.round(cfg.max_bytes / 1048576)} MB even after resizing`);
+      const name = blob === file ? file.name : file.name.replace(/\.[^.]+$/, '') + '.jpg';
+      const up = await LunaShell.uploadToS3(cfg.upload_endpoint, blob, name);
+      return {
+        file_id: up.file_id, url: up.url, thumbnail_url: null, name: name.slice(0, 200),
+        width: stored ? stored.width : null, height: stored ? stored.height : null, size: blob.size,
+        upload_size: blob.size, original_width: original ? original.width : null, original_height: original ? original.height : null,
+      };
+    }
+    const auth = await api(cfg.auth_endpoint || '/v1/uploads/screenshot-auth');
     const { blob, original } = await shrink(file);
     if (blob.size > auth.max_bytes) throw new Error(`larger than ${Math.round(auth.max_bytes / 1048576)} MB even after resizing`);
     const name = blob === file ? file.name : file.name.replace(/\.[^.]+$/, '') + '.jpg';

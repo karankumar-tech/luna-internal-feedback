@@ -47,23 +47,23 @@ export type CheckCandidate = Candidate & { samples?: number | null };
 const iso = (seconds: number) => new Date(seconds * 1000).toISOString();
 
 export class BenchmarksService {
-  /** Screenshot URL check + cleanup, wired when ImageKit is configured. */
+  /** Screenshot URL check + cleanup, wired when S3 or ImageKit is configured. */
   private screenshots: { isOurUrl: (u: string) => boolean; deleteFile: (id: string) => Promise<boolean> } | null = null;
 
   constructor(private readonly repo: BenchmarksRepo) {}
 
   setScreenshotSupport(s: { isOurUrl: (u: string) => boolean; deleteFile: (id: string) => Promise<boolean> } | null) { this.screenshots = s; }
 
-  /** Best effort, sequential to respect ImageKit rate limits; failures are ignored. */
+  /** Best effort, sequential to respect storage rate limits; failures are ignored. */
   private async deleteFiles(shots: BenchmarkScreenshot[]): Promise<void> {
     if (!this.screenshots) return;
     for (const s of shots) await this.screenshots.deleteFile(s.file_id);
   }
 
-  /** Attaches an image already uploaded to ImageKit (see GET /v1/admin/benchmarks/screenshot-auth). */
+  /** Attaches an image already uploaded to S3 or ImageKit (see GET /v1/admin/benchmarks/screenshot-auth). */
   async addScreenshot(idOrRef: string, input: ScreenshotInput, addedBy: string | null) {
     if (!this.screenshots) throw AppError.validation([{ path: 'screenshots', message: 'screenshot uploads are not configured on the server' }], 'Uploads unavailable');
-    if (!this.screenshots.isOurUrl(input.url)) throw AppError.validation([{ path: 'url', message: 'must be an ImageKit URL from the screenshot upload flow' }]);
+    if (!this.screenshots.isOurUrl(input.url)) throw AppError.validation([{ path: 'url', message: 'must be a screenshot link from the upload flow' }]);
     const session = await this.repo.session(idOrRef);
     if (!session) throw AppError.notFound('No benchmark session with that id or reference');
     const shot: BenchmarkScreenshot = {
